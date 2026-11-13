@@ -39,6 +39,22 @@ internal static class PostgresStagingRepository
         return list;
     }
 
+    /// <summary>
+    /// De teamcodes uit de zojuist geladen <c>stg.teams</c> (#1915), voor de terugval per team bij een afgekapte
+    /// <c>/programma</c>-respons. Alleen echte KNVB-teams: <c>-1</c> is een lokaal team zonder bondscode.
+    /// </summary>
+    internal static async Task<IReadOnlyList<long>> GetTeamcodesAsync(string connectionString)
+    {
+        var codes = new List<long>();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("SELECT DISTINCT teamcode FROM stg.teams WHERE teamcode > 0", connection);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            codes.Add(Convert.ToInt64(reader.GetValue(0)));
+        return codes;
+    }
+
     internal static async Task SaveTeamsAsync(string connectionString, List<Team> teams, string clubCode, ILogger log)
     {
         // #1712: een dubbele sleutel in stg.teams laat de upsert naar his.teams falen met 21000.

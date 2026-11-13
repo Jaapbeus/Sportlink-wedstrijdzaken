@@ -110,7 +110,8 @@ internal static class SportlinkSyncPipeline
             try
             {
                 var volledig = await FetchAndStoreProgrammaAsync(
-                    $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log, budget: budget);
+                    $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}&aantaldagen={ProgrammaAfkapping.VensterDagen}",
+                    clubCode, log, budget: budget);
                 log.LogInformation("MATCHES/PROGRAMMA - GET weekOffset={WeekOffset}", weekOffset);
                 // #1915: een afgekapt venster is een onvolledige snapshot — nooit reconciliëren op wat ontbreekt.
                 if (!volledig) partialFailure = true;
@@ -247,12 +248,12 @@ internal static class SportlinkSyncPipeline
                 httpClient ?? _client, url, herhaalBudget, "MATCHES/PROGRAMMA", log, herhaalWachttijd);
             return JsonConvert.DeserializeObject<List<Match>>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore })
                 ?? new List<Match>();
-        });
+        }, () => SportlinkStagingRepository.GetTeamcodesAsync());
         if (ophaling.Gesplitst)
-            log.LogInformation("MATCHES/PROGRAMMA - venster raakte het plafond van {Plafond} rijen; opgehaald als thuis + uit ({Count} rijen).",
-                ProgrammaAfkapping.Plafond, ophaling.Rijen.Count);
+            log.LogInformation("MATCHES/PROGRAMMA - venster raakte het plafond van {Plafond} rijen; opgehaald {Wijze} ({Count} rijen).",
+                ProgrammaAfkapping.Plafond, ophaling.PerTeam ? "per team" : "als thuis + uit", ophaling.Rijen.Count);
         if (!ophaling.Volledig)
-            log.LogWarning("MATCHES/PROGRAMMA - venster is ook na splitsing in thuis en uit afgekapt op {Plafond} rijen; sync telt als onvolledig.",
+            log.LogWarning("MATCHES/PROGRAMMA - venster is ook na splitsing (thuis/uit, per team) afgekapt op {Plafond} rijen; sync telt als onvolledig.",
                 ProgrammaAfkapping.Plafond);
         if (ophaling.Rijen.Count > 0)
         {

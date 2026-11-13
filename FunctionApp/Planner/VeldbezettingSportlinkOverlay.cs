@@ -23,7 +23,7 @@ namespace SportlinkFunction.Planner
             List<VeldbezettingItem> items, FunctionContext context, DateOnly datum, string clubCode, ILogger log)
             => VeldplannerOverlayCore.SamenvoegAsync<VeldbezettingItem>(
                     items, clubCode, context, SystemUtilities.AppSettings.GetSetting, EgressGuard.ExternalIntegrationsAllowed, datum, log,
-                    sleutel: i => (i.Wedstrijd, (string?)i.AanvangsTijd),
+                    sleutel: w => new EigenSleutel(w.PublicMatchId, w.Wedstrijdnummer),
                     overschrijf: (w, b) =>
                     {
                         w.AanvangsTijd = b.StartTijd;
@@ -35,7 +35,8 @@ namespace SportlinkFunction.Planner
                     },
                     nieuw: NieuweRegel,
                     nietInSportlink: w => { w.NietInSportlink = true; return w; },
-                    sorteerTijd: w => w.AanvangsTijd);
+                    sorteerTijd: w => w.AanvangsTijd,
+                    store: new SqlServerVeldplannerBlokStore(SystemUtilities.DatabaseConfig.ConnectionString));
 
             private static VeldbezettingItem NieuweRegel(SportlinkVeldplannerBlok b)
         {

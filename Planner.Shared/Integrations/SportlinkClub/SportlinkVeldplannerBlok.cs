@@ -11,8 +11,14 @@ namespace Planner.Shared.Integrations.SportlinkClub;
 /// <param name="StartTijd">"HH:mm", inclusief het eventuele inloopdeel (<c>StartUpInterval</c>).</param>
 /// <param name="Veldafmeting">1, 0,5 of 0,25.</param>
 /// <param name="DuurMinuten">Inloop + speelduur + pauze + uitloop — precies de breedte van het blok.</param>
+/// <param name="PublicMatchId">Sportlinks stabiele sleutel van de wedstrijd; <c>null</c> bij een blok zonder ID (dat kan niet
+/// worden opgeslagen of gekoppeld). De Planning koppelt nooit op teamnaam (#1915).</param>
+/// <param name="ExternalMatchId">Het wedstrijdnummer van de bond (ons <c>wedstrijdnummer</c>). Het veldplanner-antwoord zelf
+/// draagt dit niet; het wordt eenmalig per <paramref name="PublicMatchId"/> opgevraagd en bewaard (onveranderlijk) en hier
+/// ingevuld door <c>VeldplannerBlokSynchronisatie</c>. <c>null</c> = nog niet bekend.</param>
 public sealed record SportlinkVeldplannerBlok(
-    string Label, string Veld, string StartTijd, decimal Veldafmeting, int DuurMinuten, string? PublicMatchId);
+    string Label, string Veld, string StartTijd, decimal Veldafmeting, int DuurMinuten, string? PublicMatchId,
+    long? ExternalMatchId = null);
 
 /// <summary>Vertaalt de respons van <c>competition/facilityoccupation/FacilityOccupation</c> naar blokken.</summary>
 public static class SportlinkVeldplannerParser

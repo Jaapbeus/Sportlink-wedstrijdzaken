@@ -130,8 +130,10 @@ public class DataserviceHerhalingTests
         var act = async () => await PostgresSyncPipeline.FetchAndStoreProgrammaAsync(
             NietGebruikteConnectie, "http://test/programma?weekoffset=0", "TEST", NullLogger.Instance, new HttpClient(handler), TimeSpan.Zero);
 
-        await act.Should().ThrowAsync<Exception>();
-        handler.Urls.Should().HaveCount(3);
+        // Met een bereikbare database slaagt de opslag, zonder database faalt hij: beide zijn hier niet het onderwerp.
+        try { await act(); } catch (Exception) { /* zie hierboven */ }
+        handler.Urls.Should().HaveCountGreaterThanOrEqualTo(3, "na de gewone aanroep volgen thuis en uit (en bij nog altijd 100 rijen per team)");
+        handler.Urls[0].Should().NotContain("thuis=");
         handler.Urls[1].Should().Contain("thuis=JA&uit=NEE");
         handler.Urls[2].Should().Contain("thuis=NEE&uit=JA");
     }

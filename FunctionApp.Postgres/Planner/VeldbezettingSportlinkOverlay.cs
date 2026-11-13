@@ -20,14 +20,15 @@ internal static class VeldbezettingSportlinkOverlay
         List<VeldbezettingItem> items, FunctionContext context, DateOnly datum, string clubCode, ILogger log)
         => VeldplannerOverlayCore.SamenvoegAsync<VeldbezettingItem>(
                 items, clubCode, context, PostgresAppSettings.GetSetting, EgressGuard.ExternalIntegrationsAllowed, datum, log,
-                sleutel: i => (i.Wedstrijd, i.AanvangsTijd),
+                sleutel: i => new EigenSleutel(i.PublicMatchId, i.Wedstrijdnummer),
                 overschrijf: (w, b) => w with
                 {
                     AanvangsTijd = b.StartTijd, Veld = b.Veld, DuurMinuten = b.DuurMinuten, Veldafmeting = b.Veldafmeting, Bron = SportlinkVeldbezettingSamenvoeging.BronSportlink
                 },
                 nieuw: NieuweRegel,
                 nietInSportlink: w => w with { NietInSportlink = true },
-                sorteerTijd: w => w.AanvangsTijd);
+                sorteerTijd: w => w.AanvangsTijd,
+                store: new PostgresVeldplannerBlokStore(PostgresDatabaseConfig.ConnectionString));
 
     private static VeldbezettingItem NieuweRegel(SportlinkVeldplannerBlok b)
     {

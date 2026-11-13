@@ -70,13 +70,17 @@ De SQL Server-seizoensdoorrol gebruikt de strikte Nederlandse bedrijfsklok. Ontb
 
 ### Plafond van 100 rijen per `/programma`-aanroep (#1915)
 
-`/programma` geeft per aanroep **maximaal 100 rijen** terug, oplopend in tijd; de rest valt zonder foutmelding weg (live vastgesteld, ook met `aantaldagen` of `aantalrecords`). Het venster loopt vanaf het **aanroepmoment**: `nu + 7 dagen × weekoffset`, daarna `aantaldagen × 24 uur`. Er is geen datumparameter (`datum`, `startdatum`, `vanaf` worden genegeerd), dus een afgekapte speeldag is niet gericht opnieuw op te vragen. Een venster met een drukke zaterdag raakt het plafond dus gemakkelijk.
+`/programma` geeft per aanroep **maximaal 100 rijen** terug, oplopend in tijd; de rest valt zonder foutmelding weg (live vastgesteld, ook met `aantalrecords`). Het venster loopt vanaf het **aanroepmoment**: `nu + 7 dagen × weekoffset`, daarna `aantaldagen × 24 uur`. **Zonder `aantaldagen` is het venster 28 dagen**, terwijl `weekoffset` maar 7 dagen opschuift: de vensters overlappen en elk kapt af op de eerste 100. Er is geen datumparameter (`datum`, `startdatum`, `vanaf`, `dagoffset` en vergelijkbare worden genegeerd), dus een afgekapte speeldag is niet gericht opnieuw op te vragen. Wel bruikbaar als filter: `thuis=JA&uit=NEE`, `thuis=NEE&uit=JA` en `teamcode=<KNVB-teamcode>`.
 
 De sync gaat hier als volgt mee om (`Planner.Shared/Sync/ProgrammaAfkapping.cs`, beide tiers):
 
-- Geeft een aanroep 100 rijen, dan volgt dezelfde aanroep met `thuis=JA&uit=NEE` en met `thuis=NEE&uit=JA`. Dat zijn twee disjuncte verzamelingen die samen het hele venster dekken; een wedstrijd tussen twee eigen teams staat in beide, de opslag ontdubbelt op `wedstrijdcode`.
-- Raakt ook een van die twee het plafond, dan is het venster onvolledig: de run telt als gedeeltelijk mislukt en **reconcilieert niet** (een afgekapte lijst is geen bewijs dat een wedstrijd verdwenen is).
+- Elke weekoffset vraagt een venster van `aantaldagen=8` op: een dag meer dan de 7 dagen die `weekoffset` opschuift, zodat de vensters aansluiten ook als de aanroepen een paar seconden na elkaar komen.
+- Geeft een aanroep 100 rijen, dan volgt hetzelfde venster als alleen thuis en alleen uit. Dat zijn twee disjuncte verzamelingen die samen het hele venster dekken; een wedstrijd tussen twee eigen teams staat in beide, de opslag ontdubbelt op `wedstrijdcode`.
+- Is thuis of uit dan nog afgekapt, dan volgt per team een aanroep met `teamcode` (de teamcodes komen uit de zojuist geladen `stg.teams`).
+- Is ook dat nog afgekapt, dan is het venster onvolledig: de run telt als gedeeltelijk mislukt en **reconcilieert niet** (een afgekapte lijst is geen bewijs dat een wedstrijd verdwenen is).
 - Zelfherstel: een eerder ten onrechte verwijderde wedstrijd wordt door de upsert hersteld (`mta_deleted = NULL`) zodra Sportlink hem weer levert.
+
+Gemeten op 2026-11-13: met deze aanpak kwamen alle wedstrijden van de komende vier weken binnen (361), identiek aan een onafhankelijke ophaling per team. De oude aanpak (28-daagse vensters, alleen de eerste 100) miste de wedstrijden na de 100e van elke drukke zaterdag.
 
 ## Programma-endpoint — alle beschikbare velden
 
