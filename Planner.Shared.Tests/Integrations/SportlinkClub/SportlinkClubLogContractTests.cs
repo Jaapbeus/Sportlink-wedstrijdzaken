@@ -17,7 +17,25 @@ public class SportlinkClubLogContractTests
     private const string Rol = "test-planner";
     private const string Sentinel = "sentinel-clientid-123";
 
-    public enum Fout { TokenEndpoint, Netwerk, Timeout, Onverwacht, KapotteJson }
+    public enum Fout { TokenEndpoint, Netwerk, Timeout, Onverwacht, KapotteJson, OnverwachteVorm }
+
+    /// <summary>De locatielijst (accommodatie → facility) hoort bij het timerpad (Codex-review #1917, ronde 2).</summary>
+    [Theory]
+    [InlineData(Fout.TokenEndpoint)]
+    [InlineData(Fout.Netwerk)]
+    [InlineData(Fout.Timeout)]
+    [InlineData(Fout.Onverwacht)]
+    [InlineData(Fout.KapotteJson)]
+    [InlineData(Fout.OnverwachteVorm)]
+    public async Task GetClubMatchPickListsAsync_LogtGeenUitzonderingsobject_EnGeenAntwoordinhoud(Fout fout)
+    {
+        var logger = new VastleggendeLogger();
+        var client = MaakClient(fout, logger);
+
+        await client.GetClubMatchPickListsAsync(Rol);
+
+        Controleer(logger, fout);
+    }
 
     [Theory]
     [InlineData(Fout.TokenEndpoint)]
@@ -78,6 +96,7 @@ public class SportlinkClubLogContractTests
             return fout switch
             {
                 Fout.KapotteJson => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent($"{{ \"{Sentinel}\": [") }),
+                Fout.OnverwachteVorm => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent($"{{ \"{Sentinel}\": 1 }}") }),
                 Fout.Timeout => throw new TaskCanceledException($"timeout naar host {Sentinel}", new TimeoutException(Sentinel)),
                 Fout.Onverwacht => throw new InvalidOperationException($"onverwacht {Sentinel}", new InvalidOperationException(Sentinel)),
                 _ => throw new HttpRequestException($"netwerkfout naar https://host/?clientId={Sentinel}", new IOException(Sentinel)),
