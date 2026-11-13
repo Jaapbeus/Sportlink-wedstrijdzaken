@@ -70,7 +70,7 @@ public static class VeldplannerOverlayCore
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            log.LogWarning(ex, "Veldplanner van Sportlink ophalen mislukt; Planning valt terug op de databasekopie ({Reden})", SportlinkVeldplannerStatus.RedenOnverwacht);
+            log.LogWarning("Veldplanner van Sportlink ophalen mislukt; Planning valt terug op de databasekopie ({Reden}, {ErrorType})", SportlinkVeldplannerStatus.RedenOnverwacht, ex.GetType().Name);
             return new VeldplannerOphaalResultaat(null, SportlinkVeldplannerStatus.Terugval(SportlinkVeldplannerStatus.RedenOnverwacht));
         }
     }
@@ -156,7 +156,7 @@ public static class VeldplannerOverlayCore
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "Veldplanner-tabel bijwerken mislukt ({ErrorType}); Planning koppelt zonder wedstrijdnummers", ex.GetType().Name);
+            log.LogWarning("Veldplanner-tabel bijwerken mislukt ({ErrorType}); Planning koppelt zonder wedstrijdnummers", ex.GetType().Name);
             return blokken;
         }
     }

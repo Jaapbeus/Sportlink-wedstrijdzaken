@@ -169,6 +169,11 @@ public class SqlServerProgrammaPlafondSyncIntegrationTests : IAsyncLifetime
         await ExecAsync("UPDATE [his].[matches] SET [status] = 'Afgelast' WHERE [ClubCode] = @club");
         (await VeldplannerVoorbereidingTimerFunction.ZoekDatumsMetWedstrijdenAsync(
             ConnectionString, ClubCode, new DateOnly(2030, 9, 1), new DateOnly(2030, 9, 30))).Should().BeEmpty("afgelaste wedstrijden tellen niet");
+
+        // Codex-review #1917: een datum met uitsluitend zacht-verwijderde wedstrijden komt niet terug (net als op Postgres).
+        await ExecAsync("UPDATE [his].[matches] SET [status] = 'Te spelen', [mta_deleted] = SYSUTCDATETIME() WHERE [ClubCode] = @club");
+        (await VeldplannerVoorbereidingTimerFunction.ZoekDatumsMetWedstrijdenAsync(
+            ConnectionString, ClubCode, new DateOnly(2030, 9, 1), new DateOnly(2030, 9, 30))).Should().BeEmpty("zacht-verwijderde wedstrijden tellen niet");
     }
 
     private static async Task ExecAsync(string sql)
