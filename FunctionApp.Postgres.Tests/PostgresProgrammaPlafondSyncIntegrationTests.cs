@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using Database.Postgres;
 using Database.Postgres.Tests;
+using FunctionApp.Postgres.Planner;
 using FunctionApp.Postgres.Sync;
 using FunctionApp.Tests.Sync;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -118,6 +119,39 @@ public class PostgresProgrammaPlafondSyncIntegrationTests : IAsyncLifetime
         (await TelAsync($"mta_deleted IS NOT NULL AND wedstrijdcode = {Basis + 7}")).Should().Be(1);
     }
 
+    /// <summary>
+    /// De eigen regels van de Planning dragen de koppelsleutels: het bondswedstrijdnummer uit de sync, en een
+    /// <c>PublicMatchId</c> alleen als de cache het geverifieerd heeft (<c>publicmatchid = verifiedpublicmatchid</c>). Een
+    /// ongeverifieerd of afwijkend ID telt niet mee — de verouderde cache veroorzaakt geen verkeerde koppeling.
+    /// </summary>
+    [PostgresFact]
+    public async Task EigenRegels_DragenHetWedstrijdnummer_EnAlleenHetGeverifieerdePublicMatchId()
+    {
+        await SchoonAsync();
+        using (var server = Dataservice(PlafondDataservice.Dag(Basis, 6))) await RunAsync(server);
+        await ExecAsync("INSERT INTO public.appsettings (clubcode, accommodatie) VALUES (@club, 'Sportpark Oost')");
+        await ExecAsync("INSERT INTO public.sportlinkpublicmatchidcache (wedstrijdcode, clubcode, publicmatchid, verifiedpublicmatchid) VALUES " +
+                        $"({Basis + 1}, @club, 'P1', 'P1'), ({Basis + 2}, @club, 'P2', NULL), ({Basis + 3}, @club, 'P3', 'p3')");
+
+        var regels = await AllstarsTestDataRepository.GetAllMatchesForDatumAsync(ConnectionString, new DateOnly(2026, 9, 5), ClubCode);
+
+        regels.Should().HaveCount(6);
+        regels.Select(r => r.Wedstrijdnummer).Should().OnlyContain(n => n >= 500001 && n <= 500006);
+        regels.Single(r => r.WedstrijdCode == Basis + 1).PublicMatchId.Should().Be("P1");
+        regels.Single(r => r.WedstrijdCode == Basis + 2).PublicMatchId.Should().BeNull("de cache is niet geverifieerd");
+        regels.Single(r => r.WedstrijdCode == Basis + 3).PublicMatchId.Should().BeNull("het geverifieerde ID wijkt af");
+        regels.Single(r => r.WedstrijdCode == Basis + 4).PublicMatchId.Should().BeNull("geen cache-regel");
+    }
+
+    private static async Task ExecAsync(string sql)
+    {
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("club", ClubCode);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     private static async Task<long> TelAsync(string voorwaarde)
     {
         await using var conn = new NpgsqlConnection(ConnectionString);
@@ -137,6 +171,7 @@ public class PostgresProgrammaPlafondSyncIntegrationTests : IAsyncLifetime
         await using var opruimen = new NpgsqlCommand(
             "DELETE FROM his.matchdetails WHERE clubcode = @club; DELETE FROM his.matches WHERE clubcode = @club; " +
             "DELETE FROM his.teams WHERE clubcode = @club; DELETE FROM public.teamaliassen WHERE clubcode = @club; " +
+            "DELETE FROM public.sportlinkpublicmatchidcache WHERE clubcode = @club; DELETE FROM public.appsettings WHERE clubcode = @club; " +
             "DELETE FROM public.teams WHERE clubcode = @club;", conn);
         opruimen.Parameters.AddWithValue("club", ClubCode);
         await opruimen.ExecuteNonQueryAsync();

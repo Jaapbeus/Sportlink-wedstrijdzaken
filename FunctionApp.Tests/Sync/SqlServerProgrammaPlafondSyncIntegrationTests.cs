@@ -3,6 +3,7 @@ using FunctionApp.Tests.Feedback;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging.Abstractions;
 using SportlinkFunction;
+using SportlinkFunction.Planner;
 using Xunit;
 
 namespace FunctionApp.Tests.Sync;
@@ -118,6 +119,39 @@ public class SqlServerProgrammaPlafondSyncIntegrationTests : IAsyncLifetime
         (await TelAsync($"[mta_deleted] IS NOT NULL AND [wedstrijdcode] = {Basis + 7}")).Should().Be(1);
     }
 
+    /// <summary>
+    /// De eigen regels van de Planning dragen de koppelsleutels: het bondswedstrijdnummer uit de sync, en een
+    /// <c>PublicMatchId</c> alleen als de cache het geverifieerd heeft (hoofdlettergevoelig gelijk aan
+    /// <c>VerifiedPublicMatchId</c>). Een ongeverifieerd of afwijkend ID telt niet mee.
+    /// </summary>
+    [SqlServerFact]
+    public async Task EigenRegels_DragenHetWedstrijdnummer_EnAlleenHetGeverifieerdePublicMatchId()
+    {
+        await SchoonAsync();
+        using (var server = Dataservice(PlafondDataservice.Dag(Basis, 6))) await RunAsync(server);
+        await ExecAsync("INSERT INTO [dbo].[AppSettings] ([ClubCode], [ClubName], [Accommodatie], [SportlinkApiUrl], [SportlinkClientId], [SeasonStartMonth]) VALUES (@club, 'Testclub', 'Sportpark Oost', 'http://test.invalid', 'x', 7)");
+        await ExecAsync("INSERT INTO [dbo].[SportlinkPublicMatchIdCache] ([Wedstrijdcode], [ClubCode], [PublicMatchId], [VerifiedPublicMatchId]) VALUES " +
+                        $"({Basis + 1}, @club, 'P1', 'P1'), ({Basis + 2}, @club, 'P2', NULL), ({Basis + 3}, @club, 'P3', 'p3')");
+
+        var regels = await AllstarsTestDataRepository.GetAllMatchesForDatumAsync(new DateOnly(2030, 9, 7), ClubCode);
+
+        regels.Should().HaveCount(6);
+        regels.Select(r => r.Wedstrijdnummer).Should().OnlyContain(n => n >= 500001 && n <= 500006);
+        regels.Single(r => r.WedstrijdCode == Basis + 1).PublicMatchId.Should().Be("P1");
+        regels.Single(r => r.WedstrijdCode == Basis + 2).PublicMatchId.Should().BeNull("de cache is niet geverifieerd");
+        regels.Single(r => r.WedstrijdCode == Basis + 3).PublicMatchId.Should().BeNull("het geverifieerde ID wijkt in hoofdletters af");
+        regels.Single(r => r.WedstrijdCode == Basis + 4).PublicMatchId.Should().BeNull("geen cache-regel");
+    }
+
+    private static async Task ExecAsync(string sql)
+    {
+        await using var conn = new SqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new SqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@club", ClubCode);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     private static async Task<int> TelAsync(string voorwaarde)
     {
         await using var conn = new SqlConnection(ConnectionString);
@@ -135,7 +169,8 @@ public class SqlServerProgrammaPlafondSyncIntegrationTests : IAsyncLifetime
         await using var opruimen = new SqlCommand(
             "IF OBJECT_ID('[his].[matchdetails]') IS NOT NULL DELETE FROM [his].[matchdetails] WHERE [ClubCode] = @club; " +
             "IF OBJECT_ID('[his].[matches]') IS NOT NULL DELETE FROM [his].[matches] WHERE [ClubCode] = @club; " +
-            "IF OBJECT_ID('[his].[teams]') IS NOT NULL DELETE FROM [his].[teams] WHERE [ClubCode] = @club;", conn);
+            "IF OBJECT_ID('[his].[teams]') IS NOT NULL DELETE FROM [his].[teams] WHERE [ClubCode] = @club; " +
+            "DELETE FROM [dbo].[SportlinkPublicMatchIdCache] WHERE [ClubCode] = @club; DELETE FROM [dbo].[AppSettings] WHERE [ClubCode] = @club;", conn);
         opruimen.Parameters.AddWithValue("@club", ClubCode);
         await opruimen.ExecuteNonQueryAsync();
     }
