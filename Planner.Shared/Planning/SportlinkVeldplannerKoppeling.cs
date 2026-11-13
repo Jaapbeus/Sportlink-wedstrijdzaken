@@ -2,66 +2,70 @@ using Planner.Shared.Integrations.SportlinkClub;
 
 namespace Planner.Shared.Planning;
 
+/// <summary>De sleutels van een eigen regel waarmee hij aan een Sportlink-blok gekoppeld kan worden (#1915).</summary>
+/// <param name="PublicMatchId">Sportlinks sleutel van de wedstrijd, als onze gegevens die (geverifieerd) kennen.</param>
+/// <param name="Wedstrijdnummer">Het bondswedstrijdnummer; gelijk aan <see cref="SportlinkVeldplannerBlok.ExternalMatchId"/>.</param>
+public readonly record struct EigenSleutel(string? PublicMatchId, long? Wedstrijdnummer);
+
 /// <summary>
-/// Koppelt de wedstrijden van onze Planning aan de blokken van de Sportlink-veldplanner (#1563).
-/// Sleutel is het teamlabel "Thuis - Uit" (genormaliseerd), niet het wedstrijdnummer: bij clubwedstrijden is dat
-/// vaak gewoon 1 en dus niet uniek. Bij meerdere blokken met hetzelfde label wint de dichtstbijzijnde starttijd,
-/// en elk blok koppelt aan hooguit één wedstrijd.
+/// Koppelt de wedstrijden van onze Planning aan de blokken van de Sportlink-veldplanner (#1563, herschreven in #1915).
+/// <para>
+/// <b>Uitsluitend op sleutel, nooit op naam.</b> Een teamnaam is geen identiteit: Sportlink gebruikt in de dataservice de
+/// sorteernaam van een club en in de veldplanner een kortere, en elke nieuwe afwijking gaf een dubbele regel. De koppeling
+/// loopt daarom in twee rondes, beide op een ID dat Sportlink zelf uitgeeft:
+/// <list type="number">
+/// <item><c>PublicMatchId</c> — gelijk aan de sleutel van het blok;</item>
+/// <item>voor wat overbleef: het bondswedstrijdnummer (<c>wedstrijdnummer</c> = <c>ExternalMatchId</c>), alleen als dat nummer
+/// aan beide kanten precies één keer voorkomt (bij een clubwedstrijd is het vaak 1 en dus niet uniek).</item>
+/// </list>
+/// Elk blok koppelt aan hooguit één wedstrijd. Wat niet koppelt blijft zichtbaar als afwijking.
+/// </para>
 /// </summary>
 public static class SportlinkVeldplannerKoppeling
 {
-    /// <returns>Per index in <paramref name="eigen"/> het bijbehorende Sportlink-blok; wedstrijden zonder
-    /// koppeling ontbreken (de aanroeper behoudt dan de eigen berekening).</returns>
+    /// <returns>Per index in <paramref name="eigen"/> het bijbehorende Sportlink-blok; wedstrijden zonder koppeling
+    /// ontbreken (de aanroeper markeert ze als afwijking).</returns>
     public static IReadOnlyDictionary<int, SportlinkVeldplannerBlok> Koppel(
-        IReadOnlyList<(string Label, string? Starttijd)> eigen, IReadOnlyList<SportlinkVeldplannerBlok> blokken)
+        IReadOnlyList<EigenSleutel> eigen, IReadOnlyList<SportlinkVeldplannerBlok> blokken)
     {
         var resultaat = new Dictionary<int, SportlinkVeldplannerBlok>();
         var gebruikt = new HashSet<int>();
-        // Ronde 1: exact hetzelfde label. Ronde 2, alleen voor wat ronde 1 overliet: per ploeg mag de ene naam een extra
-        // clubvoorvoegsel hebben ("v.v. Uit 35+2" tegenover "Uit 35+2"); categorie en teamnummer blijven exact.
-        Ronde(eigen, blokken, resultaat, gebruikt, (a, b) => Normaliseer(a) == Normaliseer(b));
-        Ronde(eigen, blokken, resultaat, gebruikt, ZijnZelfdeWedstrijd);
+
+        // Ronde 1: PublicMatchId.
+        var perPublicId = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var j = 0; j < blokken.Count; j++)
+            if (!string.IsNullOrWhiteSpace(blokken[j].PublicMatchId)) perPublicId[blokken[j].PublicMatchId!] = j;
+        for (var i = 0; i < eigen.Count; i++)
+        {
+            var id = eigen[i].PublicMatchId;
+            if (string.IsNullOrWhiteSpace(id) || !perPublicId.TryGetValue(id, out var j) || gebruikt.Contains(j)) continue;
+            resultaat[i] = blokken[j];
+            gebruikt.Add(j);
+        }
+
+        // Ronde 2: wedstrijdnummer = ExternalMatchId, alleen eenduidig aan beide kanten.
+        var eigenPerNummer = eigen.Select((e, i) => (e.Wedstrijdnummer, Index: i))
+            .Where(x => x.Wedstrijdnummer != null && !resultaat.ContainsKey(x.Index))
+            .GroupBy(x => x.Wedstrijdnummer!.Value).ToDictionary(g => g.Key, g => g.Select(x => x.Index).ToList());
+        var blokPerNummer = blokken.Select((b, j) => (b.ExternalMatchId, Index: j))
+            .Where(x => x.ExternalMatchId != null && !gebruikt.Contains(x.Index))
+            .GroupBy(x => x.ExternalMatchId!.Value).ToDictionary(g => g.Key, g => g.Select(x => x.Index).ToList());
+        foreach (var (nummer, eigenIndices) in eigenPerNummer)
+        {
+            if (eigenIndices.Count != 1 || !blokPerNummer.TryGetValue(nummer, out var blokIndices) || blokIndices.Count != 1) continue;
+            resultaat[eigenIndices[0]] = blokken[blokIndices[0]];
+            gebruikt.Add(blokIndices[0]);
+        }
+
         return resultaat;
     }
 
-    private static void Ronde(
-        IReadOnlyList<(string Label, string? Starttijd)> eigen, IReadOnlyList<SportlinkVeldplannerBlok> blokken,
-        Dictionary<int, SportlinkVeldplannerBlok> resultaat, HashSet<int> gebruikt, Func<string, string, bool> gelijk)
-    {
-        for (var i = 0; i < eigen.Count; i++)
-        {
-            if (resultaat.ContainsKey(i)) continue;
-            var eigenMinuten = Minuten(eigen[i].Starttijd);
-            int? beste = null;
-            var besteAfstand = int.MaxValue;
-            for (var j = 0; j < blokken.Count; j++)
-            {
-                if (gebruikt.Contains(j) || !gelijk(eigen[i].Label, blokken[j].Label)) continue;
-                var blokMinuten = Minuten(blokken[j].StartTijd);
-                var afstand = eigenMinuten.HasValue && blokMinuten.HasValue ? Math.Abs(eigenMinuten.Value - blokMinuten.Value) : 0;
-                if (afstand < besteAfstand) { beste = j; besteAfstand = afstand; }
-            }
-            if (beste == null) continue;
-            gebruikt.Add(beste.Value);
-            resultaat[i] = blokken[beste.Value];
-        }
-    }
-
-    /// <summary>Zijn deze twee ploegnamen dezelfde ploeg, op een extra clubvoorvoegsel na? Categorie en teamnummer blijven exact.</summary>
+    /// <summary>Zijn deze twee ploegnamen dezelfde ploeg, op een extra clubvoorvoegsel na? Alleen voor de weergave van de tegenstander, nooit voor koppelen.</summary>
     internal static bool ZijnZelfdePloeg(string a, string b) => ZelfdeBehalveVoorvoegsel(Woorden(a), Woorden(b));
-
-    /// <summary>Thuis- én uitploeg moeten overeenkomen, waarbij het ene label hooguit een extra clubvoorvoegsel heeft.</summary>
-    private static bool ZijnZelfdeWedstrijd(string a, string b)
-    {
-        var (aThuis, aUit) = Splits(a);
-        var (bThuis, bUit) = Splits(b);
-        return aUit != null && bUit != null && ZelfdeBehalveVoorvoegsel(aThuis, bThuis) && ZelfdeBehalveVoorvoegsel(aUit, bUit);
-    }
 
     /// <summary>
     /// De woorden van de kortste naam moeten het einde van de langste vormen: "v.v. Uit 35+2" past bij "Uit 35+2", maar
-    /// "JO13-1" nooit bij "JO13-10". Categorie en teamnummer staan achteraan en moeten dus exact gelijk zijn; bij twijfel
-    /// koppelt de regel niet en behoudt de Planning de eigen gegevens.
+    /// "JO13-1" nooit bij "JO13-10". Categorie en teamnummer staan achteraan en moeten dus exact gelijk zijn.
     /// </summary>
     private static bool ZelfdeBehalveVoorvoegsel(IReadOnlyList<string> x, IReadOnlyList<string> y)
     {
@@ -72,19 +76,10 @@ public static class SportlinkVeldplannerKoppeling
         return true;
     }
 
-    private static (IReadOnlyList<string> Thuis, IReadOnlyList<string>? Uit) Splits(string label)
-    {
-        var i = label.IndexOf(" - ", StringComparison.Ordinal);
-        return i < 0 ? (Woorden(label), null) : (Woorden(label[..i]), Woorden(label[(i + 3)..]));
-    }
-
     private static IReadOnlyList<string> Woorden(string tekst)
         => tekst.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(Normaliseer).Where(w => w.Length > 0).ToList();
 
     /// <summary>Alleen letters en cijfers, kleine letters: "Voorbeeld '46 8" en "Voorbeeld 46 8" zijn dezelfde ploeg.</summary>
     public static string Normaliseer(string? tekst)
         => string.Concat((tekst ?? "").Where(char.IsLetterOrDigit)).ToLowerInvariant();
-
-    private static int? Minuten(string? tijd)
-        => TimeOnly.TryParse(tijd, out var t) ? t.Hour * 60 + t.Minute : null;
 }

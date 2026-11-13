@@ -12,8 +12,15 @@ using Xunit;
 namespace FunctionApp.Tests.Planner;
 
 /// <summary>Exact-plan apply against the disposable fresh SQL Server CI database.</summary>
-public class AutoPlanExactApplyIntegrationTests
+public class AutoPlanExactApplyIntegrationTests : IDisposable
 {
+    /// <summary>
+    /// <see cref="SetupAsync"/> zet <c>clubCode</c> in de procesbrede instellingencache. Zonder opruimen lekt die naar tests die
+    /// juist "geen clubcode" verwachten (<c>ClubScopeTests</c>, e-mailtests): ze falen dan afhankelijk van de testvolgorde (#1915).
+    /// </summary>
+    public void Dispose() => SystemUtilities.AppSettings.ResetForTests();
+
+
     private const string Club = "ALLSTARS";
     private const string Date = "2026-09-05";
     private static string ConnectionString => Environment.GetEnvironmentVariable(SqlServerFactAttribute.EnvVar)

@@ -14,7 +14,10 @@ internal sealed record VeldbezettingItem(
     long? WedstrijdCode, string Wedstrijd, string TeamNaam, string? Uitteam,
     string? AanvangsTijd, string? Veld, string? Competitiesoort, string? LeeftijdsCategorie,
     int DuurMinuten, decimal Veldafmeting,
-    string? Tegenstander = null, bool NietInSportlink = false, string? Bron = null) : IVeldbezettingRegel;
+    string? Tegenstander = null, bool NietInSportlink = false, string? Bron = null,
+    // #1915: koppelsleutels naar de Sportlink-veldplanner. Alleen intern: ze staan niet in het API-antwoord.
+    [property: System.Text.Json.Serialization.JsonIgnore] long? Wedstrijdnummer = null,
+    [property: System.Text.Json.Serialization.JsonIgnore] string? PublicMatchId = null) : IVeldbezettingRegel;
 
 /// <summary>
 /// Coördineert de Postgres-dataopslag en de gedeelde planningslogica voor AutoPlan en het toepassen
@@ -447,7 +450,9 @@ internal static class AutoPlanService
                     // #1547: Sportlinks eigen speelduur is leidend; speeltijden alleen als terugval.
                     DuurMinuten: VeldbezettingDuur.Bepaal(w.SportlinkSpeelduur, speeltijdInfo?.WedstrijdTotaal),
                     Veldafmeting: VeldafmetingVoorWedstrijd(w.Veld, veldNamen, speeltijdInfo?.Veldafmeting ?? 1.00m),
-                    Tegenstander: SportlinkVeldbezettingSamenvoeging.Tegenstander(w.Wedstrijd, w.TeamNaam, w.Uitteam));
+                    Tegenstander: SportlinkVeldbezettingSamenvoeging.Tegenstander(w.Wedstrijd, w.TeamNaam, w.Uitteam),
+                    Wedstrijdnummer: w.Wedstrijdnummer,
+                    PublicMatchId: w.PublicMatchId);
             })
             .OrderBy(w => string.IsNullOrWhiteSpace(w.AanvangsTijd) ? "99:99" : w.AanvangsTijd)
             .ToList();

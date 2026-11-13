@@ -5054,3 +5054,29 @@ een scan over de hele begeleidingslijst.
 - **Volgnummer:** 049, omdat 048 al in een openstaande PR voor een andere migratie gebruikt wordt.
 - **Bewaartermijn:** ongewijzigd. De bestaande opruiming (`CleanupTeambegeleiding`) verwijdert de rijen en daarmee de indexregels.
 
+## 88. Tabel met veldplanner-blokken: sleutel en hash op beide tiers (#1915)
+
+De Planning koppelt een eigen wedstrijd aan het blok van de Sportlink-veldplanner op een ID van Sportlink zelf, niet op naam. Daarvoor
+bewaart elke tier een afgeleide kopie van wat de veldplanner toont.
+
+| | Postgres | SQL Server |
+|---|---|---|
+| Tabel | `public.sportlinkveldplannerblok` (migratie 050) | `dbo.SportlinkVeldplannerBlok` (`Database/dbo/Tables/`, idempotent in `Script.PostDeployment1.sql`) |
+| Sleutel | `(clubcode, publicmatchid)` | `([ClubCode], [PublicMatchId])` |
+| Kolommen | datum, label, veld, starttijd, veldafmeting, duurminuten, `externalmatchid` (nullable), `rijhash`, `bijgewerktop` | idem, in de hoofdlettervorm van deze tier |
+| Index | `(clubcode, datum)` | `([ClubCode], [Datum])` |
+| Schrijven | `INSERT … ON CONFLICT (clubcode, publicmatchid) DO UPDATE`, in één transactie | `MERGE … WITH (HOLDLOCK)`, in één transactie |
+| RLS | `ENABLE ROW LEVEL SECURITY` in dezelfde migratie, zonder policies (#1198) | n.v.t. |
+
+- **Expand/contract:** uitsluitend additief (een nieuwe tabel). `deploy.yml` past de migratie vóór de code toe; de vorige code kent de tabel
+  niet en draait er ongestoord op.
+- **Nooit een bron:** de tabel is een kopie van Sportlink en wordt met elke planningsaanvraag zuiver gemaakt. Een bekend
+  `externalmatchid` wordt nooit overschreven met `NULL` (`COALESCE`), omdat het wedstrijdnummer onveranderlijk is.
+- **Gedeelde logica:** hash, diff en synchronisatie staan in `Planner.Shared/Planning/` (`VeldplannerBlokOpslag`,
+  `VeldplannerBlokSynchronisatie`); elke tier implementeert alleen `IVeldplannerBlokStore` met zijn eigen driver.
+- **Opruimen:** een schrijfactie verwijdert rijen van die club ouder dan 14 dagen.
+- **Volgnummer:** 050, vrij op `main` en `develop`.
+- **Tests:** `PostgresVeldplannerBlokStoreIntegrationTests` en `SqlServerVeldplannerBlokStoreIntegrationTests` (echte database: sleutel, RLS,
+  insert/wijzig/verwijder, nummer blijft behouden, opruimen) en per tier `*ProgrammaPlafondSyncIntegrationTests` voor de sync tegen een
+  nagebootste dataservice met het plafond van 100 rijen.
+

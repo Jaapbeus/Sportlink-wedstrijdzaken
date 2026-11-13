@@ -4273,3 +4273,27 @@ IF COL_LENGTH('avg.Teambegeleiding', 'EmailadresGenormaliseerd') IS NOT NULL
         ON [avg].[Teambegeleiding] ([EmailadresGenormaliseerd])
         INCLUDE ([Team], [ClubCode]);
 GO
+
+-- #1915 (Postgres-migratie 050): SportlinkVeldplannerBlok.
+-- Afgeleide kopie van de Sportlink-veldplanner, met PublicMatchId als sleutel per club; de Planning koppelt er niet meer
+-- op teamnaam maar op deze sleutel. ExternalMatchId (het bondswedstrijdnummer) wordt eenmalig per sleutel opgevraagd.
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.SportlinkVeldplannerBlok'))
+BEGIN
+    CREATE TABLE [dbo].[SportlinkVeldplannerBlok] (
+        [ClubCode]        NVARCHAR(20)  NOT NULL,
+        [PublicMatchId]   NVARCHAR(50)  NOT NULL,
+        [Datum]           DATE          NOT NULL,
+        [Label]           NVARCHAR(300) NOT NULL,
+        [Veld]            NVARCHAR(100) NOT NULL,
+        [StartTijd]       NVARCHAR(5)   NOT NULL,
+        [Veldafmeting]    DECIMAL(4, 2) NOT NULL,
+        [DuurMinuten]     INT           NOT NULL,
+        [ExternalMatchId] BIGINT        NULL,
+        [RijHash]         NVARCHAR(64)  NOT NULL,
+        [BijgewerktOp]    DATETIME2     NOT NULL CONSTRAINT [DF_SportlinkVeldplannerBlok_BijgewerktOp] DEFAULT (GETUTCDATE()),
+        CONSTRAINT [PK_SportlinkVeldplannerBlok] PRIMARY KEY CLUSTERED ([ClubCode] ASC, [PublicMatchId] ASC)
+    );
+    CREATE NONCLUSTERED INDEX [IX_SportlinkVeldplannerBlok_ClubCode_Datum] ON [dbo].[SportlinkVeldplannerBlok] ([ClubCode], [Datum]);
+    PRINT 'dbo.SportlinkVeldplannerBlok aangemaakt.';
+END
+GO

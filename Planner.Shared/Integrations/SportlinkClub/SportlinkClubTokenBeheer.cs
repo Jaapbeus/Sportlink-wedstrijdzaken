@@ -214,17 +214,17 @@ internal sealed class SportlinkClubTokenBeheer
         }
         catch (TaskCanceledException ex)
         {
-            _logger.LogWarning(ex, "Token endpoint timeout");
+            _logger.LogWarning("Token endpoint timeout ({ErrorType})", ex.GetType().Name);
             return new TokenEndpointResult(SportlinkClubCallStatus.NetwerkFout, null, null, null, "Timeout bij token endpoint");
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "Token endpoint netwerk fout");
+            _logger.LogWarning("Token endpoint netwerk fout ({ErrorType})", ex.GetType().Name);
             return new TokenEndpointResult(SportlinkClubCallStatus.NetwerkFout, null, null, null, "Netwerk fout bij token endpoint");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Onverwachte fout bij token endpoint");
+            _logger.LogWarning("Onverwachte fout bij token endpoint ({ErrorType})", ex.GetType().Name);
             return new TokenEndpointResult(SportlinkClubCallStatus.SportlinkFout, null, null, null, "Onverwachte fout bij token endpoint");
         }
     }
