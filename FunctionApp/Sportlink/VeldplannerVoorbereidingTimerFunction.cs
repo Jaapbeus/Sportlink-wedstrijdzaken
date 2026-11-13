@@ -14,7 +14,7 @@ namespace SportlinkFunction.Sportlink;
 /// </summary>
 public static class VeldplannerVoorbereidingTimerFunction
 {
-    [Function(VoorbereidingCore.FunctieNaam)]
+    [Function("SportlinkVeldplannerVoorbereiding")]
     public static async Task Run([TimerTrigger(VoorbereidingCore.Schema)] TimerInfo myTimer, FunctionContext ctx)
     {
         var logger = ctx.GetLogger(VoorbereidingCore.FunctieNaam);

@@ -23,7 +23,10 @@ public static class VeldplannerVoorbereidingCore
     /// <summary>Na zoveel opeenvolgende mislukte datums stopt de run: een verlopen koppeling of storing bij Sportlink verdient niet nog tien aanroepen.</summary>
     public const int MaxOpeenvolgendMislukt = 3;
 
-    /// <summary>De functienaam van de timer; gedeeld zodat beide tiers dezelfde naam gebruiken (uitschakelen via <c>AzureWebJobs.&lt;naam&gt;.Disabled</c>).</summary>
+    /// <summary>
+    /// De functienaam van de timer (uitschakelen via <c>AzureWebJobs.&lt;naam&gt;.Disabled</c>). De tier-bindingen schrijven hem als letterlijke tekst in
+    /// <c>[Function("...")]</c>, want de tier-pariteitsguard (<c>check-tier-pariteit.sh</c>) leest functienamen letterlijk en bewaakt zo ook dat beide tiers dezelfde naam hebben.
+    /// </summary>
     public const string FunctieNaam = "SportlinkVeldplannerVoorbereiding";
 
     /// <summary>
