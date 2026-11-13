@@ -90,13 +90,14 @@ public static class VeldplannerOverlayCore
     public static Task<VeldbezettingAntwoord<T>> SamenvoegAsync<T>(
         IReadOnlyList<T> eigen, string clubCode, FunctionContext context,
         Func<string, string?> leesInstelling, Func<bool> egressToegestaan, DateOnly datum, ILogger log,
-        Func<T, (string Label, string? Starttijd)> sleutel, Func<T, SportlinkVeldplannerBlok, T> overschrijf,
-        Func<SportlinkVeldplannerBlok, T> nieuw, Func<T, T> nietInSportlink, Func<T, string?> sorteerTijd)
+        Func<T, EigenSleutel> sleutel, Func<T, SportlinkVeldplannerBlok, T> overschrijf,
+        Func<SportlinkVeldplannerBlok, T> nieuw, Func<T, T> nietInSportlink, Func<T, string?> sorteerTijd,
+        IVeldplannerBlokStore? store = null)
         => SamenvoegAsync(eigen, clubCode,
             () => SportlinkEndpointCore.BepaalTimerStatus(leesInstelling, egressToegestaan),
             () => SportlinkEndpointSupportCore.ClientOfFout(context),
             SportlinkEndpointSupportCore.RolWedstrijdzaken, leesInstelling("accommodatie"), datum, log,
-            sleutel, overschrijf, nieuw, nietInSportlink, sorteerTijd);
+            sleutel, overschrijf, nieuw, nietInSportlink, sorteerTijd, store);
 
     /// <summary>
     /// Haalt de Sportlink-veldplanner op en voegt hem samen met onze regels (#1582): Sportlink is leidend, zie
@@ -110,23 +111,61 @@ public static class VeldplannerOverlayCore
         Func<SportlinkTimerStatus> toggleEnEgress,
         Func<(ISportlinkClubClient? Client, IActionResult? Fout)> clientOfFout,
         string rolNaam, string? accommodatie, DateOnly datum, ILogger log,
-        Func<T, (string Label, string? Starttijd)> sleutel, Func<T, SportlinkVeldplannerBlok, T> overschrijf,
-        Func<SportlinkVeldplannerBlok, T> nieuw, Func<T, T> nietInSportlink, Func<T, string?> sorteerTijd)
+        Func<T, EigenSleutel> sleutel, Func<T, SportlinkVeldplannerBlok, T> overschrijf,
+        Func<SportlinkVeldplannerBlok, T> nieuw, Func<T, T> nietInSportlink, Func<T, string?> sorteerTijd,
+        IVeldplannerBlokStore? store = null)
     {
         if (clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
             return new VeldbezettingAntwoord<T>(SportlinkVeldplannerStatus.Terugval(SportlinkVeldplannerStatus.RedenDemoclub), eigen);
 
         var opgehaald = await HaalBlokkenAsync(toggleEnEgress, clientOfFout, rolNaam, accommodatie, datum, log);
-        var samengevoegd = SportlinkVeldbezettingSamenvoeging.Voeg(eigen, opgehaald.Blokken, sleutel, overschrijf, nieuw, nietInSportlink, sorteerTijd);
+        var blokken = opgehaald.Blokken;
+        if (blokken != null && store != null)
+            blokken = await SynchroniseerBlokkenAsync(store, clientOfFout, rolNaam, clubCode, datum, blokken, log);
+        var samengevoegd = SportlinkVeldbezettingSamenvoeging.Voeg(eigen, blokken, sleutel, overschrijf, nieuw, nietInSportlink, sorteerTijd);
         if (opgehaald.Blokken != null)
         {
-            // #1774: meetbaar maken hoe goed de koppeling op teamlabel werkt — een stille mismatch (bijvoorbeeld een
-            // teamnaam-suffix) is anders alleen op de pagina te zien.
+            // #1774: meetbaar maken hoe goed de koppeling op sleutel werkt — een stille mismatch is anders alleen op de
+            // pagina te zien.
             log.LogInformation(
                 "Veldplanner samengevoegd voor {Datum}: {Gekoppeld} gekoppeld, {NietInSportlink} niet in Sportlink, {AlleenSportlink} alleen in Sportlink",
                 datum, samengevoegd.Gekoppeld, samengevoegd.NietInSportlink, samengevoegd.AlleenInSportlink);
         }
         return new VeldbezettingAntwoord<T>(opgehaald.Status, samengevoegd.Regels);
+    }
+
+    /// <summary>
+    /// Werkt de tabel met veldplanner-blokken bij (#1915) en geeft de blokken terug met hun bondswedstrijdnummer. Een fout
+    /// hier (database, Sportlink) laat de Planning ongemoeid: dan blijven de blokken zoals ze zijn, zonder nummer, en
+    /// koppelt alleen het <c>PublicMatchId</c> — een zichtbare afwijking, nooit een lege Planning.
+    /// </summary>
+    private static async Task<IReadOnlyList<SportlinkVeldplannerBlok>> SynchroniseerBlokkenAsync(
+        IVeldplannerBlokStore store, Func<(ISportlinkClubClient? Client, IActionResult? Fout)> clientOfFout,
+        string rolNaam, string clubCode, DateOnly datum, IReadOnlyList<SportlinkVeldplannerBlok> blokken, ILogger log)
+    {
+        try
+        {
+            var (client, _) = clientOfFout();
+            Func<string, Task<long?>> losExternIdOp = client == null
+                ? _ => Task.FromResult<long?>(null)
+                : async publicMatchId =>
+                {
+                    var match = await client.GetMatchAsync(rolNaam, publicMatchId);
+                    return match.Status == SportlinkClubCallStatus.Ok && long.TryParse(match.Data?.ExternalMatchId, out var nummer) ? nummer : null;
+                };
+            var resultaat = await VeldplannerBlokSynchronisatie.SynchroniseerAsync(
+                store, losExternIdOp, clubCode, datum, blokken, DateOnly.FromDateTime(DateTime.UtcNow));
+            log.LogInformation(
+                "Veldplanner-tabel bijgewerkt voor {Datum}: {Toegevoegd} toegevoegd, {Gewijzigd} gewijzigd, {Verwijderd} verwijderd, {Ongewijzigd} ongewijzigd; wedstrijdnummer {Opgelost} opgevraagd, {Onbekend} nog onbekend, {ZonderSleutel} zonder sleutel",
+                datum, resultaat.Toegevoegd, resultaat.Gewijzigd, resultaat.Verwijderd, resultaat.Ongewijzigd,
+                resultaat.ExternIdOpgelost, resultaat.ExternIdOnbekend, resultaat.ZonderSleutel);
+            return resultaat.Blokken;
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Veldplanner-tabel bijwerken mislukt ({ErrorType}); Planning koppelt zonder wedstrijdnummers", ex.GetType().Name);
+            return blokken;
+        }
     }
 
     /// <summary>Sorteersleutel van de Planning: op aanvangstijd, regels zonder tijd achteraan.</summary>

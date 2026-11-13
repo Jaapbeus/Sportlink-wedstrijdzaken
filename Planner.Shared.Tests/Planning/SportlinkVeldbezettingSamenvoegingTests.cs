@@ -5,17 +5,21 @@ using Xunit;
 
 namespace Planner.Shared.Tests.Planning;
 
-/// <summary>#1582: Sportlink is leidend voor de Planning. Fictieve teamnamen, geen echte clubs.</summary>
+/// <summary>#1582, #1915: Sportlink is leidend voor de Planning; gekoppeld wordt op sleutel, nooit op naam. Fictieve teamnamen.</summary>
 public class SportlinkVeldbezettingSamenvoegingTests
 {
-    private sealed record Regel(string Wedstrijd, string? Tijd, string? Veld, int Duur, string Bron = "Eigen", bool NietInSportlink = false);
+    private sealed record Regel(
+        string Wedstrijd, string? Tijd, string? Veld, int Duur, string Bron = "Eigen", bool NietInSportlink = false,
+        string? PublicMatchId = null, long? Nummer = null);
 
-    private static SportlinkVeldplannerBlok Blok(string label, string start, string veld = "veld 1 A", int duur = 30)
-        => new(label, veld, start, 0.5m, duur, null);
+    private static SportlinkVeldplannerBlok Blok(string label, string start, string veld = "veld 1 A", int duur = 30, string? id = null, long? externId = null)
+        => new(label, veld, start, 0.5m, duur, id, externId);
+
+    private static EigenSleutel Sleutel(Regel r) => new(r.PublicMatchId, r.Nummer);
 
     private static IReadOnlyList<Regel> Voeg(IReadOnlyList<Regel> eigen, IReadOnlyList<SportlinkVeldplannerBlok>? blokken)
         => SportlinkVeldbezettingSamenvoeging.Voeg(eigen, blokken,
-            r => (r.Wedstrijd, r.Tijd),
+            Sleutel,
             (r, b) => r with { Tijd = b.StartTijd, Veld = b.Veld, Duur = b.DuurMinuten, Bron = "Sportlink" },
             b => new Regel(b.Label, b.StartTijd, b.Veld, b.DuurMinuten, "Sportlink"),
             r => r with { NietInSportlink = true },
@@ -31,18 +35,47 @@ public class SportlinkVeldbezettingSamenvoegingTests
     [Fact]
     public void EenGekoppeldeRegel_NeemtVeldTijdEnDuurOverUitSportlink()
     {
-        var resultaat = Voeg(new[] { new Regel("Thuis 35+1 - Uit 35+1", "19:00", "veld 1", 50) },
-            new[] { Blok("Thuis 35+1 - Uit 35+1", "19:30", "veld 2 B", 40) });
+        var resultaat = Voeg(new[] { new Regel("Thuis 35+1 - Uit 35+1", "19:00", "veld 1", 50, PublicMatchId: "M1") },
+            new[] { Blok("Thuis 35+1 - Uit 35+1", "19:30", "veld 2 B", 40, id: "M1") });
 
-        resultaat.Should().ContainSingle().Which.Should().Be(new Regel("Thuis 35+1 - Uit 35+1", "19:30", "veld 2 B", 40, "Sportlink"));
+        resultaat.Should().ContainSingle().Which.Should().Be(
+            new Regel("Thuis 35+1 - Uit 35+1", "19:30", "veld 2 B", 40, "Sportlink", PublicMatchId: "M1"));
+    }
+
+    /// <summary>De bug van #1915: de dataservice noemt een club anders dan de veldplanner; dat gaf twee regels voor één wedstrijd.</summary>
+    [Fact]
+    public void EenAndereClubnaamInDeVeldplanner_GeeftGeenDubbeleRegel()
+    {
+        var resultaat = SportlinkVeldbezettingSamenvoeging.Voeg(
+            new[] { new Regel("Eigen O12-1 - Voorbeeld HSV De O12-1", "10:00", "veld 1", 50, PublicMatchId: "M7") },
+            new[] { Blok("Eigen O12-1 - Voorbeeld O12-1", "10:00", id: "M7") },
+            Sleutel,
+            (r, b) => r with { Bron = "Sportlink" },
+            b => new Regel(b.Label, b.StartTijd, b.Veld, b.DuurMinuten, "Sportlink"),
+            r => r with { NietInSportlink = true },
+            r => r.Tijd);
+
+        resultaat.Regels.Should().ContainSingle();
+        (resultaat.Gekoppeld, resultaat.NietInSportlink, resultaat.AlleenInSportlink).Should().Be((1, 0, 0));
+    }
+
+    [Fact]
+    public void ZelfdeNaamMaarAnderId_IsGeenKoppeling_BeideBlijvenZichtbaar()
+    {
+        var resultaat = SportlinkVeldbezettingSamenvoeging.Voeg(
+            new[] { new Regel("A - B", "10:00", "veld 1", 50, PublicMatchId: "M1") },
+            new[] { Blok("A - B", "10:00", id: "M2") },
+            Sleutel, (r, b) => r, b => new Regel(b.Label, b.StartTijd, b.Veld, b.DuurMinuten, "Sportlink"),
+            r => r with { NietInSportlink = true }, r => r.Tijd);
+
+        (resultaat.Gekoppeld, resultaat.NietInSportlink, resultaat.AlleenInSportlink).Should().Be((0, 1, 1));
     }
 
     [Fact]
     public void EenSportlinkBlokZonderEigenRegel_WordtZelfEenRegel()
     {
-        // De bug van de releasetest: 8 van de 20 blokken stonden in de Planning, de rest werd weggegooid.
-        var resultaat = Voeg(new[] { new Regel("Thuis 35+1 - Uit 35+1", "19:30", "veld 1 A", 30) },
-            new[] { Blok("Thuis 35+1 - Uit 35+1", "19:30"), Blok("Ander 35+1 - Elders 35+2", "20:30", "veld 1 B") });
+        var resultaat = Voeg(new[] { new Regel("Thuis 35+1 - Uit 35+1", "19:30", "veld 1 A", 30, PublicMatchId: "M1") },
+            new[] { Blok("Thuis 35+1 - Uit 35+1", "19:30", id: "M1"), Blok("Ander 35+1 - Elders 35+2", "20:30", "veld 1 B", id: "M2") });
 
         resultaat.Select(r => (r.Wedstrijd, r.Tijd, r.Bron)).Should().Equal(
             ("Thuis 35+1 - Uit 35+1", "19:30", "Sportlink"), ("Ander 35+1 - Elders 35+2", "20:30", "Sportlink"));
@@ -50,12 +83,13 @@ public class SportlinkVeldbezettingSamenvoegingTests
 
     [Fact]
     public void ZonderEigenRegels_ToontDePlanningToch_AlleSportlinkBlokken()
-        => Voeg(Array.Empty<Regel>(), new[] { Blok("A - B", "10:00"), Blok("C - D", "10:30") }).Should().HaveCount(2);
+        => Voeg(Array.Empty<Regel>(), new[] { Blok("A - B", "10:00", id: "M1"), Blok("C - D", "10:30", id: "M2") }).Should().HaveCount(2);
 
     [Fact]
     public void EenEigenRegelDieSportlinkNietKent_BlijftStaan_MetEenZichtbareMarkering()
     {
-        var resultaat = Voeg(new[] { new Regel("Verdwenen 35+1 - Weg 35+1", "21:00", "veld 1", 50) }, new[] { Blok("A - B", "20:00") });
+        var resultaat = Voeg(new[] { new Regel("Verdwenen 35+1 - Weg 35+1", "21:00", "veld 1", 50, PublicMatchId: "M9") },
+            new[] { Blok("A - B", "20:00", id: "M1") });
 
         resultaat.Should().Contain(r => r.Wedstrijd == "Verdwenen 35+1 - Weg 35+1" && r.NietInSportlink);
         resultaat.Should().Contain(r => r.Wedstrijd == "A - B" && !r.NietInSportlink);
@@ -68,13 +102,13 @@ public class SportlinkVeldbezettingSamenvoegingTests
 
     [Fact]
     public void TweeBlokkenMetDezelfdeGegevens_ZijnTweeWedstrijden()
-        => Voeg(Array.Empty<Regel>(), new[] { Blok("A - B", "10:00"), Blok("A - B", "10:00") }).Should().HaveCount(2);
+        => Voeg(Array.Empty<Regel>(), new[] { Blok("A - B", "10:00", id: "M1"), Blok("A - B", "10:00", id: "M2") }).Should().HaveCount(2);
 
     [Fact]
     public void Resultaat_IsGesorteerdOpTijd_ZonderTijdAchteraan()
     {
         var resultaat = Voeg(new[] { new Regel("Zonder - Tijd", null, null, 0), new Regel("Laat - Laat", "21:00", "veld 1", 30) },
-            new[] { Blok("Vroeg - Vroeg", "09:00") });
+            new[] { Blok("Vroeg - Vroeg", "09:00", id: "M1") });
 
         resultaat.Select(r => r.Wedstrijd).Should().Equal("Vroeg - Vroeg", "Laat - Laat", "Zonder - Tijd");
     }
@@ -115,11 +149,15 @@ public class SportlinkVeldbezettingSamenvoegingTests
     [Fact]
     public void Voeg_TeltGekoppeldNietInSportlinkEnAlleenInSportlink()
     {
-        var eigen = new[] { new Regel("Thuis 35+1 - Uit 35+1", "19:00", "veld 1", 50), new Regel("Thuis JO11-1 - Uit JO11-1", "09:00", "veld 2", 40) };
-        var blokken = new[] { Blok("Thuis 35+1 - Uit 35+1", "19:30"), Blok("Ander 1 - Park 1", "11:00") };
+        var eigen = new[]
+        {
+            new Regel("Thuis 35+1 - Uit 35+1", "19:00", "veld 1", 50, PublicMatchId: "M1"),
+            new Regel("Thuis JO11-1 - Uit JO11-1", "09:00", "veld 2", 40, PublicMatchId: "M5")
+        };
+        var blokken = new[] { Blok("Thuis 35+1 - Uit 35+1", "19:30", id: "M1"), Blok("Ander 1 - Park 1", "11:00", id: "M2") };
 
         var resultaat = SportlinkVeldbezettingSamenvoeging.Voeg(eigen, blokken,
-            r => (r.Wedstrijd, r.Tijd),
+            Sleutel,
             (r, b) => r with { Bron = "Sportlink" },
             b => new Regel(b.Label, b.StartTijd, b.Veld, b.DuurMinuten, "Sportlink"),
             r => r with { NietInSportlink = true },
@@ -135,7 +173,7 @@ public class SportlinkVeldbezettingSamenvoegingTests
     public void Voeg_ZonderBlokken_AlleAantallenNul_EnDezelfdeRegels()
     {
         var eigen = new[] { new Regel("Thuis 1 - Uit 1", "14:30", "veld 1", 105) };
-        var resultaat = SportlinkVeldbezettingSamenvoeging.Voeg<Regel>(eigen, null, r => (r.Wedstrijd, r.Tijd), (r, _) => r, b => new Regel(b.Label, b.StartTijd, b.Veld, b.DuurMinuten), r => r, r => r.Tijd);
+        var resultaat = SportlinkVeldbezettingSamenvoeging.Voeg<Regel>(eigen, null, Sleutel, (r, _) => r, b => new Regel(b.Label, b.StartTijd, b.Veld, b.DuurMinuten), r => r, r => r.Tijd);
         resultaat.Regels.Should().BeSameAs(eigen);
         (resultaat.Gekoppeld + resultaat.NietInSportlink + resultaat.AlleenInSportlink).Should().Be(0);
     }
