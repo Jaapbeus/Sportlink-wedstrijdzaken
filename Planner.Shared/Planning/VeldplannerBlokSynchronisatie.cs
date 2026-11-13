@@ -23,8 +23,8 @@ public static class VeldplannerBlokSynchronisatie
     /// <summary>Hooguit zoveel nieuwe sleutels per aanvraag opvragen; de rest volgt bij de volgende aanvraag.</summary>
     public const int MaxOpTeLossenPerAanvraag = 150;
 
-    /// <summary>Gelijktijdige opvragen bij Sportlink.</summary>
-    public const int GelijktijdigeOpvragen = 6;
+    /// <summary>Gelijktijdige opvragen bij Sportlink (eigenaarsbesluit #1917: 10, was 6; een nieuwe datum met ~40 blokken kostte bij 6 ruim 12 s).</summary>
+    public const int GelijktijdigeOpvragen = 10;
 
     /// <summary>Hoeveel dagen historie de tabel bewaart.</summary>
     public const int BewaarDagen = 14;

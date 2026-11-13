@@ -148,6 +148,11 @@ Sinds 2026-10-03 draait de Function App op Flex Consumption. Vier gevolgen voor 
   | 5 minuten | 8.640 | circa 35.000 |
   | 1 minuut | 43.200 | circa 173.000 (boven het tegoed van 100.000) |
 
+  **Timer `SportlinkVeldplannerVoorbereiding` (#1917).** Twee runs per dag (06:30 en 18:30 UTC), dus circa 60 per maand en 60 uitvoeringen.
+  Schatting, geen meting: een run met ~12 datums à ~2 s en 2 GB is ongeveer 50 GB-s, dus circa 3.000 GB-s per maand (circa 3% van het tegoed);
+  de eerste run is eenmalig groter (±400 wedstrijdnummer-opvragen). Elke 2 uur zou circa 12.000 GB-s zijn en is daarom niet gekozen. Controleer
+  bij de maandelijkse meting of de bijdrage klopt.
+
   De productie-instelling staat alleen in Azure en wordt door de eigenaar gezet; een wijziging herstart de app en
   verandert geen resource, tier of plan. **Na de wijziging controleert de eigenaar `On Demand Function Execution
   Units` opnieuw** (zelfde procedure en drempels als hierboven, eerste volle kalendermaand na de wijziging) en

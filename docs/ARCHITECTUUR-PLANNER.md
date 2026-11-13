@@ -1030,9 +1030,18 @@ precies die som is `DuurMinuten`, en de starttijd schuift met het inloopdeel mee
   club en een hash (`VeldplannerBlokHash`) over label, veld, starttijd, afmeting en duur. Bij elke planningsaanvraag wordt per
   sleutel de hash vergeleken en alleen het verschil geschreven (toevoegen, wijzigen, verwijderen); Sportlink blijft leidend.
   Het veldplanner-antwoord draagt het wedstrijdnummer niet. Het wordt daarom eenmalig per nieuwe sleutel via `GetMatchAsync`
-  opgevraagd (hooguit 150 per aanvraag, 6 tegelijk), bewaard en nooit overschreven met "onbekend". Mislukt dat, of mislukt de
+  opgevraagd (hooguit 150 per aanvraag, 10 tegelijk), bewaard en nooit overschreven met "onbekend". Een timer legt de blokken en nummers vooraf vast (#1917, hieronder), zodat die opvraag zelden nog in een planningsaanvraag plaatsvindt. Mislukt dat, of mislukt de
   database, dan werkt de Planning gewoon door zonder nummers: de koppeling loopt dan alleen via `PublicMatchId` en een niet
   gekoppelde wedstrijd is een zichtbare afwijking. Rijen ouder dan 14 dagen worden opgeruimd.
+- **Vooraf vastleggen op een timer (#1917).** De eerste keer dat een datum werd geopend duurde ±15 s (±40 opvragen van het
+  wedstrijdnummer), de tweede keer 2,8 s. De timer `SportlinkVeldplannerVoorbereiding` (`FunctionApp.Postgres/Sportlink/` en
+  `FunctionApp/Sportlink/VeldplannerVoorbereidingTimerFunction.cs`, gedeelde kern `Planner.Endpoints/Sportlink/VeldplannerVoorbereidingCore.cs`)
+  draait twee keer per dag (06:30 en 18:30 UTC, buiten de sync en de PublicMatchId-warmup) en doorloopt de datums met eigen wedstrijden op de
+  accommodatie in de komende `SportlinkEndpointCore.VeldplannerVoorbereidDagen` = 28 dagen. Per datum dezelfde stappen als een planningsaanvraag
+  (blokken ophalen, hash vergelijken, alleen het verschil schrijven, onbekende nummers opvragen), dus een run zonder wijzigingen kost één
+  veldplanner-aanroep per datum. Toegang als de andere timers (`ClientVoorTimer`: extensie-toggle en EgressGuard); de democlub doet niets; een fout bij één datum stopt de
+  rest niet en na drie opeenvolgende mislukte datums stopt de run (verlopen koppeling of storing). Alleen aantallen in het log. Bewust niet vaker:
+  de nummers zijn onveranderlijk, de aanvraag ververst de tabel toch live, en elke run kost GB-seconden van het gratis tegoed.
 - **Altijd een terugval, nooit een fout, nooit stil (#1774).** Extensie uit, EgressGuard dicht, koppeling verlopen, Sportlink
   onbereikbaar, onbekende accommodatie of onbekende wedstrijd: de regel behoudt `VeldbezettingDuur.Bepaal` (Sportlinks
   speelduur + 15, dan Speeltijden) en het antwoord draagt de reden. De democlub `ALLSTARS` vraagt nooit naar Sportlink.

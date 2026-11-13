@@ -185,6 +185,66 @@ public class VeldplannerOverlayCoreTests
         mock.VerifyNoOtherCalls();
     }
 
+    private const string Sentinel = "sentinel-clientid-123";
+
+    /// <summary>Legt bericht én uitzonderingsobject vast, zodat het beperkte logcontract meetbaar is.</summary>
+    private sealed class VastleggendeLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<(string Bericht, Exception? Uitzondering)> Regels { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter)
+            => Regels.Add((formatter(state, null), exception));
+    }
+
+    private static void ControleerLogcontract(VastleggendeLogger logger)
+    {
+        logger.Regels.Should().NotBeEmpty("de fout moet zichtbaar blijven in het log");
+        foreach (var (bericht, uitzondering) in logger.Regels)
+        {
+            uitzondering.Should().BeNull("alleen het uitzonderingstype hoort in het log (hoofd- en binnenste uitzondering kunnen een URL dragen)");
+            bericht.Should().NotContain(Sentinel);
+        }
+    }
+
+    /// <summary>Codex-review #1917: de timer gebruikt dit pad; een onverwachte fout logt geen uitzonderingsobject.</summary>
+    [Fact]
+    public async Task HaalBlokkenAsync_OnverwachteFout_LogtGeenUitzonderingsobject()
+    {
+        var mock = Client("F-20");
+        mock.Setup(c => c.GetVeldplannerAsync(It.IsAny<string>(), "F-20", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException($"fout naar https://host/?clientId={Sentinel}", new IOException(Sentinel)));
+        var logger = new VastleggendeLogger();
+
+        var resultaat = await VeldplannerOverlayCore.HaalBlokkenAsync(() => SportlinkTimerStatus.MagDraaien, () => (mock.Object, null), "Rol",
+            Naam("F-20"), new DateOnly(2030, 7, 6), logger);
+
+        resultaat.Blokken.Should().BeNull();
+        ControleerLogcontract(logger);
+    }
+
+    /// <summary>Codex-review #1917: een mislukte opslag logt alleen het type, ook met een binnenste uitzondering.</summary>
+    [Fact]
+    public async Task SamenvoegAsync_OpslagFout_LogtGeenUitzonderingsobject()
+    {
+        var logger = new VastleggendeLogger();
+        var store = new Mock<IVeldplannerBlokStore>();
+        store.Setup(s => s.LeesDagAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException($"db {Sentinel}", new Exception(Sentinel)));
+
+        var resultaat = await VeldplannerOverlayCore.SamenvoegAsync<Regel>([], "CLUB", () => SportlinkTimerStatus.MagDraaien,
+            () => (Client("F-21").Object, null), "Rol", Naam("F-21"), new DateOnly(2030, 7, 13), logger,
+            sleutel: r => new EigenSleutel(r.PublicMatchId, r.Nummer),
+            overschrijf: (r, b) => r with { Tijd = b.StartTijd, Bron = "Sportlink" },
+            nieuw: b => new Regel(b.Label, b.StartTijd, false, "Sportlink"),
+            nietInSportlink: r => r with { NietInSportlink = true },
+            sorteerTijd: r => r.Tijd, store: store.Object);
+
+        resultaat.Wedstrijden.Should().ContainSingle("de Planning blijft werken zonder opslag");
+        ControleerLogcontract(logger);
+    }
+
     /// <summary>Een in-geheugen-store die bijhoudt wat de overlay wegschrijft.</summary>
     private sealed class GeheugenStore(bool kapot = false) : IVeldplannerBlokStore
     {
