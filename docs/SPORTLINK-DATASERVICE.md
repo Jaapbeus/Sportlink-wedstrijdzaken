@@ -68,6 +68,16 @@ log, zonder sleutels of namen (`Planner.Shared/Sync/StagingOntdubbeling.cs`, #17
 
 De SQL Server-seizoensdoorrol gebruikt de strikte Nederlandse bedrijfsklok. Ontbrekende tijdzonegegevens breken de sync af vóór seizoenswijzigingen, vensteropbouw, providerverkeer en timestamp-opslag. De conservatieve datumfallback van `ReconciliatieOndergrens` blijft uitsluitend bedoeld voor de ondergrens van verwijderreconciliatie; die is geen bron voor de huidige seizoensdatum. Opgeslagen offsets van wachtrijtaken blijven ongewijzigd.
 
+### Plafond van 100 rijen per `/programma`-aanroep (#1915)
+
+`/programma` geeft per aanroep **maximaal 100 rijen** terug, oplopend in tijd; de rest valt zonder foutmelding weg (live vastgesteld, ook met `aantaldagen` of `aantalrecords`). Het venster loopt vanaf het **aanroepmoment**: `nu + 7 dagen × weekoffset`, daarna `aantaldagen × 24 uur`. Er is geen datumparameter (`datum`, `startdatum`, `vanaf` worden genegeerd), dus een afgekapte speeldag is niet gericht opnieuw op te vragen. Een venster met een drukke zaterdag raakt het plafond dus gemakkelijk.
+
+De sync gaat hier als volgt mee om (`Planner.Shared/Sync/ProgrammaAfkapping.cs`, beide tiers):
+
+- Geeft een aanroep 100 rijen, dan volgt dezelfde aanroep met `thuis=JA&uit=NEE` en met `thuis=NEE&uit=JA`. Dat zijn twee disjuncte verzamelingen die samen het hele venster dekken; een wedstrijd tussen twee eigen teams staat in beide, de opslag ontdubbelt op `wedstrijdcode`.
+- Raakt ook een van die twee het plafond, dan is het venster onvolledig: de run telt als gedeeltelijk mislukt en **reconcilieert niet** (een afgekapte lijst is geen bewijs dat een wedstrijd verdwenen is).
+- Zelfherstel: een eerder ten onrechte verwijderde wedstrijd wordt door de upsert hersteld (`mta_deleted = NULL`) zodra Sportlink hem weer levert.
+
 ## Programma-endpoint — alle beschikbare velden
 
 Live opgehaald uit `/programma`. De voorbeeldwaarden zijn placeholders.

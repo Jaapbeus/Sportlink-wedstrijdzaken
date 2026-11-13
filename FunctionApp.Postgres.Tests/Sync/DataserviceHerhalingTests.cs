@@ -94,4 +94,45 @@ public class DataserviceHerhalingTests
         await act.Should().ThrowAsync<HttpRequestException>("#1081 blijft: een blijvende fout laat de fase mislukken");
         handler.Aanroepen.Should().Be(SportlinkDataserviceHttp.MaxPogingen);
     }
+
+    /// <summary>Elke aanroep geeft een vast aantal wedstrijden terug en onthoudt de opgevraagde query's.</summary>
+    private sealed class PlafondHandler(int aantal) : HttpMessageHandler
+    {
+        public List<string> Urls { get; } = new();
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Urls.Add(request.RequestUri!.Query);
+            var rijen = string.Join(",", Enumerable.Range(1, aantal).Select(i => "{\"wedstrijdcode\":" + i + "}"));
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[" + rijen + "]") });
+        }
+    }
+
+    [Fact]
+    public async Task Programma_VensterOnderHetPlafond_IsVolledigMetEenAanroep()
+    {
+        var handler = new PlafondHandler(0);
+
+        var volledig = await PostgresSyncPipeline.FetchAndStoreProgrammaAsync(
+            NietGebruikteConnectie, "http://test/programma?weekoffset=0", "TEST", NullLogger.Instance, new HttpClient(handler), TimeSpan.Zero);
+
+        volledig.Should().BeTrue();
+        handler.Urls.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Programma_VensterOpHetPlafond_WordtGesplitstInThuisEnUit()
+    {
+        // #1915: 100 rijen = afgekapt. De opslag volgt pas na de ophaling en bestaat in deze test niet; de drie
+        // aanroepen gebeuren daarvoor en bewijzen de bedrading.
+        var handler = new PlafondHandler(100);
+
+        var act = async () => await PostgresSyncPipeline.FetchAndStoreProgrammaAsync(
+            NietGebruikteConnectie, "http://test/programma?weekoffset=0", "TEST", NullLogger.Instance, new HttpClient(handler), TimeSpan.Zero);
+
+        await act.Should().ThrowAsync<Exception>();
+        handler.Urls.Should().HaveCount(3);
+        handler.Urls[1].Should().Contain("thuis=JA&uit=NEE");
+        handler.Urls[2].Should().Contain("thuis=NEE&uit=JA");
+    }
 }
