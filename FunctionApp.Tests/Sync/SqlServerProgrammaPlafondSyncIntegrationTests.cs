@@ -4,6 +4,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging.Abstractions;
 using SportlinkFunction;
 using SportlinkFunction.Planner;
+using SportlinkFunction.Sportlink;
 using Xunit;
 
 namespace FunctionApp.Tests.Sync;
@@ -141,6 +142,33 @@ public class SqlServerProgrammaPlafondSyncIntegrationTests : IAsyncLifetime
         regels.Single(r => r.WedstrijdCode == Basis + 2).PublicMatchId.Should().BeNull("de cache is niet geverifieerd");
         regels.Single(r => r.WedstrijdCode == Basis + 3).PublicMatchId.Should().BeNull("het geverifieerde ID wijkt in hoofdletters af");
         regels.Single(r => r.WedstrijdCode == Basis + 4).PublicMatchId.Should().BeNull("geen cache-regel");
+    }
+
+    /// <summary>
+    /// #1917: de timer bereidt precies de datums voor die iemand in de Planning kan openen: eigen wedstrijden op de eigen accommodatie,
+    /// niet afgelast, binnen het venster, van deze club.
+    /// </summary>
+    [SqlServerFact]
+    public async Task VoorbereidingTimer_ZoektAlleenDatumsMetEigenWedstrijdenOpDeAccommodatie()
+    {
+        await SchoonAsync();
+        using (var server = Dataservice(PlafondDataservice.Dag(Basis, 6))) await RunAsync(server);
+        await ExecAsync("INSERT INTO [dbo].[AppSettings] ([ClubCode], [ClubName], [Accommodatie], [SportlinkApiUrl], [SportlinkClientId], [SeasonStartMonth]) VALUES (@club, 'Testclub', 'Sportpark Oost', 'http://test.invalid', 'x', 7)");
+
+        var binnen = await VeldplannerVoorbereidingTimerFunction.ZoekDatumsMetWedstrijdenAsync(
+            ConnectionString, ClubCode, new DateOnly(2030, 9, 1), new DateOnly(2030, 9, 30));
+        var erna = await VeldplannerVoorbereidingTimerFunction.ZoekDatumsMetWedstrijdenAsync(
+            ConnectionString, ClubCode, new DateOnly(2030, 9, 8), new DateOnly(2030, 9, 30));
+        var andereClub = await VeldplannerVoorbereidingTimerFunction.ZoekDatumsMetWedstrijdenAsync(
+            ConnectionString, "tc-ander", new DateOnly(2030, 9, 1), new DateOnly(2030, 9, 30));
+
+        binnen.Should().Equal(new DateOnly(2030, 9, 7));
+        erna.Should().BeEmpty("buiten het venster");
+        andereClub.Should().BeEmpty("alleen de eigen club");
+
+        await ExecAsync("UPDATE [his].[matches] SET [status] = 'Afgelast' WHERE [ClubCode] = @club");
+        (await VeldplannerVoorbereidingTimerFunction.ZoekDatumsMetWedstrijdenAsync(
+            ConnectionString, ClubCode, new DateOnly(2030, 9, 1), new DateOnly(2030, 9, 30))).Should().BeEmpty("afgelaste wedstrijden tellen niet");
     }
 
     private static async Task ExecAsync(string sql)

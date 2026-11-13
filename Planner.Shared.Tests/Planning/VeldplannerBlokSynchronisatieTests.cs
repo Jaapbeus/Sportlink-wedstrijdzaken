@@ -200,4 +200,27 @@ public class VeldplannerBlokSynchronisatieTests
         aanroepen.Should().HaveCount(VeldplannerBlokSynchronisatie.MaxOpTeLossenPerAanvraag);
         r.ExternIdOnbekend.Should().Be(20, "de rest volgt bij de volgende aanvraag");
     }
+
+    /// <summary>#1917: eigenaarsbesluit 10 gelijktijdige opvragen (was 6): bewezen met een meting van het werkelijke maximum.</summary>
+    [Fact]
+    public async Task Opvragen_LopenMet10Tegelijk_NietMeerEnNietMinder()
+    {
+        VeldplannerBlokSynchronisatie.GelijktijdigeOpvragen.Should().Be(10);
+        var store = new GeheugenStore();
+        var blokken = Enumerable.Range(1, 40).Select(i => Blok($"M{i}", "10:00", $"veld {i}")).ToArray();
+        int actief = 0, maximum = 0;
+        Func<string, Task<long?>> opvrager = async _ =>
+        {
+            var nu = Interlocked.Increment(ref actief);
+            int oud;
+            while (nu > (oud = Volatile.Read(ref maximum)) && Interlocked.CompareExchange(ref maximum, nu, oud) != oud) { }
+            await Task.Delay(40);
+            Interlocked.Decrement(ref actief);
+            return 1;
+        };
+
+        await VeldplannerBlokSynchronisatie.SynchroniseerAsync(store, opvrager, "CLUB", Dag, blokken, Vandaag);
+
+        maximum.Should().Be(10, "precies de grens: genoeg blokken om hem te vullen, nooit erboven");
+    }
 }

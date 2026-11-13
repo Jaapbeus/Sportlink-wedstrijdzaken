@@ -146,15 +146,8 @@ public static class VeldplannerOverlayCore
         try
         {
             var (client, _) = clientOfFout();
-            Func<string, Task<long?>> losExternIdOp = client == null
-                ? _ => Task.FromResult<long?>(null)
-                : async publicMatchId =>
-                {
-                    var match = await client.GetMatchAsync(rolNaam, publicMatchId);
-                    return match.Status == SportlinkClubCallStatus.Ok && long.TryParse(match.Data?.ExternalMatchId, out var nummer) ? nummer : null;
-                };
             var resultaat = await VeldplannerBlokSynchronisatie.SynchroniseerAsync(
-                store, losExternIdOp, clubCode, datum, blokken, DateOnly.FromDateTime(DateTime.UtcNow));
+                store, MaakExternIdOpvrager(client, rolNaam), clubCode, datum, blokken, DateOnly.FromDateTime(DateTime.UtcNow));
             log.LogInformation(
                 "Veldplanner-tabel bijgewerkt voor {Datum}: {Toegevoegd} toegevoegd, {Gewijzigd} gewijzigd, {Verwijderd} verwijderd, {Ongewijzigd} ongewijzigd; wedstrijdnummer {Opgelost} opgevraagd, {Onbekend} nog onbekend, {ZonderSleutel} zonder sleutel",
                 datum, resultaat.Toegevoegd, resultaat.Gewijzigd, resultaat.Verwijderd, resultaat.Ongewijzigd,
@@ -167,6 +160,20 @@ public static class VeldplannerOverlayCore
             return blokken;
         }
     }
+
+    /// <summary>
+    /// Vraagt het bondswedstrijdnummer (<c>ExternalMatchId</c>) van een <c>PublicMatchId</c> op bij Sportlink; <c>null</c> als dat
+    /// niet lukt of het antwoord geen getal is. Zonder client altijd <c>null</c>. Gedeeld door de Planning en de timer die de
+    /// nummers vooraf vastlegt (#1917), zodat beide dezelfde opvraag gebruiken.
+    /// </summary>
+    public static Func<string, Task<long?>> MaakExternIdOpvrager(ISportlinkClubClient? client, string rolNaam)
+        => client == null
+            ? _ => Task.FromResult<long?>(null)
+            : async publicMatchId =>
+            {
+                var match = await client.GetMatchAsync(rolNaam, publicMatchId);
+                return match.Status == SportlinkClubCallStatus.Ok && long.TryParse(match.Data?.ExternalMatchId, out var nummer) ? nummer : null;
+            };
 
     /// <summary>Sorteersleutel van de Planning: op aanvangstijd, regels zonder tijd achteraan.</summary>
     public static string SorteerSleutel(string? aanvangsTijd) => string.IsNullOrWhiteSpace(aanvangsTijd) ? "99:99" : aanvangsTijd;

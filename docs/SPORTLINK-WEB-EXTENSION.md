@@ -468,6 +468,10 @@ Vier dingen om te onthouden:
   `FunctionApp/Sportlink/SportlinkPublicMatchIdWarmupTimerFunction.cs`. De horizon (vandaag + 2)
   staat als `SportlinkEndpointCore.WarmupVooruitkijkDagen` in `Planner.Shared`, zodat een tierwissel
   niet stilzwijgend een ander venster oplevert.
+- `FunctionApp.Postgres/Sportlink/VeldplannerVoorbereidingTimerFunction.cs` (#1917) — timer die de blokken van de Sportlink-veldplanner en
+  hun bondswedstrijdnummers vooraf vastlegt voor de komende 28 dagen (`SportlinkEndpointCore.VeldplannerVoorbereidDagen`), twee keer per dag
+  (06:30 en 18:30 UTC). Gebruikt `GetVeldplannerAsync` en `GetMatchAsync` (alleen lezen). SQL Server-tegenhanger:
+  `FunctionApp/Sportlink/VeldplannerVoorbereidingTimerFunction.cs`; gedeelde kern in `Planner.Endpoints/Sportlink/VeldplannerVoorbereidingCore.cs`.
 
   **#1387 (voorheen wél een harde fout bij een cache-miss):** de synchrone fallback-lookup gebruikte
   tot deze fix de globale `HttpClient`-timeout van 15 seconden — tegen de gedocumenteerde 12+
