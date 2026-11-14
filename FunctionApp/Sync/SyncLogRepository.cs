@@ -17,8 +17,7 @@ internal static class SyncLogRepository
 
     internal static async Task UpsertAsync(string connectionString, string clubCode, SyncLogEntry entry)
     {
-        ValidateArguments(clubCode, entry);
-        SyncLogPolicy.Validate(entry);
+        SyncLogPersistenceValues.ValidateUpsert(clubCode, entry);
         using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         using var transaction = connection.BeginTransaction();
@@ -65,12 +64,9 @@ internal static class SyncLogRepository
     internal static async Task<IReadOnlyList<SyncLogEntry>> GetForJobsAsync(
         string connectionString, string clubCode, IReadOnlyCollection<Guid> jobIds)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(clubCode);
-        ArgumentNullException.ThrowIfNull(jobIds);
+        SyncLogPersistenceValues.ValidateQuery(clubCode, jobIds);
         if (jobIds.Count == 0)
             return Array.Empty<SyncLogEntry>();
-        if (jobIds.Count > 100)
-            throw new ArgumentOutOfRangeException(nameof(jobIds), "Maximaal 100 sync-jobs per logboekvraag.");
 
         using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
@@ -89,20 +85,14 @@ internal static class SyncLogRepository
         using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            results.Add(new SyncLogEntry(
-                reader.GetGuid(0), reader.GetInt32(1), reader.GetString(2), Utc(reader.GetDateTime(3)),
-                reader.IsDBNull(4) ? null : Utc(reader.GetDateTime(4)), reader.GetString(5),
-                NullableInt(reader, 6), NullableInt(reader, 7), NullableInt(reader, 8), NullableInt(reader, 9),
-                NullableInt(reader, 10), NullableInt(reader, 11), reader.IsDBNull(12) ? null : reader.GetString(12)));
+            results.Add(SyncLogPersistenceValues.Read(reader, specifyUtc: true));
         }
         return results;
     }
 
     internal static async Task<int> CleanupAsync(string connectionString, string clubCode, DateTime utcNow)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(clubCode);
-        SyncLogPolicy.RequireUtc(utcNow, nameof(utcNow));
-        var cutoff = utcNow.AddDays(-SyncLogPolicy.RetentionDays);
+        var cutoff = SyncLogPersistenceValues.RetentionCutoff(clubCode, utcNow);
         using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         using var command = new SqlCommand(
@@ -113,30 +103,9 @@ internal static class SyncLogRepository
         return await command.ExecuteNonQueryAsync();
     }
 
-    private static void ValidateArguments(string clubCode, SyncLogEntry entry)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(clubCode);
-        ArgumentNullException.ThrowIfNull(entry);
-    }
-
     private static void AddParameters(SqlCommand command, string clubCode, SyncLogEntry entry)
     {
-        command.Parameters.AddWithValue("@JobId", entry.JobId);
-        command.Parameters.AddWithValue("@ClubCode", clubCode);
-        command.Parameters.AddWithValue("@Attempt", entry.Attempt);
-        command.Parameters.AddWithValue("@Phase", entry.Phase);
-        command.Parameters.AddWithValue("@StartedAt", entry.StartedAt);
-        command.Parameters.AddWithValue("@CompletedAt", (object?)entry.CompletedAt ?? DBNull.Value);
-        command.Parameters.AddWithValue("@Status", entry.Status);
-        command.Parameters.AddWithValue("@Fetched", (object?)entry.Fetched ?? DBNull.Value);
-        command.Parameters.AddWithValue("@Added", (object?)entry.Added ?? DBNull.Value);
-        command.Parameters.AddWithValue("@Updated", (object?)entry.Updated ?? DBNull.Value);
-        command.Parameters.AddWithValue("@Failed", (object?)entry.Failed ?? DBNull.Value);
-        command.Parameters.AddWithValue("@Progress", (object?)entry.Progress ?? DBNull.Value);
-        command.Parameters.AddWithValue("@Total", (object?)entry.Total ?? DBNull.Value);
-        command.Parameters.AddWithValue("@ReasonCode", (object?)entry.ReasonCode ?? DBNull.Value);
+        foreach (var (name, value) in SyncLogPersistenceValues.Parameters(clubCode, entry))
+            command.Parameters.AddWithValue("@" + name, value);
     }
-
-    private static int? NullableInt(SqlDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
-    private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 }

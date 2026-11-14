@@ -17,8 +17,7 @@ internal static class SyncLogRepository
 
     internal static async Task UpsertAsync(string connectionString, string clubCode, SyncLogEntry entry)
     {
-        ValidateArguments(clubCode, entry);
-        SyncLogPolicy.Validate(entry);
+        SyncLogPersistenceValues.ValidateUpsert(clubCode, entry);
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var transaction = await connection.BeginTransactionAsync();
@@ -56,12 +55,9 @@ internal static class SyncLogRepository
     internal static async Task<IReadOnlyList<SyncLogEntry>> GetForJobsAsync(
         string connectionString, string clubCode, IReadOnlyCollection<Guid> jobIds)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(clubCode);
-        ArgumentNullException.ThrowIfNull(jobIds);
+        SyncLogPersistenceValues.ValidateQuery(clubCode, jobIds);
         if (jobIds.Count == 0)
             return Array.Empty<SyncLogEntry>();
-        if (jobIds.Count > 100)
-            throw new ArgumentOutOfRangeException(nameof(jobIds), "Maximaal 100 sync-jobs per logboekvraag.");
 
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
@@ -76,20 +72,14 @@ internal static class SyncLogRepository
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            results.Add(new SyncLogEntry(
-                reader.GetGuid(0), reader.GetInt32(1), reader.GetString(2), reader.GetDateTime(3),
-                reader.IsDBNull(4) ? null : reader.GetDateTime(4), reader.GetString(5),
-                NullableInt(reader, 6), NullableInt(reader, 7), NullableInt(reader, 8), NullableInt(reader, 9),
-                NullableInt(reader, 10), NullableInt(reader, 11), reader.IsDBNull(12) ? null : reader.GetString(12)));
+            results.Add(SyncLogPersistenceValues.Read(reader, specifyUtc: false));
         }
         return results;
     }
 
     internal static async Task<int> CleanupAsync(string connectionString, string clubCode, DateTime utcNow)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(clubCode);
-        SyncLogPolicy.RequireUtc(utcNow, nameof(utcNow));
-        var cutoff = utcNow.AddDays(-SyncLogPolicy.RetentionDays);
+        var cutoff = SyncLogPersistenceValues.RetentionCutoff(clubCode, utcNow);
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
@@ -100,29 +90,9 @@ internal static class SyncLogRepository
         return await command.ExecuteNonQueryAsync();
     }
 
-    private static void ValidateArguments(string clubCode, SyncLogEntry entry)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(clubCode);
-        ArgumentNullException.ThrowIfNull(entry);
-    }
-
     private static void AddParameters(NpgsqlCommand command, string clubCode, SyncLogEntry entry)
     {
-        command.Parameters.AddWithValue("jobid", entry.JobId);
-        command.Parameters.AddWithValue("clubcode", clubCode);
-        command.Parameters.AddWithValue("attempt", entry.Attempt);
-        command.Parameters.AddWithValue("phase", entry.Phase);
-        command.Parameters.AddWithValue("startedat", entry.StartedAt);
-        command.Parameters.AddWithValue("completedat", (object?)entry.CompletedAt ?? DBNull.Value);
-        command.Parameters.AddWithValue("status", entry.Status);
-        command.Parameters.AddWithValue("fetched", (object?)entry.Fetched ?? DBNull.Value);
-        command.Parameters.AddWithValue("added", (object?)entry.Added ?? DBNull.Value);
-        command.Parameters.AddWithValue("updated", (object?)entry.Updated ?? DBNull.Value);
-        command.Parameters.AddWithValue("failed", (object?)entry.Failed ?? DBNull.Value);
-        command.Parameters.AddWithValue("progress", (object?)entry.Progress ?? DBNull.Value);
-        command.Parameters.AddWithValue("total", (object?)entry.Total ?? DBNull.Value);
-        command.Parameters.AddWithValue("reasoncode", (object?)entry.ReasonCode ?? DBNull.Value);
+        foreach (var (name, value) in SyncLogPersistenceValues.Parameters(clubCode, entry))
+            command.Parameters.AddWithValue(name, value);
     }
-
-    private static int? NullableInt(NpgsqlDataReader reader, int ordinal) => reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
 }
