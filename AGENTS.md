@@ -70,7 +70,7 @@ Onbewaakt: rondelimiet, zelfmerge-voorwaarden, geplande uitvoering.
 
 Exacte sessies/aanvraag; ronde 4: aparte eigenaarsscope.
 
-**SHADOW**: alleen bewijs; alle huidige regels gelden. Geen 2e dispatcher/automatische dispatch/ontwikkeling/merge uit shadowdata. Actief na aparte owneropdracht, implementatie/review, bewezen acceptatie van alle deelnemers/writers (`SAMENWERKING-AGENTS.md`).
+**SHADOW**: alleen bewijs; alle regels gelden. Geen 2e dispatcher/automatische dispatch/ontwikkeling/merge uit shadowdata. Actief na aparte owneropdracht, implementatie/review, bewezen acceptatie van alle deelnemers/schrijfpaden (`SAMENWERKING-AGENTS.md`).
 
 **Gedeelde debugomgeving.** Worktrees isoleren bestanden; poorten/databases/Docker/Azurite/PID's/logs/externe integraties blijven gedeeld. `Start-Debug.ps1` stopt bestaande debugservices.
 Zonder runtime-isolatie: één vooraf aangewezen sessie; leg de runtime-eigenaar vast bij taak/overdracht.
