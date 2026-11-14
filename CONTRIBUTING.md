@@ -227,7 +227,7 @@ bij — `Closes #<nr>` in de PR-titel of -body is genoeg.
 | PR *ready for review* | `status: review-needed` |
 | Agent rondt Stap 5 af zonder escalatie (AGENTS.md) | `status: pr-aangemaakt` — de PR wacht op de merge, niet op de eigenaar, tenzij er een eigenaarspunt openstaat |
 | PR gesloten zonder merge | `status: triage` |
-| **PR gemerged naar `develop`** | **`status: awaiting-release` en geen `turn:`-label — het issue blijft open** |
+| **PR gemerged naar `develop`** | **`status: awaiting-release`, geen `turn:`-label en één fasecomment `Fase: gemerged` — het issue blijft open** |
 | Release-tag gepusht naar `main` | status-labels weg, issue gesloten |
 
 **Waarom een PR als draft beginnen.** Zonder `--draft` zet de automatisering meteen `status:
@@ -239,6 +239,27 @@ integratiebranch; er staat op dat moment nog niets van je wijziging live. Het is
 `status: awaiting-release` tot de eerstvolgende release naar `main`, waarna
 `close-released-issues.yml` het automatisch sluit. Je bijdrage is niet vergeten — ze wacht op een
 releasemoment.
+
+**Fasecomment, lifecycle-status en agentbezetting zijn drie aparte dingen (#1867).** De fasecomment op het issue
+legt de overdracht vast (fase, implementer, reviewer, PR, head-SHA, volgende beurt). Het `status:`-label is de
+lifecycle van het issue en is van de automatisering. Het `turn:`-label zegt wie nu aan zet is; dat is geen
+aanwijzing welke agent op dat moment actief is of welke worktree bezet is. Een van de drie zegt niets over de
+andere twee, dus wijzig er nooit één om een andere te "repareren".
+
+**Na een merge naar `develop` staat er een `gemerged`-fase.** `label-awaiting-release.yml` plaatst naast de
+status en het opschonen van `turn:` precies één comment `Fase: gemerged` met het PR-nummer en de volledige
+merge-SHA (40 tekens). De comment draagt een verborgen marker per PR, zodat een herhaald event niets dubbel
+plaatst. `gemerged` is een eindfase zonder volgende beurt (`beurt-invariant.yml` leest hem zo); vervolgwerk
+begint met een nieuwe overdracht met een nieuwe implementer, sessie en status. Ontbreekt de merge-SHA, dan
+plaatst de workflow niets en faalt de run zichtbaar.
+
+**Een verouderde status herstel je alleen met `reconcilieer-issue-status.yml` (#1867).** Start die handmatig
+(`gh workflow run reconcilieer-issue-status.yml -f issue_nummer=<nr>`) voor één open issue met **precies één**
+sterk gekoppelde open PR (`fix(#nr): …` in de titel of `Closes #nr`): een draft-PR geeft `status: in-progress`,
+een ready-PR `status: review-needed`. Er verandert niets bij geen of meerdere sterke koppelingen, een gesloten
+issue, een PR zonder bewezen herkomst of een beschermde status (`blocked`, `wont-fix`, `waiting-owner`,
+`awaiting-release`, `waiting-codex`). Een `turn:`-label wordt nooit aangeraakt en een herhaalde run verandert niets.
+Een open-PR-status zet je dus nooit met de hand. Bij meerdere koppelingen los je eerst de koppeling op.
 
 **Na een merge staat er alleen `status: awaiting-release`** (#1669). `label-awaiting-release.yml` zet die
 status en verwijdert in dezelfde stap elk `turn:`-label: na de merge is niemand meer aan zet, alleen de

@@ -1,0 +1,55 @@
+name: Issue-status herstellen
+
+# Handmatig startbare herstelroute voor een verouderd of ontbrekend statuslabel (#1867).
+#
+# label-issue-status.yml volgt PR-events, maar als een event ontbreekt of de run faalt blijft een
+# issue op een oude status staan (bijvoorbeeld 'review-needed' bij een open draft-PR). Deze workflow
+# leidt de status van EEN issue af uit zijn enige sterk gekoppelde open PR:
+#   draft → status: in-progress, ready → status: review-needed.
+# Geen koppeling, meerdere koppelingen, een gesloten issue of een PR met onbewezen herkomst: geen
+# wijziging. Beschermde statussen (blocked, wont-fix, waiting-owner, awaiting-release) blijven staan
+# en `turn:`-labels worden nooit aangeraakt. Zie CONTRIBUTING.md, "Overdracht en turn-label".
+#
+# Alleen workflow_dispatch: er is bewust geen pull_request- of push-trigger (#1202).
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_nummer:
+        description: 'Nummer van het issue waarvan de status wordt hersteld'
+        required: true
+        type: string
+
+permissions:
+  issues: write
+  pull-requests: read
+  contents: read
+
+concurrency:
+  group: reconcilieer-issue-status-${{ inputs.issue_nummer }}
+  cancel-in-progress: false
+
+jobs:
+  reconcilieer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (voor .github/scripts)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Status van het issue herstellen
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ISSUE_NUMMER: ${{ inputs.issue_nummer }}
+        with:
+          script: |
+            const { reconcileIssueStatus } =
+              require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
+            const ruw = String(process.env.ISSUE_NUMMER || '').trim();
+            if (!/^[1-9][0-9]{0,8}$/.test(ruw)) {
+              core.setFailed('issue_nummer moet een positief geheel getal zijn.');
+              return;
+            }
+            const resultaat = await reconcileIssueStatus({
+              github, context, core, issueNumber: parseInt(ruw, 10),
+            });
+            core.notice(`Reconciliatie van #${ruw}: ${resultaat}`);

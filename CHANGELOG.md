@@ -18,7 +18,11 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+<<<<<<< HEAD
 - Het clubneutrale seizoensschema van vóór de seizoensstartmaand per club is opgeruimd (#1747): `public.season` (migratie 051) en op SQL Server `dbo.Season` en `dbo.sp_UpdateSeasonTable`. De seizoenen staan al sinds #1715 per club in `public.clubseason` / `dbo.ClubSeason`; geen gedragswijziging, wel een schemawijziging op beide databasetiers.
+=======
+- De merge-automatisering laat na een merge naar `develop` ook één `Fase: gemerged`-comment op het issue achter (PR-nummer en merge-SHA, per PR hoogstens één keer), zodat een issue niet op een oude `verwerking`- of `eigenaarsbesluit`-comment blijft staan. Nieuw is de handmatig startbare workflow `reconcilieer-issue-status.yml`, die de status van één issue met precies één sterk gekoppelde open PR herstelt en beschermde statussen en `turn:`-labels ongemoeid laat. Alleen CI-automatisering, geen versiebump (zie issue #1867).
+>>>>>>> 6493ed09 (ci(#1867): fasecomment 'gemerged' na merge en handmatige statusreconciliatie)
 
 ## [3.17.0.0] — 2026-11-12
 

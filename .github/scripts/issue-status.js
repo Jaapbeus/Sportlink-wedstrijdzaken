@@ -175,6 +175,108 @@ async function updatePullRequestIssueStatuses({ github, context, core }) {
 }
 
 /**
+ * Status die bij de toestand van één PR hoort (#1867). Gemerged = wachten op de release;
+ * anders draft = in-progress en ready = review-needed. Een gesloten, niet-gemerged PR levert
+ * geen status op: de reconciliatie hoort alleen open PR's te beoordelen.
+ */
+function statusVoorPullRequest(pr) {
+  if (!pr) return null;
+  if (pr.merged || pr.merged_at) return 'status: awaiting-release';
+  if (pr.state && pr.state !== 'open') return null;
+  return pr.draft ? 'status: in-progress' : 'status: review-needed';
+}
+
+const FASE_GEMERGED_MARKER = (prNumber) => `<!-- fase-gemerged pr=${prNumber} -->`;
+const GELDIGE_MERGE_SHA = /^[0-9a-f]{40}$/i;
+
+/**
+ * Plaatst op het issue één idempotente fasecomment `Fase: gemerged` met PR-nummer en
+ * volledige merge-SHA (#1867). Het formaat sluit aan op de overdrachtsvelden die
+ * beurt-invariant.js leest: `gemerged` is een eindfase zonder volgende beurt. Een tweede run voor
+ * dezelfde PR plaatst niets; een ontbrekende of onvolledige merge-SHA plaatst niets.
+ *
+ * @returns {Promise<'posted'|'unchanged'|'skipped'>}
+ */
+async function plaatsFasecommentGemerged({ github, context, core, issueNumber, prNumber, mergeSha }) {
+  if (!Number.isInteger(prNumber) || !GELDIGE_MERGE_SHA.test(String(mergeSha || ''))) {
+    core.warning(`#${issueNumber}: PR-nummer of merge-SHA ontbreekt — fasecomment niet geplaatst`);
+    return 'skipped';
+  }
+  const marker = FASE_GEMERGED_MARKER(prNumber);
+  const comments = await github.paginate(github.rest.issues.listComments, {
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    issue_number: issueNumber,
+    per_page: 100,
+    headers: API_VERSION_HEADERS,
+  });
+  if (comments.some(c => typeof c.body === 'string' && c.body.includes(marker))) {
+    return 'unchanged';
+  }
+  await github.rest.issues.createComment({
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    issue_number: issueNumber,
+    body: `${marker}\nFase: gemerged\nPR: #${prNumber}\nMerge-SHA: ${mergeSha}\n\n`
+      + 'De PR zit in `develop`; alleen de release resteert. Er is geen volgende beurt en het issue draagt geen `turn:`-label.',
+    headers: API_VERSION_HEADERS,
+  });
+  core.notice(`#${issueNumber}: fase 'gemerged' vastgelegd (PR #${prNumber})`);
+  return 'posted';
+}
+
+/**
+ * Handmatig startbare herstelroute (#1867): leidt de status van één issue af uit zijn enige sterk
+ * gekoppelde OPEN PR. Zonder koppeling, met meerdere koppelingen, voor een gesloten issue of een
+ * PR met onbewezen herkomst verandert er niets. Beschermde statussen blijven staan en
+ * `turn:`-labels worden hier nooit aangeraakt. Idempotent via setIssueStatus.
+ *
+ * @returns {Promise<'closed'|'unlinked'|'ambiguous'|'untrusted'|'skipped'|'set'|'unchanged'|'protected'>}
+ */
+async function reconcileIssueStatus({ github, context, core, issueNumber }) {
+  let issue;
+  try {
+    issue = (await github.rest.issues.get({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: issueNumber,
+      headers: API_VERSION_HEADERS,
+    })).data;
+  } catch {
+    core.warning(`#${issueNumber}: kon issue niet ophalen — niets gewijzigd`);
+    return 'skipped';
+  }
+  if (issue.pull_request) return 'skipped';
+  if (issue.state === 'closed') {
+    core.notice(`#${issueNumber}: issue is gesloten — niets gewijzigd`);
+    return 'closed';
+  }
+
+  const open = await github.paginate(github.rest.pulls.list, {
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    state: 'open',
+    per_page: 100,
+    headers: API_VERSION_HEADERS,
+  });
+  const gekoppeld = open.filter(pr => extractIssueRefs(pr.title, pr.body).strong.has(issueNumber));
+  if (gekoppeld.length === 0) {
+    core.notice(`#${issueNumber}: geen sterk gekoppelde open PR — niets gewijzigd`);
+    return 'unlinked';
+  }
+  if (gekoppeld.length > 1) {
+    core.notice(`#${issueNumber}: ${gekoppeld.length} sterk gekoppelde open PR's — niets gewijzigd`);
+    return 'ambiguous';
+  }
+
+  const pr = gekoppeld[0];
+  if (!await trustedPullRequestOrigin({ github, context, core, pr })) return 'untrusted';
+  const status = statusVoorPullRequest(pr);
+  if (!status) return 'skipped';
+  return setIssueStatus({ github, context, core, issueNumber, status });
+}
+
+/**
  * Zet precies één status-label op een issue en verwijdert de andere.
  *
  * @param {object}  opts.github        octokit-client van actions/github-script
@@ -339,6 +441,10 @@ module.exports = {
   extractIssueRefs,
   trustedPullRequestOrigin,
   updatePullRequestIssueStatuses,
+  statusVoorPullRequest,
+  FASE_GEMERGED_MARKER,
+  plaatsFasecommentGemerged,
+  reconcileIssueStatus,
   setIssueStatus,
   clearIssueStatus,
   clearTurnLabels,
