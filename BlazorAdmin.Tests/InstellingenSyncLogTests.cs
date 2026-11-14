@@ -28,6 +28,44 @@ public sealed class InstellingenSyncLogTests
     }
 
     [Fact]
+    public void PhasePosition_UsesSevenRecordedPipelinePhasesAndFallsBackForGaps()
+    {
+        var log = new SyncLogboek();
+        var tijd = new DateTime(2026, 11, 14, 10, 0, 0, DateTimeKind.Utc);
+        var job = new SyncJobDto { Status = "pending" };
+        Assert.Equal("Fase 1 van 7 volgt na het ophalen uit de wachtrij.", Call<string>(log, "FaseVoortgang", job, true));
+
+        job.Status = "running";
+        job.Phases =
+        [
+            new() { Phase = "teams", Status = "succeeded", StartedAt = tijd },
+            new() { Phase = "programma", Status = "running", StartedAt = tijd.AddSeconds(1) }
+        ];
+        Assert.Equal("Fase 2 van 7: Programma · 1 fase afgerond.", Call<string>(log, "FaseVoortgang", job, true));
+
+        job.Phases.AddRange(
+        [
+            new() { Phase = "uitslagen", Status = "succeeded", StartedAt = tijd.AddSeconds(2) },
+            new() { Phase = "matchdetails", Status = "succeeded", StartedAt = tijd.AddSeconds(3) },
+            new() { Phase = "reconciliatie", Status = "succeeded", StartedAt = tijd.AddSeconds(4) },
+            new() { Phase = "canonicalisatie", Status = "succeeded", StartedAt = tijd.AddSeconds(5) },
+            new() { Phase = "planner-view", Status = "skipped", StartedAt = tijd.AddSeconds(6) }
+        ]);
+        Assert.Equal("Fase 7 van 7: Plannerweergave · 6 fasen afgerond.", Call<string>(log, "FaseVoortgang", job, true));
+
+        job.Phases =
+        [
+            new() { Phase = "teams", Status = "succeeded", StartedAt = tijd },
+            new() { Phase = "matchdetails", Status = "running", StartedAt = tijd.AddSeconds(1) }
+        ];
+        Assert.Equal("Fasepositie onbekend; 1 fase afgerond.", Call<string>(log, "FaseVoortgang", job, true));
+
+        job.Phases = [new() { Phase = "configuratie", Status = "failed", StartedAt = tijd }];
+        Assert.Equal("Fasepositie onbekend; 1 fase afgerond.", Call<string>(log, "FaseVoortgang", job, true));
+        Assert.Equal("Fasepositie tijdelijk niet beschikbaar.", Call<string>(log, "FaseVoortgang", job, false));
+    }
+
+    [Fact]
     public async Task Dispose_CancelsInFlightStatusPoll()
     {
         var handler = new BlockingHandler();

@@ -9,6 +9,7 @@
             gestart @(Instellingen.NaarLokaleTijd(activeJob.StartedAt ?? activeJob.CreatedAt).ToString("dd-MM-yyyy HH:mm"))
             · poging @activeJob.Attempt
         </p>
+        <p class="small mb-2" id="sync-phase-position" aria-live="polite">@FaseVoortgang(activeJob, Status?.LogAvailable != false)</p>
         @if (activeJob.Phases?.Count > 0)
         {
             <div class="table-responsive">

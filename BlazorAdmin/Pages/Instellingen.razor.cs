@@ -100,7 +100,16 @@ public partial class Instellingen : ClubSelectorPageBase
         var emailTask   = EmailApi.GetEmailLogAsync(vanaf: DateTime.UtcNow.AddHours(-24), limit: 200);
         var reviewTask  = EmailApi.GetEmailLogAsync(status: "Review", limit: EmailReviewMax);
 
-        await Task.WhenAll(settingsTask, syncTask, emailTask, reviewTask);
+        try { await Task.WhenAll(settingsTask, syncTask, emailTask, reviewTask); }
+        catch
+        {
+            if (IsActueleLading(generatie, clubCode) && IsActueleSyncOperatie(syncGeneration, clubCode))
+            {
+                errorMessage = "Instellingen konden niet worden geladen. Probeer het later opnieuw.";
+                _syncLoading = false;
+            }
+            return;
+        }
         if (!IsActueleLading(generatie, clubCode) || !IsActueleSyncOperatie(syncGeneration, clubCode)) return;
 
         var reviewResult = await reviewTask;
