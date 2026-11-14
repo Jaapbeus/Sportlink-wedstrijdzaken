@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Shared.Email;
 using Planner.Shared.Tests.Email.TestDoubles;
@@ -48,6 +49,43 @@ public sealed class EmailBatchFilterKernTests
     }
 
     [Fact]
+    public async Task PreFilter_SlaatHeadersOverVoorEigenMailboxEnUitgeslotenAfzender()
+    {
+        var graph = new FakeReplyGraph();
+        var mailbox = new RecordingMailbox(graph);
+        var emails = new[]
+        {
+            new Bericht("own", "OWN@allstars-fc.test"),
+            new Bericht("blocked", "BLOCKED@allstars-fc.test")
+        };
+
+        var result = await EmailBatchFilterKern.PreFilterVoorClassificatieAsync(
+            emails, "own@allstars-fc.test",
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "blocked@allstars-fc.test" },
+            _ => throw new InvalidOperationException("Headers should not be read for filtered senders"),
+            graph, mailbox, NullLogger.Instance);
+
+        result.Should().BeEmpty();
+        graph.MarkedAsReadIds.Should().Equal("own", "blocked");
+    }
+
+    [Fact]
+    public async Task PreFilter_BehoudtComparerVanUitsluitingsset()
+    {
+        var graph = new FakeReplyGraph();
+        var mailbox = new RecordingMailbox(graph);
+        var email = new Bericht("blocked", "BLOCKED@allstars-fc.test");
+
+        var result = await EmailBatchFilterKern.PreFilterVoorClassificatieAsync(
+            [email], "own@allstars-fc.test",
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "blocked@allstars-fc.test" },
+            bericht => bericht.Headers, graph, mailbox, NullLogger.Instance);
+
+        result.Should().BeEmpty();
+        graph.MarkedAsReadIds.Should().ContainSingle("blocked");
+    }
+
+    [Fact]
     public async Task LabelBuitenScope_LabeltEnMarkeertAlleenBuitenScopeBerichten()
     {
         var graph = new FakeReplyGraph();
@@ -80,6 +118,36 @@ public sealed class EmailBatchFilterKernTests
         result.Select(email => email.MessageId).Should().Equal("two", "three");
     }
 
+    [Fact]
+    public void FilterUitgeslotenAdressen_BehoudtComparerVanUitsluitingsset()
+    {
+        var email = new Bericht("blocked", "BLOCKED@allstars-fc.test");
+
+        var result = EmailBatchFilterKern.FilterUitgeslotenAdressen(
+            [email], new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "blocked@allstars-fc.test" },
+            bericht => bericht.Afzender);
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LabelBuitenScope_BijCategorieFoutWaarschuwtEnGaatDoorMetVolgendBericht()
+    {
+        var graph = new FailingCategoryGraph("first");
+        var logger = new WarningLogger();
+        var entries = new[]
+        {
+            (new Bericht("first", "one@allstars-fc.test"), new BerichtClassificatie { Type = VerzoekType.BuitenScope }),
+            (new Bericht("second", "two@allstars-fc.test"), new BerichtClassificatie { Type = VerzoekType.BuitenScope })
+        };
+
+        await EmailBatchFilterKern.LabelBuitenScopeAsync(entries, email => email.MessageId, graph, logger);
+
+        logger.Warnings.Should().ContainSingle(message => message.Contains("Fout bij Outlook-labeling BuitenScope", StringComparison.Ordinal));
+        graph.MarkedAsReadIds.Should().Equal("second");
+        graph.CategoryUpdates.Should().ContainSingle().Which.Should().Be("second");
+    }
+
     private sealed record Bericht(
         string MessageId,
         string Afzender,
@@ -97,6 +165,43 @@ public sealed class EmailBatchFilterKernTests
         {
             await graph.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
             await graph.SetCategoriesAsync(messageId, EmailCategorieLabels.GeenAiAntwoord);
+        }
+    }
+
+    private sealed class FailingCategoryGraph(string failingMessageId) : IReplyGraph
+    {
+        public List<string> CategoryUpdates { get; } = [];
+        public List<string> MarkedAsReadIds { get; } = [];
+
+        public Task SetCategoriesAsync(string messageId, params string[] categories)
+        {
+            if (messageId == failingMessageId)
+                throw new ArgumentException("synthetic category failure");
+            CategoryUpdates.Add(messageId);
+            return Task.CompletedTask;
+        }
+
+        public Task EnsureMasterCategoryAsync(string name, string colorPreset) => Task.CompletedTask;
+        public Task MarkAsReadAsync(string messageId)
+        {
+            MarkedAsReadIds.Add(messageId);
+            return Task.CompletedTask;
+        }
+
+        public Task SendReplyAsync(string to, string subject, string body, string? conversationId,
+            IReadOnlyList<string>? bcc = null, EmailBijlage? bijlage = null) => Task.CompletedTask;
+    }
+
+    private sealed class WarningLogger : ILogger
+    {
+        public List<string> Warnings { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning)
+                Warnings.Add(formatter(state, exception));
         }
     }
 }
