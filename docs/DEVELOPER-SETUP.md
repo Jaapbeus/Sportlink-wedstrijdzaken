@@ -197,6 +197,11 @@ Configureer `sensitive-patterns.txt` volgens je lokale omgeving. Dit bestand is 
 
 Bij een update van `.githooks/sensitive-patterns.template.txt`: neem gewijzigde generieke
 patronen over in je bestaande lokale bestand, zonder eigen patronen te overschrijven.
+In iedere werkboom moet het genegeerde `.githooks/sensitive-patterns.txt` bestaan en ten minste
+één geldig lokaal patroon bevatten. Een gitignored bestand wordt niet automatisch naar een nieuwe
+worktree gekopieerd: stel die daar lokaal opnieuw in vanuit de template en controleer
+`git check-ignore .githooks/sensitive-patterns.txt`. Ontbreekt het bestand, herstel de configuratie;
+schakel hooks niet uit en forceer geen commit/push.
 Verifieer de GitHub-installatietokenpatronen met
 `python3 scripts/ci/test-github-token-formats.py` (Gitleaks op PATH vereist). De test gebruikt
 uitsluitend onbruikbare synthetische waarden in geheugen en controleert ook dat teruggezette
@@ -1365,6 +1370,40 @@ gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conc
 ```
 
 ### 9.5 Automatische issue-beurt (Claude Code in GitHub Actions)
+
+De hierna beschreven workflows documenteren de bestaande issue-turn/reviewroute. Protocol v1 in
+`docs/SAMENWERKING-AGENTS.md` staat SHADOW: het is geen vervanging voor deze exacte-SHA-aanvraag,
+reviewpublicatie, huidige labels of Build/Security Gate. Een claim/comment maakt geen lock en de
+shadowregistratie verleent geen bevoegdheid. Expliciet via protocol v1 gerouteerde aanvragen worden
+door CI geweigerd; gebruik shadowregistratie uitsluitend voor de toegewezen lokale proef.
+
+Voor shadowregistratie gebruikt de lokale CLI een absolute statusdatabase buiten de checkout;
+commit of synchroniseer die database niet. Interfacevorm:
+
+```bash
+python3 -m scripts.samenwerking --db <absoluut-pad-buiten-checkout> <command>
+```
+
+De opdrachtgegevens gaan als JSON via stdin. Bekijk actuele `--help` en de CLI voor beschikbare
+commando's en schemas; deze instructie inventeert die niet. Shadow is één lokale registratie, geen
+distributed lock en geen toestemming tot schrijven/mergen.
+
+De onafhankelijke worktree-preflight is:
+
+```bash
+python3 scripts/dev/check-worktree-preflight.py --worktree <absoluut-pad> --branch <branch>
+```
+
+Een integratiebewijs kan worden opgebouwd met:
+
+```bash
+python3 scripts/dev/integration-evidence.py --repo <absoluut-repo-pad> --old-base <sha> --reviewed-head <sha> --new-base <sha> --candidate-head <sha>
+```
+
+De bewijsuitvoer is geen review of mergegoedkeuring. Alleen volledige boomgelijkheid, of precies
+de negen toegestane changelogvelden plus twee gesynchroniseerde versievelden, kan automatisch als
+beperkte gelijkwaardigheid worden aangemerkt; conflicten of andere verschillen vragen handmatige,
+inhoudelijke beoordeling. Onzekerheid is geen gelijkwaardigheid.
 
 Het label `turn: claude-code` op een issue start de workflow `.github/workflows/claude-issue-turn.yml`. Die implementeert het issue op `feature/#<nr>-<slug>` vanaf `develop` en opent een **draft**-PR (#1601). Vraagt Codex om een review, dan beoordeelt de workflow de Codex-PR read-only (#1727).
 

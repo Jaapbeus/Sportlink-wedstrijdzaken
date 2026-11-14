@@ -20,6 +20,6 @@
 # Nulmeting 2026-10-08 op develop (9859f823): root 124770, FunctionApp 16175, keten 140947 bytes.
 # Na de verkleining (#1580) gemeten op de eindtoestand van die PR:
 
-bestand:AGENTS.md                  27588  compacte kern; alle harde regels inline, uitleg in docs/
+bestand:AGENTS.md                  25294  compacte kern; alle harde regels inline, uitleg in docs/ (#1940)
 bestand:FunctionApp/AGENTS.md       2637  compacte kern voor de SQL Server-tier + harde-stopsamenvatting en canary (#1898)
-keten:FunctionApp/AGENTS.md        30219  27580 + 2 + 2637; sessie in FunctionApp/ laadt beide (Codex-grens 32768; conservatieve projectmarge 2549 bytes)
+keten:FunctionApp/AGENTS.md        27933  25294 + 2 + 2637; sessie in FunctionApp/ laadt beide (Codex-grens 32768; conservatieve projectmarge 4835 bytes; #1940)

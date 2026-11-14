@@ -260,6 +260,12 @@ Het versienummer heeft **vier** cijfers: `MAJOR.MINOR.PATCH.REVISION` — met tw
 
 ### Fase 1 — development (commit-voor-commit op feature/* branch)
 
+**Actieve route tot owner-activering.** De bovenstaande changelog- en commitversieregels blijven
+vooralsnog gelden. Het gekozen doel is een stabiel changelogfragment per wijziging en versie/API-
+toewijzing in de seriële integratiestap; dat staat momenteel alleen in SHADOW en vervangt deze
+regels, bestaande CI of exacte-headchecks niet. Zie [SAMENWERKING-AGENTS.md](SAMENWERKING-AGENTS.md)
+voor de activeringspoort.
+
 | Getal | Wanneer omhoog | Reset bij |
 |---|---|---|
 | **MAJOR** | Breaking change voor de gebruiker | — |
@@ -322,6 +328,27 @@ Zet alle drie de velden synchroon op het volledige 4-cijferige nummer in **alle 
 > geen van de andere twee bestanden — en niets waarschuwt ervoor. Dat ging mis bij #859, #952 en
 > #939 (alle drie gecorrigeerd). Controleer bij twijfel het veld `version` van `GET /api/health`; tierherkomst staat achter
 > de admin-poort op `GET /api/beheer/health`.
+
+### Gekozen doelroute: fragmenten en late toewijzing (nog niet actief)
+
+Bij activering krijgt elke releasewaardige wijziging een stabiele fragment-ID met issueverwijzing,
+categorie, gebruikersgerichte tekst en releaseclassificatie. Een deterministische preview toont de
+unreleased inhoud; releasegeneratie verwerkt een ID hoogstens eenmaal. Een backport behoudt ID en
+herkomst zonder de oude releaseaankondiging of versie opnieuw toe te voegen. Interne wijzigingen
+blijven expliciet zonder fragment.
+
+Tijdens integratie naar `develop` wordt de kandidaatversie gereserveerd en gecontroleerd tegen de
+verwachte huidige versie. De drie projectversies en API `info.version` worden samen bijgewerkt;
+OpenAPI JSON wordt uit YAML gegenereerd. Hulpmiddelen moeten preview/validatie zonder schrijfeffect
+ondersteunen en alleen met expliciete apply schrijven. Gedrag, normatieve instructies en API-contracten
+blijven wel in dezelfde implementatie-PR bijgewerkt. Tot de aparte eigenaaractivering: volg de
+bestaande regels bovenaan §6; deze doelroute is geen reden om CHANGELOG of csproj-bumps over te slaan.
+
+De voorbereidende tooling biedt `scripts/release/changelog.py` met `validate`, `preview` en `prepare`
+voor een repository, versie en datum; alleen een expliciete `--apply` schrijft. De versiehelper
+controleert eveneens de verwachte huidige waarde en schrijft alleen met expliciete apply. Raadpleeg
+de actuele `--help` en code voor de precieze interface. Gebruik geen fragmentgenerator voordat de
+owner de doelroute activeert.
 
 Verifieer in één regel dat alle drie gelijk staan:
 

@@ -34,39 +34,44 @@ Vóór elke push naar `main` of productie-deployment: nieuwe resources of gewijz
 
 Benader elke taak als Software Architect (structuur, eenvoud), Solution Architect (Functions/Blazor/SWA/DB/Entra; kosten), CISO (Security Gate leidend; geheimen nooit in code/logs/responses; AVG), Application Tester (`dotnet build` ≠ werking; smoke test vóór oplevering), DPO (persoonsgegevens rechtmatig/veilig/transparant). Meld rolspanning.
 
-## Codex ↔ Claude Code — gescheiden eigenaarschap
+## Codex ↔ Claude Code — eigenaarschap en review
 
-Beide mogen implementeren en reviewen; per taak precies één implementer, de ander is onafhankelijk reviewer (ook voor werkinstructies, skills, automatiseringen).
+Per taak één toegewezen implementer en één onafhankelijke reviewer. Inventariseer vóór wijzigingen
+branch/HEAD/status, worktrees, issues en PR's. Leg issue, unieke sessies, fase, scope, bestanden,
+branch, worktreepad en afhankelijkheden vast. Zoek open én gesloten issues vóór aanmaak. Elke
+implementatie vereist vooraf een issue met precies één `type:`, `priority:` en aantoonbare `source:`
+(+ `discipline: architect` bij architectuurbesluit), met een sterke PR-verwijzing. Eigenaarsopdracht
+wijst de implementer aan; een claimcomment is geen lock. Werk alleen in eigen scope/worktree; laat
+bestaande wijzigingen en andermans branches onaangeroerd.
 
-1. **Inventariseer vóór iedere wijziging**: branch, HEAD, werkboomstatus, `git worktree list --porcelain`, issues, open PR's; zoek open én gesloten issues vóór een nieuw issue. Bestaande wijzigingen zijn van hun eigenaar: nooit resetten of opruimen.
-2. **Leg de opdracht vast bij het issue**: implementer, unieke sessie, reviewer, fase (`implementatie`/`review`/`verwerking`/`eigenaarsbesluit`), scope, verwachte bestanden, branch, absoluut worktreepad, afhankelijkheden.
-De eigenaar wijst de implementer aan; neem geen toegewezen taak over (een directe opdracht aan een agent telt als toewijzing zolang geen claim botst).
-Elke implementatie, ook instructie-/docs-/CI-werk, heeft vooraf een issue met precies één `type:`-, `priority:`- en aantoonbaar `source:`-label (+ `discipline: architect` bij een architectuurbesluit); de PR verwijst sterk (`#nr`) ernaar.
-3. **Parallel:** alleen vooraf gescheiden scopes; hercheck groei/vóór commit/PR (tekstconflict ≠ functionele isolatie). Vul vrije slots met veilige, toegewezen taken (limiet incl. orchestrator); hergebruik voltooide agents. Geen veilige taak? Alleen geautoriseerd status/CI/review.
-4. **Een issuecomment is geen lock**: wijs jezelf nooit aan op een leeg issue. Onduidelijk eigenaarschap: geen overlappende wijzigingen, eerst de eigenaar.
-5. **Wijzig alleen eigen werk**: geen commits, pushes, rebases, cherry-picks of cleanup op andermans branch/worktree; overdracht alleen met vastgelegde nieuwe implementer, sessie en status.
+Onderzoek of review verleent geen implementatiebevoegdheid. Toegewezen werk mag binnen scope code,
+docs, config en scripts wijzigen en een eigen branch committen, pushen en PR openen. `source:` blijft
+behouden; `status:` volgt de labelsprocedure. Een ontbrekende of onuitgevoerde check is geen succes.
+Merge-/deploybevoegdheid blijft apart: opdracht, review, groene CI en labels geven geen toestemming.
+Alleen owner-start `/release` of `/autonoom --release` autoriseert de stappen binnen die procedure;
+zelfmerge- en eigenaarspaden blijven gelden. Na andermans merge: basis bijwerken en hertesten.
 
-**Bevoegdheden.** Binnen een toegewezen taak mogen beide agents code, tests, config, scripts en docs wijzigen, een eigen worktree/branch maken, committen, pushen, PR's openen en issues/labels (`type:`, `priority:`, `discipline:`, `source:`) beheren; `source:` wijzigt niet bij een andere implementer/reviewer, `status:`: zie Labels.
-Een ontbrekende tool of onuitgevoerde check telt nooit als geslaagd; rapporteer wat wel/niet draaide.
-Een onderzoeks- of reviewopdracht (leg probleem/impact, bewijs, stappen, acceptatiecriteria, risico's vast) verleent geen implementatieopdracht.
-**Merge en deployment vereisen aparte eigenaarsautorisatie**: opdracht, groene CI, review of `turn:`-label is geen toestemming; alleen een door de eigenaar gestarte `/release` of `/autonoom --release` autoriseert merges/deploy/tag binnen die procedure, plus de zelfmerge-regel hieronder.
-Werk na andere merges je eigen branch bij vanaf de afgesproken basis en herhaal de verificatie.
+**Reviewoverdracht.** De aanvraag legt één gekoppelde open PR, implementer/reviewer-sessies, de
+exacte aangeboden SHA, scope en fase vast. Bevries die SHA. Reviewer is read-only en meldt bevinding,
+prioriteit, locatie, reden en verificatie. Bij onduidelijke koppeling, gewijzigde SHA, onveilige
+inhoud of toegangsprobleem: niets publiceren/relabelen; escaleer. Teruggave noemt SHA, uitkomst en
+volgende stap; fase is `verwerking`, beurt terug naar implementer, ook bij geen bevindingen. Bewaar
+reviewbewijs en iedere finding/dispositie bij de PR. Details: [docs/SAMENWERKING-AGENTS.md](docs/SAMENWERKING-AGENTS.md).
 
-**Review en `turn:`.** `turn: codex`/`claude-code`/`owner` = wie aan zet is volgens de vastgelegde fase/implementer/reviewer; een label alleen is geen toestemming om te implementeren. Hoogstens één `turn:` (remove+add in één operatie). Na een merge naar `develop`: `status: awaiting-release`, geen `turn:`.
-1. Implementer vraagt review: leg fase `review`, één gekoppelde open PR, implementer, reviewer en aangeboden head-SHA vast; wissel de beurt. Geen pushes op die SHA tot teruggave of annulering. Een directe eigenaarsopdracht voor review mag ook.
-2. Reviewer beoordeelt read-only, eenmaal per SHA, met prioriteit, locatie, reden, benodigde verificatie; geen autofix in de implementer-worktree (een detached review-worktree mag, zonder gedeelde services te verstoren). Reviewcommentaar volgt regel 4a.
-3. Reviewer geeft terug: SHA, uitkomst, volgende beurt; fase `verwerking`, beurt naar de implementer, ook zonder bevindingen. Bij ontbrekende/meerdere PR-koppelingen, gewijzigde SHA, toegangsfout of onveilige inhoud: niets publiceren of relabelen, blokkade aan de eigenaar, raak geen andere issues/PR's aan.
-4. Implementer verwerkt elke bevinding als "opgelost (commit)" of "niet overgenomen (reden)"; nieuwe review = nieuwe SHA én bewuste aanvraag. Hoogstens drie rondes per PR; ontbreekt daarna een schone review op de head, dan fase `eigenaarsbesluit` + `turn: owner`.
+**Zelfmerge naar `develop` (#1690).** De bestaande voorwaarde blijft: actuele-head-review "geen
+bevindingen", alle checks groen (incl. `Build (PR)` en Security Gate), geen eigenaarspunt. Dan mag de
+implementer mergen met `gh pr merge --merge`. Na merge: `status: awaiting-release`, geen `turn:`.
+Eigenaar-only: `main`, Azure/kosten, schema/migraties, instructies/skills, `.github/workflows/`,
+`.githooks/` en root `.gitleaks.toml`; `scripts/ci/` en overige `.github/` volgen zelfmerge-regels.
+CI-bot merget nooit. Reviewruns zijn read-only op expliciete aanvraag; geplande/automatische
+ontwikkelruns vragen aparte opdracht. Maximaal drie inhoudelijke rondes: bevindingen uit ronde drie
+gaan naar implementer voor dispositie en daarna naar eigenaar. Ronde vier vereist aparte ownerscope.
 
-**Zelfmerge na schone review (#1690).** Implementer merget naar `develop` (`gh pr merge --merge`; fase `gemerged`) bij "geen bevindingen" op actuele head, groene checks (incl. aanwezige `Build (PR)` en Security Gate), zonder eigenaarspunt.
-Alleen eigenaar: `main`, Azure-resources/kosten, databaseschema/migraties, werkinstructies/skills, `.github/workflows/`, `.githooks/`, root `.gitleaks.toml`.
-`scripts/ci/` en overige `.github/` volgen gewone zelfmergevoorwaarden.
-Fase `eigenaarsbesluit` + `turn: owner` alleen bij eigenaarspunt/uitzondering.
-CI-bot als implementer: eerstvolgende interactieve sessie controleert en merget; bot merget nooit (`CONTRIBUTING.md`).
-
-Geplande reviewruns hebben alleen reviewbevoegdheid (expliciete aanvraag, fase `review`, andere implementer, onbeoordeelde SHA; alleen reviewcommentaar en teruggave, nooit code, claims, issues, merge of deploy); een teruggegeven implementatiebeurt triggert geen reviewrun, en een automatische of geplande ontwikkelrun vraagt een aparte eigenaarsopdracht.
-Onbewaakt: rondelimiet, zelfmerge-voorwaarden, geplande uitvoering.
-**Reviewbewijs hoort bij de PR** (reviewer, ronde, SHA, uitkomst, afhandeling als PR-comment); een review geldt alleen voor de beoordeelde SHA; na verwerking wisselt de implementer eerst fase/beurt naar zichzelf; nooit twee gelijktijdige reviews op dezelfde SHA.
+**Protocolfase.** Samenwerkings- en integratieverbeteringen zijn SHADOW: ze voegen bewijs toe,
+maar wijzigen geen review-, exacte-head-CI-, merge- of bevoegdheidsregel. Geen tweede dispatcher,
+automatische dispatch of ontwikkel-/mergeactie uit shadowdata. Activering vereist aparte opdracht,
+implementatie/review en aantoonbare acceptatie door alle deelnemers en schrijfpaden. Details in
+de samenwerkingsdocumentatie.
 
 **Gedeelde debugomgeving.** Worktrees isoleren bestanden, niet poorten, databases, Docker, Azurite, PID's, logs of externe integraties; `Start-Debug.ps1` stopt bestaande debugservices.
 Zolang runtime-isolatie ontbreekt gebruikt één vooraf aangewezen sessie de omgeving; leg de runtime-eigenaar vast bij taak en overdracht.
@@ -163,7 +168,7 @@ Onbekend databaseobject? Lees de definitie vóór een `DROP`, nooit `CASCADE`.
 
 ## Versiebeheer en release
 
-- Versie `MAJOR.MINOR.PATCH.REVISION`: `feat` → PATCH, `fix`/`security` → REVISION, `BREAKING CHANGE` → MAJOR, puur intern geen bump; release: MINOR bij ≥ 1 `feat`, anders PATCH. Zet de versie in **alle drie** csproj's (`FunctionApp/fa-dev-sportlink-01.csproj`, `BlazorAdmin/BlazorAdmin.csproj`, `FunctionApp.Postgres/FunctionApp.Postgres.csproj`) en controleer na elke rebase (`VERSIONING.md`).
+- Versie `MAJOR.MINOR.PATCH.REVISION`: `feat` → PATCH, `fix`/`security` → REVISION, breaking → MAJOR, intern geen bump; release: MINOR bij ≥1 `feat`, anders PATCH. Alle drie csproj's synchroon (`docs/VERSIONING.md`). Late versie- en API-toewijzing en changelogfragmenten zijn alleen de gekozen toekomstige route; tot owner-activering blijven huidige changelog-, versie-, API- en CI-regels gelden.
 - `CHANGELOG.md`: elke feature/fix een entry onder `[Unreleased]`; `(#N)` sluit het issue bij de release, dus alleen voor werk in die versie (kruisverwijzing: `zie issue #N`).
 - **Release uitsluitend via `/release`**, door de eigenaar gestart, one-shot, geen agentreview; securitypoort eerst: `/security-review` op `origin/main...origin/develop`, geen open high/critical Dependabot-/code-scanning-alert en geen open secret-scanning-alert, Security Gate + CodeQL groen op develop-HEAD; één HIGH stopt de release; release-PR alleen aantallen per severity (4a).
 `deploy.yml` past migraties zelf toe vóór de code (geen migratie die de vorige code breekt in dezelfde release); demodata in het idempotente seedscript.
