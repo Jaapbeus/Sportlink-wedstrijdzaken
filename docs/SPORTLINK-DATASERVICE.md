@@ -159,3 +159,9 @@ EXEC sp_MergeStgToHis @sourceTable='teams', @targetTable='teams';
 Een geplande uitvoering controleer je in de logs van de Function App (Azure Portal) of lokaal in de
 console. Handmatig starten: `GET http://localhost:7094/api/sync-matches` (SQL Server-tier; vereist een
 Entra ID-Bearer-token met de rol `admin`, sinds #1350 werkt de Azure master key niet meer).
+
+## Sync-logboek per job (#1912)
+
+De beheerpagina volgt de job en de fasen, onafhankelijk van de health-badge. De faseopslag bevat alleen vaste codes, UTC-tijden en getelde resultaten; nooit request-URL's, tokens, namen of vrije foutteksten. Een logschrijffout verandert de synchronisatie-uitkomst niet. De schrijver begrenst voortgangsupdates; begin en einde worden direct aangeboden.
+
+Beide tiers koppelen de regels aan club, job en poging. Een oude worker mag geen actuele poging overschrijven. De bewaartermijn is 30 dagen; opruimen loopt mee met bestaande activiteit, zonder nieuwe timer of Azure-resource. De UI toont een onvolledig programma en overgeslagen reconciliatie expliciet.

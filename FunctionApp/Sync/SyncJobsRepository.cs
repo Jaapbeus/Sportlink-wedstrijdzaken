@@ -10,7 +10,7 @@ namespace SportlinkFunction;
 /// status) als <see cref="SyncJobProcessor"/> (schrijft "running"/"succeeded"/"failed") gebruiken
 /// deze klasse in plaats van eigen SQL.
 /// </summary>
-internal static class SyncJobsRepository
+internal static partial class SyncJobsRepository
 {
     internal static async Task CreateAsync(Guid id, string clubCode, int weekOffsetFrom, int weekOffsetTo)
     {

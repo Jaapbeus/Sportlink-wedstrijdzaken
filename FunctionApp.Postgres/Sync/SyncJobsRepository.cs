@@ -10,7 +10,7 @@ namespace FunctionApp.Postgres.Sync;
 /// status) als <see cref="SyncJobProcessor"/> (schrijft "running"/"succeeded"/"failed") gebruiken
 /// deze klasse in plaats van eigen SQL.
 /// </summary>
-internal static class SyncJobsRepository
+internal static partial class SyncJobsRepository
 {
     // Testnaad (#1716): elke publieke methode delegeert naar een overload met expliciete
     // connectiestring; de standaardpaden gebruiken ongewijzigd PostgresDatabaseConfig.ConnectionString.

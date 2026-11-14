@@ -16,6 +16,8 @@ public sealed record SyncJobStatus(
     DateTime? CompletedAt,
     string? ErrorMessage)
 {
+    public int Attempt { get; init; }
+
     /// <summary>
     /// Leest de huidige rij van <paramref name="reader"/> met de kolomvolgorde id, status,
     /// weekoffsetfrom, weekoffsetto, createdat, startedat, completedat, errormessage. De tijden
@@ -32,6 +34,7 @@ public sealed record SyncJobStatus(
             CreatedAt: DateTime.SpecifyKind(reader.GetDateTime(4), DateTimeKind.Utc),
             StartedAt: reader.IsDBNull(5) ? null : DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc),
             CompletedAt: reader.IsDBNull(6) ? null : DateTime.SpecifyKind(reader.GetDateTime(6), DateTimeKind.Utc),
-            ErrorMessage: reader.IsDBNull(7) ? null : reader.GetString(7));
+            ErrorMessage: reader.IsDBNull(7) ? null : reader.GetString(7))
+        { Attempt = reader.FieldCount > 8 ? reader.GetInt32(8) : 0 };
     }
 }

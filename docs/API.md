@@ -1384,6 +1384,14 @@ curl -X POST http://localhost:7094/api/beheer/sync/trigger \
 JSON → `400` met `{"error":"…"}` (NL-melding). Validatie staat tier-onafhankelijk in
 `Planner.Shared/Sync/SyncTriggerCore.cs`.
 
-Zonder `?jobId=` geeft `/beheer/sync/status` de meest recente job terug. `job` is `null` zolang er
+Zonder `?jobId=` geeft `/beheer/sync/status` de actieve job terug, anders de laatste afgeronde job. `job` is `null` zolang er
 nog nooit een sync is gestart. Mogelijke `job.status`-waarden: `pending`, `running`, `succeeded`,
 `failed` — bij `failed` bevat `errorMessage` de reden.
+
+### Sync-logboek en voortgang (#1912)
+
+`GET /beheer/sync/status` levert aanvullend `activeJob`, `lastCompletedJob`, maximaal tien `jobs` en `logAvailable`. Elke job bevat `attempt` en `phases` voor de actuele poging. Elke fase bevat start/einde in UTC, een vaste status en reden, aantallen `fetched`, `added`, `updated`, `failed` en voortgang `progress`/`total`. Onbekende aantallen zijn `null`; de UI toont geen verzonnen nul. Historische foutteksten worden niet doorgegeven. `partial` maakt een onvolledige run zichtbaar.
+
+`POST /beheer/sync/trigger` kiest atomair per club een actieve job of maakt er één aan. Bij een bestaande job volgt HTTP 202 met `alreadyRunning: true`, dezelfde `jobId` en eventueel `startedAt`/`phase`; alleen de maker zet een bericht op de queue. Bij enqueue-falen volgt een vaste 503-melding. Een nooit geclaimde, oudere pending-rij blijft bewaard maar blokkeert na de bestaande hersteltermijn geen nieuwe handmatige start. Dit verwijdert of herstelt de historische rij niet.
+
+De fasegegevens blijven 30 dagen bewaard op beide tiers; opruimen gebeurt binnen bestaande activiteit, zonder nieuwe timer. Logschrijven is best-effort en gebonden aan club, job en poging. Als de faseopslag niet bereikbaar is, blijft de jobstatus beschikbaar met `logAvailable: false`.

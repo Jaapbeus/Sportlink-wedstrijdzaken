@@ -5095,3 +5095,9 @@ bewaart elke tier een afgeleide kopie van wat de veldplanner toont.
   insert/wijzig/verwijder, nummer blijft behouden, opruimen) en per tier `*ProgrammaPlafondSyncIntegrationTests` voor de sync tegen een
   nagebootste dataservice met het plafond van 100 rijen.
 
+
+## Sync-logboek per job en poging (#1912)
+
+Postgres `public.syncjobphaselog` (migratie 053) en SQL Server `dbo.SyncJobPhaseLog` bewaren dezelfde vaste fasestatussen, reden-codes, UTC-start/einde en aantallen. De sleutel bevat job, poging en fase; een samengestelde verwijzing naar job en ClubCode bewaakt de clubgrens. Postgres activeert RLS zonder policies. Indexen ondersteunen clubgebonden jobvragen en retentie-opruiming. De wijziging is additief en compatibel met de vorige applicatiecode.
+
+`SyncLogPolicy.RetentionDays` is de enige bewaartermijn: 30 dagen. `SyncLogWriter` is gedeeld en best-effort; SQL en parameterbinding blijven per tier. Upserts controleren onder een rijlock de actuele poging en wijzigen een afgeronde fase niet opnieuw. De status-API geeft alleen vaste meldingen door, geen opgeslagen uitzonderingsberichten.
