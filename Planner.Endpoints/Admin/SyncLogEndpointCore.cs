@@ -29,7 +29,11 @@ public static class SyncLogEndpointCore
             try { await enqueue(creation.Job); }
             catch
             {
-                await enqueueFailed();
+                try { await enqueueFailed(); }
+                catch
+                {
+                    return new ObjectResult(new { error = "Synchronisatie kon niet worden ingepland. De status is tijdelijk onzeker; probeer het later opnieuw." }) { StatusCode = 503 };
+                }
                 return new ObjectResult(new { error = "Synchronisatie kon niet worden ingepland. Probeer opnieuw." }) { StatusCode = 503 };
             }
         }
@@ -80,7 +84,7 @@ public static class SyncLogEndpointCore
         var partial = phases.Any(e => e.Status == "partial" ||
             (e.Status == "skipped" && e.ReasonCode != "not_applicable")) ||
             (phases.Any(e => e.Status == "failed") && phases.Any(e => e.Status == "succeeded"));
-        var status = job.CompletedAt.HasValue && partial ? "partial" : job.Status;
+        var status = job.Status == "succeeded" && job.CompletedAt.HasValue && partial ? "partial" : job.Status;
         return new
         {
             id = job.Id, status, weekOffsetFrom = job.WeekOffsetFrom, weekOffsetTo = job.WeekOffsetTo,

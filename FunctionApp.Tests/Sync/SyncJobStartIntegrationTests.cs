@@ -17,8 +17,8 @@ public class SqlServerSyncJobsRepositoryIntegrationTests_Start
         await DeleteAsync(club);
         try
         {
-            var choices = await Task.WhenAll(Enumerable.Range(0, 6).Select(_ =>
-                SyncJobsRepository.GetOrCreateActiveAsync(ConnectionString, Guid.NewGuid(), club, -1, 4)));
+            var choices = await Task.WhenAll(Enumerable.Range(0, 6).Select(i =>
+                SyncJobsRepository.GetOrCreateActiveAsync(ConnectionString, Guid.NewGuid(), i % 2 == 0 ? club : club.ToLowerInvariant(), -1, 4)));
             choices.Count(c => c.Created).Should().Be(1);
             choices.Select(c => c.Job.Id).Distinct().Should().ContainSingle();
             var active = await SyncJobsRepository.GetActiveAsync(ConnectionString, club);

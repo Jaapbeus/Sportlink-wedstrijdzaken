@@ -17,7 +17,7 @@ internal static partial class SyncJobsRepository
             "@Resource=@resource,@LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=10000; " +
             "IF @result < 0 THROW 51000, 'Sync-start tijdelijk bezet.', 1;", connection, transaction))
         {
-            gate.Parameters.AddWithValue("@resource", "sync-start:" + clubCode);
+            gate.Parameters.AddWithValue("@resource", "sync-start");
             await gate.ExecuteNonQueryAsync();
         }
         var active = await ReadActiveAsync(connection, transaction, clubCode);

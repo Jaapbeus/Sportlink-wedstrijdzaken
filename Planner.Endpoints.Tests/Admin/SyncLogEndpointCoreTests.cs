@@ -55,6 +55,28 @@ public class SyncLogEndpointCoreTests
     }
 
     [Fact]
+    public async Task EnqueueAndCompensationFailure_ReturnsSafeUnavailableResponse()
+    {
+        var result = (ObjectResult)await SyncLogEndpointCore.TriggerAsync(new(Job("pending"), true),
+            _ => throw new InvalidOperationException("private queue"),
+            () => throw new InvalidOperationException("private database"), () => Task.FromResult<string?>(null));
+        result.StatusCode.Should().Be(503);
+        Json(result.Value!).ToString().Should().Contain("tijdelijk onzeker").And.NotContain("private");
+    }
+
+    [Theory]
+    [InlineData("failed", "failed")]
+    [InlineData("succeeded", "partial")]
+    public void PartialPhase_DoesNotHideFailedJob(string terminalStatus, string expected)
+    {
+        var job = Job(terminalStatus, -10);
+        var entry = new SyncLogEntry(job.Id, 1, "teams", Now.AddMinutes(-10), Now.AddMinutes(-9),
+            "partial", 3, 1, 0, 1, null, null, "partial_failure");
+        var json = Json(SyncLogEndpointCore.Status(Now, "schedule", new[] { job }, new[] { entry }, null, Now, true));
+        json.GetProperty("lastCompletedJob").GetProperty("status").GetString().Should().Be(expected);
+    }
+
+    [Fact]
     public void Status_SeparatesActiveAndCompleted_DoesNotExposeStoredError()
     {
         var active = Job("running", -1);
