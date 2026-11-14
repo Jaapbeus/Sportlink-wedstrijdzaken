@@ -426,7 +426,8 @@ naamruimte, interfaces, setters en read/write-nullability. Tests: `InkomendBeric
 mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice14.tsv scripts/ci/mutatiebewijs-1716.sh`.
 Deze extractie verwijdert zes dubbele velddeclaraties, maar verlaagt de gemeten tierduplicatie niet:
 `BerichtModels.cs` en `EmailModels.cs` hebben verschillende bestandsnamen en waren geen gemeten paar.
-De geïntegreerde meting blijft 3740 tierregels en 536 interne regels; de plafonds en de mapping blijven gelijk.
+Na de voorafgaande verlaging bij #1934 bedraagt de geïntegreerde meting 3736 tierregels en 536 interne regels.
+De plafonds en de mapping blijven voor deze extractie gelijk.
 
 ---
 
