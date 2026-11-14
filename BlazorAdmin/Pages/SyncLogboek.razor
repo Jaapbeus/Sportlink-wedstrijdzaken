@@ -1,0 +1,97 @@
+@using BlazorAdmin.Models
+
+@if (Status?.ActiveJob is { } activeJob)
+{
+    <section class="mt-3" id="sync-active-job" aria-live="polite">
+        <h6>@(StatusOnzeker ? "Laatst bekende actieve synchronisatie" : "Actieve synchronisatie")</h6>
+        <p class="mb-2">
+            <span class="badge @Instellingen.SyncStatusKleur(activeJob.Status)">@Instellingen.SyncStatusTekst(activeJob.Status)</span>
+            gestart @(Instellingen.NaarLokaleTijd(activeJob.StartedAt ?? activeJob.CreatedAt).ToString("dd-MM-yyyy HH:mm"))
+            · poging @activeJob.Attempt
+        </p>
+        <p class="small mb-2" id="sync-phase-position" aria-live="polite">@(StatusOnzeker ? "Laatst bekende fasepositie: " : "")@FaseVoortgang(activeJob, Status?.LogAvailable != false)</p>
+        @if (activeJob.Phases?.Count > 0)
+        {
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead><tr><th>Fase</th><th>Status</th><th>Gestart</th><th>Duur</th><th>Voortgang</th><th>Resultaat</th></tr></thead>
+                    <tbody>
+                        @foreach (var phase in activeJob.Phases ?? [])
+                        {
+                            <tr>
+                                <td>@Instellingen.SyncFaseTekst(phase.Phase)</td>
+                                <td><span class="badge @Instellingen.SyncStatusKleur(phase.Status)">@Instellingen.SyncStatusTekst(phase.Status)</span></td>
+                                <td>@Instellingen.NaarLokaleTijd(phase.StartedAt).ToString("dd-MM-yyyy HH:mm")</td>
+                                <td>@(Instellingen.ToonDuur(phase.StartedAt, phase.CompletedAt) ?? "Bezig")</td>
+                                <td>@(phase.Progress.HasValue && phase.Total.HasValue ? $"{phase.Progress}/{phase.Total}" : "—")</td>
+                                <td>@Instellingen.SyncFaseResultaat(phase)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
+            <p class="text-muted small">De eerste fase is nog niet gestart.</p>
+        }
+    </section>
+}
+@if (Status?.LogAvailable == false)
+{
+    <p class="alert alert-warning mt-3 mb-0" role="status" id="sync-log-unavailable">
+        Fasegegevens zijn tijdelijk niet beschikbaar. De jobstatus blijft wel zichtbaar.
+    </p>
+}
+@if (Status?.LastCompletedJob is { } lastCompleted)
+{
+    <p class="small text-muted mt-3 mb-0" id="sync-last-completed">
+        <strong>Laatste afgeronde synchronisatie:</strong>
+        <span class="badge @Instellingen.SyncStatusKleur(lastCompleted.Status)">@Instellingen.SyncStatusTekst(lastCompleted.Status)</span>
+        <span>gestart @Instellingen.NaarLokaleTijd(lastCompleted.StartedAt ?? lastCompleted.CreatedAt).ToString("dd-MM-yyyy HH:mm")</span>
+        @if (lastCompleted.CompletedAt.HasValue)
+        {
+            <span>· afgerond @Instellingen.NaarLokaleTijd(lastCompleted.CompletedAt.Value).ToString("dd-MM-yyyy HH:mm")</span>
+            <span>· @Instellingen.ToonDuur(lastCompleted.StartedAt ?? lastCompleted.CreatedAt, lastCompleted.CompletedAt)</span>
+        }
+    </p>
+}
+@if (Status?.Jobs is { Count: > 0 } jobs)
+{
+    <details class="mt-3" id="sync-job-history">
+        <summary class="fw-semibold">Recente synchronisaties (@Math.Min(jobs.Count, 10))</summary>
+        <div class="table-responsive mt-2">
+            <table class="table table-sm align-middle">
+                <thead><tr><th>Gestart</th><th>Periode</th><th>Status</th><th>Duur</th><th>Fasen</th></tr></thead>
+                <tbody>
+                    @foreach (var job in jobs.OrderByDescending(j => j.CreatedAt).Take(10))
+                    {
+                        <tr>
+                            <td>@Instellingen.NaarLokaleTijd(job.StartedAt ?? job.CreatedAt).ToString("dd-MM-yyyy HH:mm")</td>
+                            <td>@job.WeekOffsetFrom–@job.WeekOffsetTo</td>
+                            <td><span class="badge @Instellingen.SyncStatusKleur(job.Status)">@Instellingen.SyncStatusTekst(job.Status)</span></td>
+                            <td>@(Instellingen.ToonDuur(job.StartedAt ?? job.CreatedAt, job.CompletedAt) ?? "Bezig")</td>
+                            <td>
+                                <ul class="list-unstyled mb-0">
+                                    @foreach (var phase in job.Phases ?? [])
+                                    {
+                                        <li>
+                                            <span class="badge @Instellingen.SyncStatusKleur(phase.Status)">@Instellingen.SyncStatusTekst(phase.Status)</span>
+                                            @Instellingen.SyncFaseTekst(phase.Phase): @Instellingen.SyncFaseResultaat(phase)
+                                            <span class="text-muted">· @Instellingen.NaarLokaleTijd(phase.StartedAt).ToString("dd-MM-yyyy HH:mm") · @(Instellingen.ToonDuur(phase.StartedAt, phase.CompletedAt) ?? "Bezig")</span>
+                                        </li>
+                                    }
+                                </ul>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </details>
+}
+
+@if (Status?.Jobs?.Any(job => job.Phases?.Any(phase => phase.Phase == "programma" && (phase.Added.HasValue || phase.Updated.HasValue)) == true) == true)
+{
+    <p class="small text-muted mt-2">Toegevoegd en bijgewerkt bij Programma omvatten ook de uitslagen.</p>
+}

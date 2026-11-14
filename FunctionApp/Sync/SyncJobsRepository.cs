@@ -10,7 +10,7 @@ namespace SportlinkFunction;
 /// status) als <see cref="SyncJobProcessor"/> (schrijft "running"/"succeeded"/"failed") gebruiken
 /// deze klasse in plaats van eigen SQL.
 /// </summary>
-internal static class SyncJobsRepository
+internal static partial class SyncJobsRepository
 {
     internal static async Task CreateAsync(Guid id, string clubCode, int weekOffsetFrom, int weekOffsetTo)
     {
@@ -38,9 +38,11 @@ internal static class SyncJobsRepository
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             "UPDATE [dbo].[SyncJobs] SET [Status] = 'running', [StartedAt] = GETUTCDATE(), [Attempt] = [Attempt] + 1 " +
-            "OUTPUT INSERTED.[Attempt] WHERE [Id] = @Id AND [Status] = 'pending'",
+            "OUTPUT INSERTED.[Attempt] WHERE [Id] = @Id AND [Status] = 'pending' " +
+            "AND ([Attempt] > 0 OR [CreatedAt] > @Cutoff)",
             connection);
         command.Parameters.AddWithValue("@Id", id);
+        command.Parameters.Add("@Cutoff", System.Data.SqlDbType.DateTime2).Value = SyncJobRecoveryPolicy.StaleCutoff(DateTime.UtcNow);
         return SyncJobTransitions.ReadClaimedAttempt(await command.ExecuteScalarAsync());
     }
 
@@ -52,7 +54,17 @@ internal static class SyncJobsRepository
     internal static Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage, int attempt)
         => MarkCompletedAsync(SystemUtilities.DatabaseConfig.ConnectionString, id, succeeded, errorMessage, attempt);
 
-    internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage, int? attempt = null)
+    internal static Task MarkOutcomeAsync(Guid id, SyncUitkomst outcome, int attempt, bool incompletePhases = false)
+        => MarkOutcomeAsync(SystemUtilities.DatabaseConfig.ConnectionString, id, outcome, attempt, incompletePhases);
+
+    internal static Task MarkOutcomeAsync(string connectionString, Guid id, SyncUitkomst outcome, int attempt, bool incompletePhases = false)
+        => MarkTerminalAsync(connectionString, id, SyncJobTransitions.CompletionStatus(outcome, incompletePhases),
+            outcome.GedeeltelijkMislukt ? outcome.JobFoutmelding() : null, attempt);
+
+    internal static Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage, int? attempt = null)
+        => MarkTerminalAsync(connectionString, id, SyncJobTransitions.CompletionStatus(succeeded), errorMessage, attempt);
+
+    private static async Task MarkTerminalAsync(string connectionString, Guid id, string status, string? errorMessage, int? attempt)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
@@ -62,7 +74,7 @@ internal static class SyncJobsRepository
             connection);
         command.Parameters.AddWithValue("@Id", id);
         command.Parameters.AddWithValue("@Attempt", (object?)attempt ?? DBNull.Value);
-        command.Parameters.AddWithValue("@Status", SyncJobTransitions.CompletionStatus(succeeded));
+        command.Parameters.AddWithValue("@Status", status);
         command.Parameters.AddWithValue("@ErrorMessage", (object?)SyncJobTransitions.TruncateError(errorMessage) ?? DBNull.Value);
         await command.ExecuteNonQueryAsync();
     }
@@ -76,18 +88,20 @@ internal static class SyncJobsRepository
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
-        // Een UPDATE, dus atomair: uitgeput (running, poging >= max) wordt failed, de rest pending.
+        // Eén UPDATE: uitgeputte pogingen en verlopen eerste berichten eindigen atomair; alleen pending wordt herplaatst.
         await using var command = new SqlCommand(
             "UPDATE [dbo].[SyncJobs] SET " +
-            "[Status] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN 'failed' ELSE 'pending' END, " +
-            "[CompletedAt] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN GETUTCDATE() ELSE [CompletedAt] END, " +
-            "[ErrorMessage] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN @Message ELSE [ErrorMessage] END, " +
-            "[StartedAt] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN [StartedAt] ELSE GETUTCDATE() END " +
+            "[Status] = CASE WHEN (([Status] = 'running' AND [Attempt] >= @Max) OR ([Status] = 'pending' AND [Attempt] = 0)) THEN 'failed' ELSE 'pending' END, " +
+            "[CompletedAt] = CASE WHEN (([Status] = 'running' AND [Attempt] >= @Max) OR ([Status] = 'pending' AND [Attempt] = 0)) THEN GETUTCDATE() ELSE [CompletedAt] END, " +
+            "[ErrorMessage] = CASE WHEN (([Status] = 'running' AND [Attempt] >= @Max) OR ([Status] = 'pending' AND [Attempt] = 0)) THEN CASE WHEN [Attempt] = 0 THEN @NeverStarted ELSE @Message END ELSE [ErrorMessage] END, " +
+            "[StartedAt] = CASE WHEN (([Status] = 'running' AND [Attempt] >= @Max) OR ([Status] = 'pending' AND [Attempt] = 0)) THEN [StartedAt] ELSE GETUTCDATE() END " +
             "OUTPUT INSERTED.[Id], INSERTED.[ClubCode], INSERTED.[WeekOffsetFrom], INSERTED.[WeekOffsetTo], INSERTED.[Status] " +
-            "WHERE [Status] IN ('running', 'pending') AND ([Status] = 'running' OR [Attempt] > 0) AND [StartedAt] <= @Cutoff",
+            "WHERE (([Status] = 'running' OR ([Status] = 'pending' AND [Attempt] > 0)) AND [StartedAt] <= @Cutoff) " +
+            "OR ([Status] = 'pending' AND [Attempt] = 0 AND [CreatedAt] <= @Cutoff)",
             connection);
         command.Parameters.AddWithValue("@Max", SyncJobRecoveryPolicy.MaxAttempts);
         command.Parameters.AddWithValue("@Message", SyncJobRecoveryPolicy.ExhaustedMessage);
+        command.Parameters.AddWithValue("@NeverStarted", SyncJobRecoveryPolicy.NeverStartedMessage);
         command.Parameters.AddWithValue("@Cutoff", cutoffUtc);
         await using var reader = await command.ExecuteReaderAsync();
         return await SyncJobRecoveryCore.ReadBatchAsync(reader);

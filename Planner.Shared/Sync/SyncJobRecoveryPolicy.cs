@@ -9,7 +9,7 @@ public enum SyncJobRecoveryAction
     /// <summary>Opnieuw aanbieden: terug naar "pending" en een nieuw bericht op de queue.</summary>
     Retry,
 
-    /// <summary>Opgeven: de pogingen zijn op, de job wordt "failed" met een melding.</summary>
+    /// <summary>Opgeven: pogingen uitgeput of nooit tijdig gestart; "failed" met een vaste melding.</summary>
     GiveUp,
 }
 
@@ -36,6 +36,10 @@ public static class SyncJobRecoveryPolicy
     public const string ExhaustedMessage =
         "Sync onderbroken en na 3 pogingen opgegeven; start de synchronisatie handmatig opnieuw.";
 
+    /// <summary>Allowlisted melding voor een eerste bericht dat niet tijdig is verwerkt.</summary>
+    public const string NeverStartedMessage =
+        "Sync niet gestart binnen de hersteltermijn; start de synchronisatie handmatig opnieuw.";
+
     /// <summary>Een rij met <c>StartedAt</c> op of vóór dit moment is onderbroken.</summary>
     public static DateTime StaleCutoff(DateTime utcNow) => utcNow - StaleAfter;
 
@@ -48,9 +52,15 @@ public static class SyncJobRecoveryPolicy
     /// met <paramref name="attempt"/> &gt; 0 is <paramref name="startedAtUtc"/> het moment van de
     /// laatste herplaatsing: raakte het queuebericht kwijt, dan wordt het na dezelfde termijn
     /// opnieuw aangeboden zonder een extra poging te verbruiken (de claim telt de poging).
+    /// Bij poging 0 bepaalt uitsluitend createdAtUtc of de eerste wachttijd verstreken is;
+    /// zo ja, dan eindigt de job zonder herplaatsing. Zonder aanmaaktijd volgt geen herstel.
     /// </summary>
-    public static SyncJobRecoveryAction Decide(string status, int attempt, DateTime? startedAtUtc, DateTime utcNow)
+    public static SyncJobRecoveryAction Decide(string status, int attempt, DateTime? startedAtUtc, DateTime utcNow, DateTime? createdAtUtc = null)
     {
+        // Een verlopen eerste bericht wordt niet opnieuw aangeboden (#1912, besluit A).
+        if (status == "pending" && attempt == 0 && IsInterrupted(createdAtUtc, utcNow))
+            return SyncJobRecoveryAction.GiveUp;
+
         if (!IsInterrupted(startedAtUtc, utcNow))
             return SyncJobRecoveryAction.None;
 

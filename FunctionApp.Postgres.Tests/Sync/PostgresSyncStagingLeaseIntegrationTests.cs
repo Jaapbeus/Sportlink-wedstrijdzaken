@@ -15,6 +15,26 @@ public sealed class PostgresSyncStagingLeaseIntegrationTests
     private static string ConnectionString => PostgresTestEnvironment.ConnectionStringOrNull!;
 
     [PostgresFact]
+    public async Task TrackedStart_LeaseCollision_DoesNotBuildWindowOrCreateFailedJob()
+    {
+        var clubCode = TestClubCode();
+        var seasonTouched = false;
+        var windowBuilt = false;
+        await using var lease = await PostgresSyncStagingLease.TryAcquireAsync(ConnectionString);
+        lease.Should().NotBeNull();
+
+        var run = () => SyncFunction.RunTrackedSyncAsync(
+            () => { windowBuilt = true; return Task.FromResult((0, 0)); },
+            NullLogger.Instance, clubCode,
+            () => { seasonTouched = true; return Task.CompletedTask; },
+            ConnectionString);
+        await run.Should().ThrowAsync<SyncAlreadyRunningException>();
+        seasonTouched.Should().BeFalse();
+        windowBuilt.Should().BeFalse();
+        (await SyncJobsRepository.GetRecentAsync(ConnectionString, clubCode, null)).Should().BeEmpty();
+    }
+
+    [PostgresFact]
     public async Task RunSyncAsync_GelijktijdigeRunsVoorVerschillendeClubs_WordtGlobaalGeserialiseerd()
     {
         var clubA = TestClubCode();

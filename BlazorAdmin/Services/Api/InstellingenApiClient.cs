@@ -32,10 +32,10 @@ public sealed class InstellingenApiClient
 
     // ── Sync ──
 
-    public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync(Guid? jobId = null)
+    public async Task<ApiResult<SyncStatusDto>> GetSyncStatusAsync(Guid? jobId = null, CancellationToken cancellationToken = default)
         => await _t.GetAsync<SyncStatusDto>(jobId.HasValue
             ? $"api/beheer/sync/status?jobId={jobId}"
-            : "api/beheer/sync/status");
+            : "api/beheer/sync/status", cancellationToken);
 
     /// <summary>
     /// Start een sync. Zonder argumenten het standaardvenster; met <paramref name="seizoenStartjaar"/>
