@@ -42,6 +42,8 @@ public partial class Instellingen : ClubSelectorPageBase
     private string? _syncResult;
     private CancellationTokenSource? _syncPollCancellation;
     private int _syncPollGeneration;
+    private int _syncOperationGeneration;
+    private bool _disposed;
     private int _syncPollIntervalMilliseconds = 3000;
     private Task? _syncPollTask;
     private bool _toonResetBevestiging;
@@ -66,6 +68,7 @@ public partial class Instellingen : ClubSelectorPageBase
         StopSyncPolling();
         _syncing = false;
         _status = null;
+        _syncResult = null;
         _verwijderAdresBevestiging.Annuleer();
         await LoadAsync();
     }
@@ -74,6 +77,8 @@ public partial class Instellingen : ClubSelectorPageBase
     {
         var clubCode = ClubSelector.SelectedClubCode;
         var generatie = _loadGuard.Start(clubCode);
+        var syncGeneration = ++_syncOperationGeneration;
+        StopSyncPolling();
         errorMessage = null;
         settings = null;
         _syncLoading = true;
@@ -96,7 +101,7 @@ public partial class Instellingen : ClubSelectorPageBase
         var reviewTask  = EmailApi.GetEmailLogAsync(status: "Review", limit: EmailReviewMax);
 
         await Task.WhenAll(settingsTask, syncTask, emailTask, reviewTask);
-        if (!IsActueleLading(generatie, clubCode)) return;
+        if (!IsActueleLading(generatie, clubCode) || !IsActueleSyncOperatie(syncGeneration, clubCode)) return;
 
         var reviewResult = await reviewTask;
         _reviewLog = reviewResult.Success ? reviewResult.Data : null;
@@ -142,8 +147,10 @@ public partial class Instellingen : ClubSelectorPageBase
     }
 
     private bool IsActueleLading(int generatie, string? clubCode) =>
-        _loadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode;
+        !_disposed && _loadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode;
 
+    private bool IsActueleSyncOperatie(int generatie, string? clubCode) =>
+        !_disposed && generatie == _syncOperationGeneration && !IsClubGewisseld(clubCode);
     private static int HuidigSeizoenStartjaar() => SeizoenKeuze.HuidigStartjaar(DateTime.Today);
 
     private IEnumerable<int> ResetSeizoenOpties => SeizoenKeuze.ResetOpties(DateTime.Today);
@@ -166,12 +173,14 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task StartSyncAsync(int? seizoenStartjaar)
     {
+        if (_disposed || _syncing) return;
         var clubCode = ClubSelector.SelectedClubCode;
+        var generation = ++_syncOperationGeneration;
         StopSyncPolling();
         _syncing = true;
         _syncResult = null;
         var r = await InstellingenApi.TriggerSyncAsync(seizoenStartjaar);
-        if (IsClubGewisseld(clubCode)) return;
+        if (!IsActueleSyncOperatie(generation, clubCode)) return;
         if (!r.Success || r.Data?.JobId is not Guid jobId)
         {
             _syncResult = "Synchronisatie starten is niet gelukt. Probeer het later opnieuw.";
@@ -182,7 +191,7 @@ public partial class Instellingen : ClubSelectorPageBase
             ? "Er loopt al een synchronisatie. De actuele voortgang wordt hieronder getoond."
             : $"Synchronisatiejob aangemaakt om {NaarLokaleTijd(r.Data.Tijdstip):HH:mm}.";
         var statusResult = await InstellingenApi.GetSyncStatusAsync(jobId);
-        if (IsClubGewisseld(clubCode)) return;
+        if (!IsActueleSyncOperatie(generation, clubCode)) return;
         if (statusResult.Success && statusResult.Data != null)
         {
             _status = statusResult.Data;
@@ -192,7 +201,8 @@ public partial class Instellingen : ClubSelectorPageBase
         }
         else
         {
-            StartSyncPolling(clubCode);
+            _syncing = false;
+            _syncResult = "Synchronisatie gestart. Voortgang is tijdelijk niet beschikbaar; ververs de pagina om opnieuw te proberen.";
         }
         StateHasChanged();
     }
@@ -217,11 +227,13 @@ public partial class Instellingen : ClubSelectorPageBase
                 if (cancellationToken.IsCancellationRequested || generation != _syncPollGeneration || IsClubGewisseld(clubCode)) return;
                 if (!result.Success || result.Data == null) continue;
 
-                _status = result.Data;
+                var status = result.Data;
+                _status = status;
                 await InvokeAsync(StateHasChanged);
-                if (IsActieveSync(_status.ActiveJob)) continue;
+                if (cancellationToken.IsCancellationRequested || generation != _syncPollGeneration || IsClubGewisseld(clubCode) || _disposed) return;
+                if (IsActieveSync(status.ActiveJob)) continue;
 
-                FinishSync(_status.LastCompletedJob ?? _status.Job);
+                FinishSync(status.LastCompletedJob ?? status.Job);
                 StopSyncPolling();
                 await InvokeAsync(StateHasChanged);
                 return;
@@ -260,85 +272,16 @@ public partial class Instellingen : ClubSelectorPageBase
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) StopSyncPolling();
+        if (disposing && !_disposed)
+        {
+            _disposed = true;
+            _syncing = false;
+            _syncOperationGeneration++;
+            _loadGuard.Start(null);
+            _uitgeslotenEmailsLoadGuard.Start(null);
+            StopSyncPolling();
+        }
         base.Dispose(disposing);
-    }
-
-    private static DateTime NaarLokaleTijd(DateTime tijdstip)
-    {
-        var utc = tijdstip.Kind == DateTimeKind.Unspecified
-            ? DateTime.SpecifyKind(tijdstip, DateTimeKind.Utc)
-            : tijdstip.ToUniversalTime();
-        return utc.ToLocalTime();
-    }
-
-    private static string? ToonDuur(DateTime gestart, DateTime? afgerond)
-    {
-        if (afgerond == null) return null;
-        var duur = afgerond.Value - gestart;
-        return duur.TotalMinutes >= 1 ? $"{(int)duur.TotalMinutes} min {duur.Seconds} sec" : $"{Math.Max(0, duur.Seconds)} sec";
-    }
-
-    private static string SyncStatusTekst(string? status) => status switch
-    {
-        "pending" => "Wacht",
-        "running" => "Bezig",
-        "succeeded" => "Gelukt",
-        "partial" => "Deels mislukt",
-        "failed" => "Mislukt",
-        "skipped" => "Overgeslagen",
-        _ => "Onbekend"
-    };
-
-    private static string SyncStatusKleur(string? status) => status switch
-    {
-        "succeeded" => "bg-success",
-        "running" => "bg-primary",
-        "pending" => "bg-secondary",
-        "partial" => "bg-warning text-dark",
-        "failed" => "bg-danger",
-        "skipped" => "bg-light text-dark",
-        _ => "bg-secondary"
-    };
-
-    private static string SyncFaseTekst(string? fase) => fase switch
-    {
-        "teams" => "Teams",
-        "programma" => "Programma",
-        "uitslagen" => "Uitslagen",
-        "matchdetails" => "Wedstrijddetails",
-        "planner-view" => "Plannerweergave",
-        "canonicalisatie" => "Teamcanonicalisatie",
-        "reconciliatie" => "Reconciliatie",
-        "configuratie" => "Configuratie",
-        _ => "Synchronisatiefase"
-    };
-
-    private static string? SyncRedenTekst(string? reden) => reden switch
-    {
-        "operation_failed" => "De fase kon niet worden uitgevoerd.",
-        "partial_failure" => "Een deel van de gegevens kon niet worden verwerkt.",
-        "configuration_missing" => "Vereiste configuratie ontbreekt.",
-        "egress_blocked" => "Externe verbinding is geblokkeerd.",
-        "programme_truncated" => "Het programma is niet volledig opgehaald.",
-        "reconciliation_skipped" => "Reconciliatie is overgeslagen.",
-        "source_failed" => "De brongegevens konden niet worden opgehaald.",
-        "not_applicable" => "Deze fase is voor deze databasetier niet van toepassing.",
-        _ => null
-    };
-
-    private static string SyncFaseResultaat(SyncLogEntryDto phase)
-    {
-        var aantallen = new List<string>();
-        if (phase.Fetched.HasValue) aantallen.Add($"opgehaald {phase.Fetched}");
-        if (phase.Added.HasValue) aantallen.Add($"toegevoegd {phase.Added}");
-        if (phase.Updated.HasValue) aantallen.Add($"bijgewerkt {phase.Updated}");
-        if (phase.Failed.HasValue) aantallen.Add($"mislukt {phase.Failed}");
-
-        var resultaat = string.Join(" · ", aantallen);
-        var reden = SyncRedenTekst(phase.ReasonCode);
-        if (string.IsNullOrWhiteSpace(resultaat)) return reden ?? "—";
-        return reden == null ? resultaat : $"{resultaat} · {reden}";
     }
 
     private static string CronNaarNederlands(string? cron)
@@ -349,7 +292,7 @@ public partial class Instellingen : ClubSelectorPageBase
         var clubCode = ClubSelector.SelectedClubCode;
         var generatie = _uitgeslotenEmailsLoadGuard.Start(clubCode);
         var r = await EmailApi.GetUitgeslotenEmailsAsync();
-        if (!_uitgeslotenEmailsLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
+        if (_disposed || !_uitgeslotenEmailsLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
         uitgeslotenEmails = r.Success ? r.Data ?? new() : new();
     }
 

@@ -12,7 +12,7 @@ namespace BlazorAdmin.Tests;
 public sealed class InstellingenSyncLogTests
 {
     [Fact]
-    public async Task PartialFailure_ShowsSafeReasonAndReadableOutcome()
+    public void PartialFailure_ShowsSafeReasonAndReadableOutcome()
     {
         var page = new Instellingen();
         var job = new SyncJobDto { Status = "partial" };
@@ -67,10 +67,100 @@ public sealed class InstellingenSyncLogTests
         cache.Dispose();
     }
 
+    [Fact]
+    public async Task InitialLoad_FindsActiveJobAndLateOldClubResponseCannotReplaceNewClubStatus()
+    {
+        var handler = new LatePollHandler();
+        var page = MaakPagina(handler, out var club, out var cache);
+        await club.SelectClubAsync("AAA", "Club A");
+
+        await CallAsync(page, "LoadAsync");
+        Assert.True(Get<bool>(page, "_syncing"));
+        Assert.Equal("health-A", Get<SyncStatusDto>(page, "_status")!.Status);
+        await handler.LatePollStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var oldPoll = Get<Task>(page, "_syncPollTask");
+
+        await club.SelectClubAsync("BBB", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+        Assert.Equal("health-B", Get<SyncStatusDto>(page, "_status")!.Status);
+        Assert.False(Get<bool>(page, "_syncing"));
+
+        handler.ReleaseLatePoll();
+        await oldPoll.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("health-B", Get<SyncStatusDto>(page, "_status")!.Status);
+        Assert.True(handler.LatePollToken.IsCancellationRequested);
+        Assert.False(Get<bool>(page, "_syncing"));
+        cache.Dispose();
+    }
+
+    [Fact]
+    public async Task Dispose_WhileTriggerPending_DoesNotLoadStatusOrStartPolling()
+    {
+        var handler = new LateTriggerHandler();
+        var page = MaakPagina(handler, out var club, out var cache);
+        await club.SelectClubAsync("AAA", "Club A");
+
+        var trigger = CallAsync(page, "StartSyncAsync", (object?)null);
+        await handler.TriggerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        page.Dispose();
+        handler.ReleaseTrigger();
+        await trigger.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(0, handler.StatusRequests);
+        Assert.Null(Get<Task?>(page, "_syncPollTask"));
+        Assert.Null(Get<SyncStatusDto?>(page, "_status"));
+        Assert.False(Get<bool>(page, "_syncing"));
+        cache.Dispose();
+    }
+
+    [Fact]
+    public async Task ClubChange_AtoBtoA_RejectsOldTriggerCompletion()
+    {
+        var handler = new LateTriggerHandler();
+        var page = MaakPagina(handler, out var club, out var cache);
+        await club.SelectClubAsync("AAA", "Club A");
+
+        var oldTrigger = CallAsync(page, "StartSyncAsync", (object?)null);
+        await handler.TriggerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await club.SelectClubAsync("BBB", "Club B");
+        await CallAsync(page, "OnClubChangedAsync");
+        await club.SelectClubAsync("AAA", "Club A");
+        await CallAsync(page, "OnClubChangedAsync");
+        Assert.Equal("new-A", Get<SyncStatusDto>(page, "_status")!.Status);
+        var statusRequests = handler.StatusRequests;
+
+        handler.ReleaseTrigger();
+        await oldTrigger.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(statusRequests, handler.StatusRequests);
+        Assert.Equal("new-A", Get<SyncStatusDto>(page, "_status")!.Status);
+        Assert.Null(Get<Task?>(page, "_syncPollTask"));
+        Assert.False(Get<bool>(page, "_syncing"));
+        cache.Dispose();
+    }
+
+    [Fact]
+    public async Task Dispose_WhileInitialStatusPending_DoesNotApplyLateLoad()
+    {
+        var handler = new LateInitialStatusHandler();
+        var page = MaakPagina(handler, out var club, out var cache);
+        await club.SelectClubAsync("AAA", "Club A");
+
+        var load = CallAsync(page, "LoadAsync");
+        await handler.StatusStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        page.Dispose();
+        handler.ReleaseStatus();
+        await load.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Null(Get<SyncStatusDto?>(page, "_status"));
+        Assert.Null(Get<Task?>(page, "_syncPollTask"));
+        cache.Dispose();
+    }
+
     private static Instellingen MaakPagina(HttpMessageHandler handler, out ClubSelectorService club, out ClubInstellingenCache cache)
     {
         club = new ClubSelectorService(new FakeJs());
-        var transport = new AdminApiTransport(new HttpClient(handler) { BaseAddress = new Uri("https://example.test/") });
+        var transport = new AdminApiTransport(new HttpClient(handler) { BaseAddress = new Uri("https://allstars-fc.test/") });
         var api = new InstellingenApiClient(transport);
         cache = new ClubInstellingenCache(api, club);
         var page = new Instellingen();
@@ -93,8 +183,8 @@ public sealed class InstellingenSyncLogTests
     private static void Call(object target, string name, params object?[] args)
         => target.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, args);
 
-    private static Task CallAsync(object target, string name)
-        => (Task)target.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, null)!;
+    private static Task CallAsync(object target, string name, params object?[] args)
+        => (Task)target.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, args)!;
 
     private static T Call<T>(object target, string name, params object?[] args)
         => (T)target.GetType().GetMethod(name, BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, args)!;
@@ -119,6 +209,100 @@ public sealed class InstellingenSyncLogTests
             _requestToken = cancellationToken;
             _started.TrySetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return Response("{}");
+        }
+    }
+
+    private sealed class LatePollHandler : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource _latePollStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _releaseLatePoll = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _syncRequests;
+        private CancellationToken _latePollToken;
+        public TaskCompletionSource LatePollStarted => _latePollStarted;
+        public CancellationToken LatePollToken => _latePollToken;
+        public void ReleaseLatePoll() => _releaseLatePoll.TrySetResult();
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/sync/status", StringComparison.Ordinal))
+            {
+                var call = Interlocked.Increment(ref _syncRequests);
+                if (call == 2)
+                {
+                    _latePollToken = cancellationToken;
+                    _latePollStarted.TrySetResult();
+                    await _releaseLatePoll.Task;
+                    return Response("""
+                        {"status":"health-A-late","activeJob":{"id":"11111111-1111-1111-1111-111111111111","status":"running","createdAt":"2026-11-14T10:00:00Z","attempt":1,"phases":[]},"jobs":[],"logAvailable":true}
+                        """);
+                }
+
+                var status = call == 1
+                    ? """
+                      {"status":"health-A","activeJob":{"id":"11111111-1111-1111-1111-111111111111","status":"running","createdAt":"2026-11-14T10:00:00Z","attempt":1,"phases":[]},"jobs":[],"logAvailable":true}
+                      """
+                    : """
+                      {"status":"health-B","activeJob":null,"jobs":[],"logAvailable":false}
+                      """;
+                return Response(status);
+            }
+
+            if (path.EndsWith("/uitgesloten-emails", StringComparison.Ordinal)) return Response("[]");
+            if (path.EndsWith("/email-log", StringComparison.Ordinal)) return Response("{\"statusCounts\":{},\"items\":[]}");
+            if (path.EndsWith("/settings", StringComparison.Ordinal)) return Response("{\"clubCode\":\"test\"}");
+            return Response("{}");
+        }
+    }
+
+    private sealed class LateTriggerHandler : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource _triggerStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _releaseTrigger = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _statusRequests;
+        public TaskCompletionSource TriggerStarted => _triggerStarted;
+        public int StatusRequests => _statusRequests;
+        public void ReleaseTrigger() => _releaseTrigger.TrySetResult();
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/sync/trigger", StringComparison.Ordinal))
+            {
+                _triggerStarted.TrySetResult();
+                await _releaseTrigger.Task;
+                return Response("{\"jobId\":\"11111111-1111-1111-1111-111111111111\",\"tijdstip\":\"2026-11-14T10:00:00Z\"}");
+            }
+
+            if (path.EndsWith("/sync/status", StringComparison.Ordinal))
+                return Response($"{{\"status\":\"{(Interlocked.Increment(ref _statusRequests) == 1 ? "view-B" : "new-A")}\",\"jobs\":[]}}");
+            if (path.EndsWith("/uitgesloten-emails", StringComparison.Ordinal)) return Response("[]");
+            if (path.EndsWith("/email-log", StringComparison.Ordinal)) return Response("{\"statusCounts\":{},\"items\":[]}");
+            if (path.EndsWith("/settings", StringComparison.Ordinal)) return Response("{\"clubCode\":\"ALLSTARS\"}");
+            return Response("{}");
+        }
+    }
+
+    private sealed class LateInitialStatusHandler : HttpMessageHandler
+    {
+        private readonly TaskCompletionSource _statusStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _releaseStatus = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource StatusStarted => _statusStarted;
+        public void ReleaseStatus() => _releaseStatus.TrySetResult();
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path.EndsWith("/sync/status", StringComparison.Ordinal))
+            {
+                _statusStarted.TrySetResult();
+                await _releaseStatus.Task;
+                return Response("{\"status\":\"stale\",\"jobs\":[]}");
+            }
+            if (path.EndsWith("/uitgesloten-emails", StringComparison.Ordinal)) return Response("[]");
+            if (path.EndsWith("/email-log", StringComparison.Ordinal)) return Response("{\"statusCounts\":{},\"items\":[]}");
+            if (path.EndsWith("/settings", StringComparison.Ordinal)) return Response("{\"clubCode\":\"ALLSTARS\"}");
             return Response("{}");
         }
     }
