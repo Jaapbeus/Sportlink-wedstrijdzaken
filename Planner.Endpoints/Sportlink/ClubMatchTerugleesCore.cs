@@ -88,7 +88,9 @@ public static class ClubMatchTerugleesCore
         }
         else
         {
+            // De geen-team-sentinel is bij een vrij thuisteam óók het thuis-ID: dat is geen eigen team.
             var eigenAlsUit = !string.IsNullOrWhiteSpace(uitId)
+                && !string.Equals(uitId, SportlinkClubMatchAanvraag.GeenTeamId, StringComparison.Ordinal)
                 && string.Equals(uitId, aanvraag.PublicTeamId, StringComparison.Ordinal);
             if (!eigenAlsUit && (string.IsNullOrWhiteSpace(uitNaam) || Zelfde(uitNaam, aanvraag.AwayTeam)))
                 return null;

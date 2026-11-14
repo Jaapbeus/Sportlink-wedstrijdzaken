@@ -63,6 +63,23 @@ public class ClubMatchTerugleesTests
         w.Should().Equal("bestaand");
     }
 
+    private static SportlinkClubMatchAanvraag VrijThuisEnVrijUit(string uit = "FC Voorbeeld JO10-1")
+        => Aanvraag(uit: uit) with { PublicTeamId = SportlinkClubMatchAanvraag.GeenTeamId };
+
+    [Fact]
+    public async Task VrijThuisteamEnVrijeTegenstander_GelijkeNaam_GeenWaarschuwing()
+    {
+        var json = Json("FC Voorbeeld JO10-1", SportlinkClubMatchAanvraag.GeenTeamId);
+        (await Roep(Client(json), Succes(), VrijThuisEnVrijUit())).Should().Equal("bestaand");
+    }
+
+    [Fact]
+    public async Task VrijThuisteamEnVrijeTegenstander_AfwijkendeNaam_GeeftWaarschuwing()
+    {
+        var json = Json("Andere Club 1", SportlinkClubMatchAanvraag.GeenTeamId);
+        (await Roep(Client(json), Succes(), VrijThuisEnVrijUit())).Should().HaveCount(2);
+    }
+
     [Fact]
     public async Task VrijeTegenstander_AndereNaam_GeeftWaarschuwing()
     {
