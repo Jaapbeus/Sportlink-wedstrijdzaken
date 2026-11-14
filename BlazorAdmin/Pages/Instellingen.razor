@@ -77,9 +77,9 @@
                     }
                     @if (!string.IsNullOrEmpty(_syncResult))
                     {
-                        <div class="alert @(_status?.LastCompletedJob?.Status is "failed" or "partial" ? "alert-warning" : "alert-info") mt-3" id="sync-result" role="status">@_syncResult</div>
+                        <div class="alert @(_syncStatusUnavailable || _status?.LastCompletedJob?.Status is "failed" or "partial" ? "alert-warning" : "alert-info") mt-3" id="sync-result" role="status">@_syncResult</div>
                     }
-                    <SyncLogboek Status="_status" />
+                    <SyncLogboek Status="_status" StatusOnzeker="_syncStatusUnavailable" />
                 </div>
             </div>
         </div>

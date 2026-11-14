@@ -39,6 +39,7 @@ public partial class Instellingen : ClubSelectorPageBase
     private EmailLogResponse? _emailLog;
     private bool _syncLoading = true;
     private bool _syncing;
+    private bool _syncStatusUnavailable;
     private string? _syncResult;
     private CancellationTokenSource? _syncPollCancellation;
     private int _syncPollGeneration;
@@ -67,6 +68,7 @@ public partial class Instellingen : ClubSelectorPageBase
     {
         StopSyncPolling();
         _syncing = false;
+        _syncStatusUnavailable = false;
         _status = null;
         _syncResult = null;
         _verwijderAdresBevestiging.Annuleer();
@@ -82,6 +84,7 @@ public partial class Instellingen : ClubSelectorPageBase
         errorMessage = null;
         settings = null;
         _syncLoading = true;
+        _syncStatusUnavailable = false;
 
         if (_isTestmodus)
         {
@@ -187,6 +190,7 @@ public partial class Instellingen : ClubSelectorPageBase
         var generation = ++_syncOperationGeneration;
         StopSyncPolling();
         _syncing = true;
+        _syncStatusUnavailable = false;
         _syncResult = null;
         var r = await InstellingenApi.TriggerSyncAsync(seizoenStartjaar);
         if (!IsActueleSyncOperatie(generation, clubCode)) return;
@@ -204,6 +208,7 @@ public partial class Instellingen : ClubSelectorPageBase
         if (statusResult.Success && statusResult.Data != null)
         {
             _status = statusResult.Data;
+            _syncStatusUnavailable = false;
             _syncing = IsActieveSync(_status.ActiveJob);
             if (_syncing) StartSyncPolling(clubCode);
             else FinishSync(_status.LastCompletedJob ?? _status.Job);
@@ -211,6 +216,7 @@ public partial class Instellingen : ClubSelectorPageBase
         else
         {
             _syncing = false;
+            _syncStatusUnavailable = true;
             _syncResult = "Synchronisatie gestart. Voortgang is tijdelijk niet beschikbaar; ververs de pagina om opnieuw te proberen.";
         }
         StateHasChanged();
@@ -227,6 +233,7 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task PollSyncStatusAsync(string? clubCode, int generation, CancellationToken cancellationToken)
     {
+        var opeenvolgendeFouten = 0;
         try
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -234,8 +241,19 @@ public partial class Instellingen : ClubSelectorPageBase
                 await Task.Delay(_syncPollIntervalMilliseconds, cancellationToken);
                 var result = await InstellingenApi.GetSyncStatusAsync(cancellationToken: cancellationToken);
                 if (cancellationToken.IsCancellationRequested || generation != _syncPollGeneration || IsClubGewisseld(clubCode)) return;
-                if (!result.Success || result.Data == null) continue;
+                if (!result.Success || result.Data == null)
+                {
+                    if (++opeenvolgendeFouten < 3) continue;
+                    _syncStatusUnavailable = true;
+                    _syncing = false;
+                    _syncResult = "Synchronisatiestatus tijdelijk niet beschikbaar. De laatst bekende stand staat hieronder; probeer opnieuw.";
+                    StopSyncPolling();
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
 
+                opeenvolgendeFouten = 0;
+                _syncStatusUnavailable = false;
                 var status = result.Data;
                 _status = status;
                 await InvokeAsync(StateHasChanged);

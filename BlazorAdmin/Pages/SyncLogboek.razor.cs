@@ -6,6 +6,7 @@ namespace BlazorAdmin.Pages;
 public partial class SyncLogboek
 {
     [Parameter] public SyncStatusDto? Status { get; set; }
+    [Parameter] public bool StatusOnzeker { get; set; }
 
     // Beide gebouwde tiers registreren deze vijf fasen in vaste volgorde. De laatste twee
     // wisselen per tier van volgorde; ook een overgeslagen fase krijgt een logregel.

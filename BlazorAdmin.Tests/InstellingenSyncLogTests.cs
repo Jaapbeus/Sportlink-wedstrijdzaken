@@ -4,6 +4,10 @@ using System.Text;
 using BlazorAdmin.Models;
 using BlazorAdmin.Pages;
 using BlazorAdmin.Services;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.RenderTree;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 using Xunit;
 
@@ -82,6 +86,53 @@ public sealed class InstellingenSyncLogTests
 
         Assert.True(handler.RequestToken.IsCancellationRequested);
         Assert.Null(Get<CancellationTokenSource?>(page, "_syncPollCancellation"));
+        cache.Dispose();
+    }
+
+    [Fact]
+    public async Task Poll_TransientFailuresResetAfterSuccessAndReachCompletedJob()
+    {
+        var handler = new PollSequenceHandler("fail", "running", "fail", "fail", "completed");
+        var page = MaakPagina(handler, out var club, out var cache);
+        using var renderer = new TestRenderer();
+        renderer.Attach(page);
+        await club.SelectClubAsync("AAA", "Club A");
+        SetField(page, "_syncPollIntervalMilliseconds", 0);
+        SetField(page, "_syncing", true);
+
+        Call(page, "StartSyncPolling", "AAA");
+        await Get<Task>(page, "_syncPollTask").WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(5, handler.StatusRequests);
+        Assert.False(Get<bool>(page, "_syncStatusUnavailable"));
+        Assert.False(Get<bool>(page, "_syncing"));
+        Assert.Equal("Synchronisatie voltooid.", Get<string?>(page, "_syncResult"));
+        cache.Dispose();
+    }
+
+    [Fact]
+    public async Task Poll_ThreeFailuresStopAndPreserveLastKnownActiveJob()
+    {
+        var handler = new PollSequenceHandler("fail", "fail", "fail");
+        var page = MaakPagina(handler, out var club, out var cache);
+        using var renderer = new TestRenderer();
+        renderer.Attach(page);
+        await club.SelectClubAsync("AAA", "Club A");
+        SetField(page, "_syncPollIntervalMilliseconds", 0);
+        var snapshot = new SyncStatusDto { ActiveJob = new SyncJobDto { Status = "running" } };
+        SetField(page, "_status", snapshot);
+        SetField(page, "_syncing", true);
+
+        Call(page, "StartSyncPolling", "AAA");
+        await Get<Task>(page, "_syncPollTask").WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(3, handler.StatusRequests);
+        Assert.Same(snapshot, Get<SyncStatusDto>(page, "_status"));
+        Assert.True(Get<bool>(page, "_syncStatusUnavailable"));
+        Assert.False(Get<bool>(page, "_syncing"));
+        Assert.Null(Get<CancellationTokenSource?>(page, "_syncPollCancellation"));
+        Assert.Equal("Synchronisatiestatus tijdelijk niet beschikbaar. De laatst bekende stand staat hieronder; probeer opnieuw.",
+            Get<string?>(page, "_syncResult"));
         cache.Dispose();
     }
 
@@ -249,6 +300,49 @@ public sealed class InstellingenSyncLogTests
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
             return Response("{}");
         }
+    }
+
+    private sealed class PollSequenceHandler(params string[] steps) : HttpMessageHandler
+    {
+        private int _statusRequests;
+        public int StatusRequests => _statusRequests;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (!request.RequestUri!.AbsolutePath.EndsWith("/sync/status", StringComparison.Ordinal))
+                return Task.FromResult(Response("{}"));
+
+            var index = Interlocked.Increment(ref _statusRequests) - 1;
+            var step = index < steps.Length ? steps[index] : "fail";
+            var response = step switch
+            {
+                "running" => Response("""
+                    {"status":"ok","activeJob":{"id":"11111111-1111-1111-1111-111111111111","status":"running","createdAt":"2026-11-14T10:00:00Z","attempt":1,"phases":[]},"jobs":[]}
+                    """),
+                "completed" => Response("""
+                    {"status":"ok","activeJob":null,"lastCompletedJob":{"id":"11111111-1111-1111-1111-111111111111","status":"succeeded","createdAt":"2026-11-14T10:00:00Z","completedAt":"2026-11-14T10:05:00Z","attempt":1,"phases":[]},"jobs":[]}
+                    """),
+                _ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            };
+            return Task.FromResult(response);
+        }
+    }
+
+    private sealed class TestRenderer() : Renderer(new ServiceCollection().BuildServiceProvider(), NullLoggerFactory.Instance)
+    {
+        public override Dispatcher Dispatcher { get; } = new InlineDispatcher();
+        public void Attach(IComponent component) => AssignRootComponentId(component);
+        protected override void HandleException(Exception exception) => throw exception;
+        protected override Task UpdateDisplayAsync(in RenderBatch renderBatch) => Task.CompletedTask;
+    }
+
+    private sealed class InlineDispatcher : Dispatcher
+    {
+        public override bool CheckAccess() => true;
+        public override Task InvokeAsync(Action workItem) { workItem(); return Task.CompletedTask; }
+        public override Task InvokeAsync(Func<Task> workItem) => workItem();
+        public override Task<TResult> InvokeAsync<TResult>(Func<TResult> workItem) => Task.FromResult(workItem());
+        public override Task<TResult> InvokeAsync<TResult>(Func<Task<TResult>> workItem) => workItem();
     }
 
     private sealed class LatePollHandler : HttpMessageHandler
