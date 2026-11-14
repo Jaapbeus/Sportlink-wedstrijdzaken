@@ -5834,7 +5834,15 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '503':
-          $ref: '#/components/responses/ExternalIntegrationsDisabled'
+          description: >-
+            Synchronisatie kan niet worden gestart: uitgaande integraties zijn geblokkeerd
+            (EgressGuard), het queuebericht kon niet worden geplaatst, of de jobstatus is
+            onzeker nadat ook het vastleggen van een mislukte queueplaatsing faalde.
+            De respons bevat uitsluitend een vaste, veilige foutmelding.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
