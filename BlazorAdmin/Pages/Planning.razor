@@ -52,7 +52,7 @@
 @* ── Directe veldbezetting: wat staat er nu al gepland op deze datum (#566) ── *@
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center gap-2">
-        <span class="fw-semibold">Veldbezetting op @_datumDt.ToString("dd-MM-yyyy")</span>
+        <span class="fw-semibold">Veldbezetting op @_datumDt.ToString("dd-MM-yyyy") - @_veldbezetting.Count wedstrijden</span>
         @if (_veldbezettingBezig)
         {
             <span class="spinner-border spinner-border-sm text-secondary ms-2" role="status" aria-hidden="true"></span>
@@ -122,7 +122,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var item in _veldbezetting)
+                        @foreach (var item in DagplanningWeergaveHelpers.SorteerVeldbezetting(_veldbezetting))
                         {
                             <tr class="@_hover.RijKlasse(item.WedstrijdCode)"
                                 @onmouseover="() => _hover.Zet(item.WedstrijdCode)"
