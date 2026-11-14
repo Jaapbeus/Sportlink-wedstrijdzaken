@@ -247,11 +247,11 @@ aanwijzing welke agent op dat moment actief is of welke worktree bezet is. Een v
 andere twee, dus wijzig er nooit één om een andere te "repareren".
 
 **Na een merge naar `develop` staat er een `gemerged`-fase.** `label-awaiting-release.yml` plaatst naast de
-status en het opschonen van `turn:` precies één comment `Fase: gemerged` met het PR-nummer en de volledige
-merge-SHA (40 tekens). De comment draagt een verborgen marker per PR, zodat een herhaald event niets dubbel
+status en het opschonen van `turn:` precies één comment `Fase: gemerged` met het PR-nummer, de volledige
+merge-SHA (40 tekens) en `Volgende beurt: geen` (zonder een herkend overdrachtsveld negeert de bewaking de comment). De comment draagt een verborgen marker per PR, zodat een herhaald event niets dubbel
 plaatst. `gemerged` is een eindfase zonder volgende beurt (`beurt-invariant.yml` leest hem zo); vervolgwerk
-begint met een nieuwe overdracht met een nieuwe implementer, sessie en status. Ontbreekt de merge-SHA, dan
-plaatst de workflow niets en faalt de run zichtbaar.
+begint met een nieuwe overdracht met een nieuwe implementer, sessie en status. Ontbreekt de merge-SHA of is die ongeldig, dan
+plaatst de workflow niets en faalt de run zichtbaar (`core.setFailed`).
 
 **Een verouderde status herstel je alleen met `reconcilieer-issue-status.yml` (#1867).** Start die handmatig
 (`gh workflow run reconcilieer-issue-status.yml -f issue_nummer=<nr>`) voor één open issue met **precies één**

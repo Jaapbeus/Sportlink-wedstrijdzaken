@@ -191,8 +191,10 @@ const GELDIGE_MERGE_SHA = /^[0-9a-f]{40}$/i;
 
 /**
  * Plaatst op het issue één idempotente fasecomment `Fase: gemerged` met PR-nummer en
- * volledige merge-SHA (#1867). Het formaat sluit aan op de overdrachtsvelden die
- * beurt-invariant.js leest: `gemerged` is een eindfase zonder volgende beurt. Een tweede run voor
+ * volledige merge-SHA (#1867). Het formaat moet het overdrachtscontract van beurt-invariant.js
+ * halen: `isOverdracht` eist naast de fase minstens één herkend veld (implementer, reviewer, volgende
+ * beurt of aangeboden SHA); `Merge-SHA` is dat niet. Daarom staat er `Volgende beurt: geen`, anders
+ * negeert de bewaking deze comment en blijft een oudere overdracht leidend. Een tweede run voor
  * dezelfde PR plaatst niets; een ontbrekende of onvolledige merge-SHA plaatst niets.
  *
  * @returns {Promise<'posted'|'unchanged'|'skipped'>}
@@ -217,7 +219,7 @@ async function plaatsFasecommentGemerged({ github, context, core, issueNumber, p
     owner: context.repo.owner,
     repo: context.repo.repo,
     issue_number: issueNumber,
-    body: `${marker}\nFase: gemerged\nPR: #${prNumber}\nMerge-SHA: ${mergeSha}\n\n`
+    body: `${marker}\nFase: gemerged\nPR: #${prNumber}\nMerge-SHA: ${mergeSha}\nVolgende beurt: geen\n\n`
       + 'De PR zit in `develop`; alleen de release resteert. Er is geen volgende beurt en het issue draagt geen `turn:`-label.',
     headers: API_VERSION_HEADERS,
   });

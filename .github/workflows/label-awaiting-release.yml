@@ -111,7 +111,7 @@ jobs:
               // #1867: de fasecomment sluit de overdrachtsketen af, zodat het issue niet op een
               // oudere 'verwerking'- of 'eigenaarsbesluit'-comment blijft staan. Idempotent per PR.
               try {
-                await plaatsFasecommentGemerged({
+                const faseResultaat = await plaatsFasecommentGemerged({
                   github,
                   context,
                   core,
@@ -119,6 +119,11 @@ jobs:
                   prNumber: pr.number,
                   mergeSha: pr.merge_commit_sha,
                 });
+                // 'skipped' (ontbrekende of ongeldige merge-SHA) is geen succes: de labels zijn al
+                // gewijzigd, dus de run moet zichtbaar falen in plaats van groen zonder fasecomment.
+                if (faseResultaat !== 'posted' && faseResultaat !== 'unchanged') {
+                  faseFouten.push(`#${number}: fasecomment niet geplaatst (${faseResultaat})`);
+                }
               } catch (e) {
                 faseFouten.push(e.message);
               }

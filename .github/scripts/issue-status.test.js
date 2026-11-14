@@ -422,11 +422,26 @@ async function run() {
     gh.calls.created.length === 1 && /Fase: gemerged\nPR: #55\nMerge-SHA: a{40}/.test(gh.calls.created[0].body), true);
   check('comment bevat de idempotentiemarker', gh.calls.created[0].body.includes(FASE_GEMERGED_MARKER(55)), true);
 
-  // Het formaat moet door de overdrachtsbewaking als eindfase gelezen worden (geen volgende beurt).
-  const { parseOverdracht, verwachteBeurt } = require('./beurt-invariant.js');
-  const parsed = parseOverdracht ? parseOverdracht(gh.calls.created[0].body) : null;
-  check('beurt-invariant leest de fase als gemerged', parsed && parsed.fase, 'gemerged');
-  check('beurt-invariant: eindfase geeft geen volgende beurt', parsed && verwachteBeurt(parsed), null);
+  // Regressie (review ronde 1, P2): het ÉCHT gegenereerde comment moet door de hele keten
+  // (isOverdracht → verzamelOverdrachten → beoordeel) als nieuwste overdracht tellen, anders
+  // blijft een oudere overdracht leidend en volgt een valse GEEN_TURN-melding.
+  const { evalueerIssue, parseOverdracht, isOverdracht } = require('./beurt-invariant.js');
+  const gegenereerd = gh.calls.created[0].body;
+  const NU_MS = Date.parse('2026-11-14T12:00:00Z');
+  const oudeReview = {
+    body: `Fase: review\nImplementer: Claude Code\nReviewer: Codex\nPR: #55\nAangeboden head-SHA: ${'b'.repeat(40)}\nVolgende beurt: codex`,
+    author_association: 'OWNER', created_at: '2026-11-14T09:00:00Z',
+  };
+  const botComment = (body) => ({ body, user: { type: 'Bot', login: 'github-actions[bot]' }, author_association: 'NONE', created_at: '2026-11-14T10:00:00Z' });
+  const keten = (body, labels) => evalueerIssue({ now: NU_MS, graceMinuten: 30, prs: [], labels, issueComments: [oudeReview, botComment(body)] }).map(f => f.code);
+
+  check('gegenereerde comment telt als overdracht', isOverdracht(parseOverdracht(gegenereerd)), true);
+  check('eindfase wint over oudere reviewoverdracht (geen valse GEEN_TURN)', keten(gegenereerd, []), []);
+  check('eindfase wint: achtergebleven turn-label wordt wél gesignaleerd', keten(gegenereerd, ['turn: codex']), ['TURN_BIJ_EINDE']);
+  // Bewijs dat de test rood kan worden: het eerdere formaat zonder herkend veld werd genegeerd.
+  const oudFormaat = gegenereerd.replace('Volgende beurt: geen\n', '');
+  check('zonder herkend veld wordt de comment genegeerd (oud formaat)', isOverdracht(parseOverdracht(oudFormaat)), false);
+  check('oud formaat: oudere overdracht blijft leidend (valse GEEN_TURN)', keten(oudFormaat, []), ['GEEN_TURN']);
 
   gh = fakeComments([{ body: `${FASE_GEMERGED_MARKER(55)}\nFase: gemerged` }]);
   res = await plaatsFasecommentGemerged({ github: gh, context: ctx, core, issueNumber: 7, prNumber: 55, mergeSha: SHA });
@@ -481,6 +496,62 @@ async function run() {
   gh = fakeRepoGithub({ issueLabels: ['status: review-needed'] });
   res = await updatePullRequestIssueStatuses({ github: gh, context: ctxPr('closed', prSluit(true)), core });
   check('gemerged: dit pad wijzigt niets (merge-workflow is eigenaar)', { res, added: gh.calls.added }, { res: 'merged', added: [] });
+
+
+  // ---------- #1867: de echte workflow-code van label-awaiting-release.yml ----------
+  // Voert het script-blok uit het YAML-bestand zelf uit (geen nagebootste beslislogica), zodat een
+  // wijziging in de workflow door deze test wordt gezien.
+  console.log('\nlabel-awaiting-release.yml (echte scriptblok):');
+  const fs = require('fs');
+  const path = require('path');
+  const repoRoot = path.resolve(__dirname, '..', '..');
+  function laadWorkflowScript() {
+    const regels = fs.readFileSync(path.join(repoRoot, '.github/workflows/label-awaiting-release.yml'), 'utf8').split('\n');
+    const i = regels.findIndex(r => /^\s+script: \|\s*$/.test(r));
+    const inspringing = regels[i + 1].match(/^ */)[0].length;
+    const blok = [];
+    for (let j = i + 1; j < regels.length; j++) {
+      if (regels[j].trim() !== '' && regels[j].match(/^ */)[0].length < inspringing) break;
+      blok.push(regels[j].slice(inspringing));
+    }
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    return new AsyncFunction('github', 'context', 'core', 'require', blok.join('\n'));
+  }
+  async function draaiWorkflow({ mergeSha, bestaandeComments = [], labels = ['status: in-progress', 'turn: codex'] }) {
+    process.env.GITHUB_WORKSPACE = repoRoot;
+    const out = { failed: [], created: [], added: [], removed: [] };
+    const github = {
+      paginate: async () => bestaandeComments,
+      rest: { issues: {
+        get: async () => ({ data: { labels: labels.map(name => ({ name })), state: 'open' } }),
+        addLabels: async ({ labels: l }) => { out.added.push(...l); },
+        removeLabel: async ({ name }) => { out.removed.push(name); },
+        createComment: async ({ body }) => { out.created.push(body); },
+        update: async () => {},
+        listComments: () => {},
+      } },
+    };
+    const context = {
+      repo: { owner: 'o', repo: 'r' },
+      payload: { pull_request: { number: 77, title: 'fix(#9): iets', body: '', merge_commit_sha: mergeSha } },
+    };
+    const wcore = { notice: () => {}, warning: () => {}, setFailed: (m) => { out.failed.push(m); } };
+    await laadWorkflowScript()(github, context, wcore, require);
+    return out;
+  }
+
+  let wf = await draaiWorkflow({ mergeSha: 'c'.repeat(40) });
+  check('geldige merge-SHA: één fasecomment, geen fout', { n: wf.created.length, failed: wf.failed }, { n: 1, failed: [] });
+  check('geldige merge-SHA: status gezet en turn opgeschoond', { added: wf.added, removed: wf.removed },
+    { added: ['status: awaiting-release'], removed: ['status: in-progress', 'turn: codex'] });
+
+  for (const [naam, sha] of [['ontbrekende', null], ['lege', ''], ['afgekapte', 'abc123'], ['niet-hexadecimale', 'z'.repeat(40)]]) {
+    wf = await draaiWorkflow({ mergeSha: sha });
+    check(`${naam} merge-SHA: workflow faalt zichtbaar (core.setFailed)`, { n: wf.failed.length, created: wf.created.length }, { n: 1, created: 0 });
+  }
+
+  wf = await draaiWorkflow({ mergeSha: 'c'.repeat(40), bestaandeComments: [{ body: `${FASE_GEMERGED_MARKER(77)}\nFase: gemerged` }] });
+  check('herhaalde run met bestaande marker: geen tweede comment en geen fout', { created: wf.created.length, failed: wf.failed }, { created: 0, failed: [] });
 
   // ---------- #1867: reconciliatie ----------
   console.log('\nreconcileIssueStatus (#1867):');
