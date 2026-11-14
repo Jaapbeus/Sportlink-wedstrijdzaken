@@ -103,8 +103,3 @@ public static class EmailTemplateService
     public static string ApplyPlaceholders(string body, IDictionary<string, string> values)
         => BerichtAntwoordGenerator.VulPlaceholdersIn(body, values);
 }
-
-/// <summary>
-/// Eenvoudig template-record voor email-output.
-/// </summary>
-public record EmailTemplate(string Key, string Onderwerp, string Body) : IAntwoordSjabloon;

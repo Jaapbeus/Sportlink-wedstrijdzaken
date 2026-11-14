@@ -16,7 +16,7 @@ public class SyncJobProcessorUitgaandVerkeerTests
     [Fact]
     public void FoutmeldingVoorStatus_BewaartGeenExceptionDetails()
     {
-        var message = SyncJobProcessor.FoutmeldingVoorStatus(
+        var message = global::Planner.Endpoints.Sync.SyncQueuedJobCore.SafeFailureMessage(
             new InvalidOperationException("https://provider.invalid/path?token=secret"));
 
         message.Should().Contain(nameof(InvalidOperationException));

@@ -1,6 +1,6 @@
+using Planner.Endpoints.Sync;
 using SportlinkFunction.Infrastructure;
 using Planner.Shared.Sync;
-using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using static SportlinkFunction.SystemUtilities;
@@ -9,82 +9,47 @@ namespace SportlinkFunction;
 
 /// <summary>
 /// Verwerkt berichten van de <see cref="SyncJobsQueue.QueueName"/>-queue (#1138) — de opvolger van
-/// de fire-and-forget <c>Task.Run</c> in <c>AdminSyncFunction.Trigger</c>. Eén poging per bericht:
-/// een mislukking wordt in <c>dbo.SyncJobs</c> vastgelegd als <c>failed</c> en niet opnieuw
-/// geprobeerd door de queue zelf (geen rethrow) — de sync-pipeline heeft al eigen retry-logica
-/// voor databaseverbindingen, en een tweede, automatische queue-retry zou een gedeeltelijk
-/// geslaagde merge riskeren te herhalen. Een beheerder die het opnieuw wil proberen klikt gewoon
-/// nogmaals op de sync-knop, wat een nieuwe job aanmaakt.
+/// de fire-and-forget <c>Task.Run</c> in <c>AdminSyncFunction.Trigger</c>. Een normale mislukking
+/// (fout of gedeeltelijk mislukt) wordt vastgelegd als <c>failed</c> en niet door de queue herhaald
+/// (geen rethrow): een tweede queue-retry zou een gedeeltelijk geslaagde merge riskeren te herhalen.
+/// Alleen een onderbroken job (30 minuten op <c>running</c>, bv. een gecrashte host) wordt door
+/// <see cref="SyncJobsRepository.HerstelOnderbrokenAsync"/> begrensd opnieuw aangeboden (#1839, hoogstens 2 keer; het herstel loopt mee met een sync-start, een statusaanvraag en de geplande sync); elke
+/// afronding is aan het pogingnummer van de claim gebonden zodat een verouderde poging een
+/// herstarte niet overschrijft.
 /// </summary>
 public static class SyncJobProcessor
 {
     [Function("SyncJobProcessor")]
-    public static async Task Run(
+    public static Task Run(
         [QueueTrigger(SyncJobsQueue.QueueName, Connection = "AzureWebJobsStorage")] string message,
         FunctionContext context)
     {
         var log = context.GetLogger("SyncJobProcessor");
-        SyncJobMessage? job;
-        try
-        {
-            job = JsonSerializer.Deserialize<SyncJobMessage>(message);
-        }
-        catch (JsonException ex)
-        {
-            log.LogError(ex, "SyncJobProcessor: bericht kon niet worden gelezen, overgeslagen: {Message}", message);
-            return;
-        }
-
-        if (job is null || job.JobId == Guid.Empty)
-        {
-            log.LogError("SyncJobProcessor: leeg of ongeldig bericht overgeslagen: {Message}", message);
-            return;
-        }
-
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["SyncJobId"] = job.JobId });
-        if (!await SyncJobClaimCore.ExecuteIfClaimedAsync(
-                job.JobId, SyncJobsRepository.TryClaimPendingAsync, () => ProcessClaimedSqlServerJobAsync(job, log)))
-        {
-            log.LogInformation("SyncJobProcessor: SQL Server-job {JobId} is niet meer pending en wordt overgeslagen", job.JobId);
-        }
+        return SyncQueuedJobCore.RunAsync(message, log,
+            id => SyncJobsRepository.TryClaimAttemptAsync(SystemUtilities.DatabaseConfig.ConnectionString, id),
+            (job, attempt) => ProcessClaimedSqlServerJobAsync(job, attempt, log));
     }
 
-    private static async Task ProcessClaimedSqlServerJobAsync(SyncJobMessage job, ILogger log)
+    private static async Task ProcessClaimedSqlServerJobAsync(SyncJobMessage job, int attempt, ILogger log)
     {
-        log.LogInformation("SyncJobProcessor: SQL Server job {JobId} claimed, range {From} .. {To}", job.JobId, job.WeekOffsetFrom, job.WeekOffsetTo);
-        try
-        {
-            if (await BlokkeerBuitenProductieAsync(
-                    job, log, EgressGuard.ExternalIntegrationsAllowed, SyncJobsRepository.MarkCompletedAsync))
-                return;
+        if (await BlokkeerBuitenProductieAsync(job, log,
+                EgressGuard.ExternalIntegrationsAllowed, (id, ok, msg) => SyncJobsRepository.MarkCompletedAsync(id, ok, msg, attempt)))
+            return;
 
-            await WaitForDatabaseAsync(log);
-            await AppSettings.LoadSettingsAsync(log);
-
-            // #1779: een ongeldige of ontbrekende sportlinkApiUrl wordt de mislukte fase "configuratie"
-            // (pariteit met de Postgres-tier); de jobfoutmelding noemt die fase.
-            var uitkomst = await FetchAndStoreApiData.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log);
-            if (uitkomst.GedeeltelijkMislukt)
+        await SyncQueuedJobCore.RunClaimedAsync(job, attempt, log,
+            async () =>
             {
-                log.LogWarning("SyncJobProcessor: job {JobId} gedeeltelijk mislukt", job.JobId);
-                await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: uitkomst.JobFoutmelding());
-                return;
-            }
-
-            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: true, errorMessage: null);
-            log.LogInformation("SyncJobProcessor: job {JobId} voltooid", job.JobId);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
-            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                errorMessage: FoutmeldingVoorStatus(ex));
-        }
+                await WaitForDatabaseAsync(log);
+                await AppSettings.LoadSettingsAsync(log);
+                return AppSettings.GetSetting("clubCode")
+                    ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings.");
+            },
+            (clubCode, entry) => SyncLogRepository.UpsertAsync(clubCode, entry),
+            () => SyncLogRepository.CleanupAllAsync(DateTime.UtcNow),
+            (id, outcome, claimedAttempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, claimedAttempt, incomplete),
+            (id, succeeded, error, claimedAttempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, claimedAttempt),
+            (queued, writer) => FetchAndStoreApiData.RunConfiguredSyncAsync(queued.WeekOffsetFrom, queued.WeekOffsetTo, log, writer));
     }
-
-    internal static string FoutmeldingVoorStatus(Exception exception) =>
-        $"Sync mislukt ({exception.GetType().Name}); raadpleeg het functielog voor details.";
 
     /// <summary>
     /// #1676: een bericht dat buiten productie binnenkomt wordt niet uitgevoerd en niet opnieuw
@@ -93,14 +58,8 @@ public static class SyncJobProcessor
     /// de pending-to-running-overgang geclaimd. De poort en opslag komen binnen, zodat de test dit
     /// zonder database kan bewijzen.
     /// </summary>
-    internal static async Task<bool> BlokkeerBuitenProductieAsync(
+    internal static Task<bool> BlokkeerBuitenProductieAsync(
         SyncJobMessage job, ILogger log, Func<bool> externeIntegratiesToegestaan,
-        Func<Guid, bool, string?, Task> markeerAfgerond)
-    {
-        if (externeIntegratiesToegestaan()) return false;
-
-        log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — job {JobId} overgeslagen in dbo.SyncJobs (#857).", job.JobId);
-        await markeerAfgerond(job.JobId, false, "Uitgaande integraties zijn buiten productie uitgeschakeld.");
-        return true;
-    }
+        Func<Guid, bool, string?, Task> markeerAfgerond) =>
+        SyncQueuedJobCore.SkipOutsideProductionAsync(job.JobId, externeIntegratiesToegestaan, markeerAfgerond);
 }

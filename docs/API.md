@@ -185,7 +185,7 @@ verwerking plaats.
 | `PUT` | `/sportlink/audit/{id}/notitie` | **Wedstrijdzaken** | Testnotitie koppelen aan een bestaande Sportlink-mutatieauditpoging (#1320) — voor de eigenaar-gestuurde productieproef; scoped op `ClubCode`, 404 bij verkeerde club of onbekend ID; lege string toegestaan om te wissen (max. 1000 tekens) |
 | `GET` | `/sportlink/change-requests` | **Wedstrijdzaken** | Inkomende en uitgaande wijzigingsverzoeken ophalen (#996; `RequestStatus` = Sportlinks `ChangeRequestStatus`, plus `IsIncomingRequest` en `StatusGroep` OPEN/ACCEPTED/DENIED/REVOKED/UNKNOWN, #1439), sinds #1111 verrijkt met eigen wedstrijdcontext (`Wedstrijd`: nummer, teams, datum, tijd, accommodatie uit `his.matches` via de PublicMatchId-cache; `null` als niet gecachet), sinds #1464 met Sportlinks eigen `ExternalMatchId`/`Thuisteam`/`Uitteam` als terugval, en met openstaande (`StatusGroep` OPEN, inkomend eerst) verzoeken vooraan |
 | `PUT` | `/sportlink/change-requests/{publicRequestId}/action` | **Wedstrijdzaken** | Wijzigingsverzoek goedkeuren (`Actie=APPROVE`) of afwijzen (`Actie=DENY`, `Remarks` verplicht) (#996) |
-| `POST` | `/sportlink/club-match` | **Wedstrijdzaken** | Oefenwedstrijd ("clubwedstrijd") aanmaken — volgt `sportlinkDryRun`; **contract sinds #1427 live bevestigd** (body gelijk aan Sportlinks eigen formulier). Body: `MatchDateTime`, `Duration`, `TeamNaam`, `VrijeTekst` (bij `true` geen 400 voor een onbekend team; Sportlinks standaardteam levert dan het team-ID), `Tegenstander`, `VeldNummer`, `Description`, sinds #1437 `Velddeel` (`1.0`/`0.5`/`0.25`/`0.125`, standaard heel veld; de notatie van half/kwart/achtste is een aanname) en `AgeClassCode` (Sportlink-`Id` uit het formulier-endpoint; wint van de categorie van het team). De server haalt `ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation` en `PickListsMatchInformation` op en leidt daaruit het `T…`-team-ID, leeftijdscategorie, spelactiviteit, `SubFacilityId` af; het wedstrijdnummer komt sinds #1437 uit een eigen teller (`YYMMDD` + volgnummer per speeldag, max. 99 per dag → anders 400); de clubinstelling `SportlinkSpelactiviteit` gaat voor de spelactiviteit van het team; team/veld niet (eenduidig) bij Sportlink → 400, overige terugvallen als `Waarschuwingen`. Geen `SportlinkMutationGuard` (er is vooraf geen wedstrijd). Uitslag bewust niet gebouwd (#997); verwijderen: zie de regel hieronder (#1440) |
+| `POST` | `/sportlink/club-match` | **Wedstrijdzaken** | Oefenwedstrijd ("clubwedstrijd") aanmaken — volgt `sportlinkDryRun`; **contract sinds #1427 live bevestigd** (body gelijk aan Sportlinks eigen formulier). Body: `MatchDateTime`, `Duration`, `TeamNaam`, `VrijeTekst` (bij `true` geen 400 voor een onbekend team; Sportlinks standaardteam levert dan het team-ID), `Tegenstander`, `VeldNummer`, `Description`, sinds #1437 `Velddeel` (`1.0`/`0.5`/`0.25`/`0.125`, standaard heel veld; de notatie van half/kwart/achtste is een aanname) en `AgeClassCode` (Sportlink-`Id` uit het formulier-endpoint; wint van de categorie van het team). De server haalt `ClubMatchDefaults`, `PickListsTeams`, `PickListsLocation` en `PickListsMatchInformation` op en leidt daaruit het `T…`-team-ID, leeftijdscategorie, spelactiviteit, `SubFacilityId` af; het wedstrijdnummer komt sinds #1437 uit een eigen teller (`YYMMDD` + volgnummer per speeldag, max. 99 per dag → anders 400); de clubinstelling `SportlinkSpelactiviteit` gaat voor de spelactiviteit van het team; team/veld niet (eenduidig) bij Sportlink → 400, overige terugvallen als `Waarschuwingen`. De respons bevat sinds #1892 ook `Thuisteam`, `Uitteam` (de verstuurde namen) en `UitteamGekoppeld` (`false` = vrije tegenstander, geen teamkoppeling); bij een echte aanmaak leest de server de wedstrijd terug (één extra read-only `Match`-aanroep) en voegt een waarschuwing toe als Sportlink een ander uitteam toont dan opgegeven (best-effort). Geen `SportlinkMutationGuard` (er is vooraf geen wedstrijd). Uitslag bewust niet gebouwd (#997); verwijderen: zie de regel hieronder (#1440) |
 | `DELETE` | `/sportlink/club-match/{publicMatchId}` | **Wedstrijdzaken** | Clubwedstrijd (oefenwedstrijd) verwijderen (#1440) — live sinds #1458 (volgt `sportlinkDryRun`; bij dry-run `IsDryRun: true`). Haalt eerst de wedstrijd op voor `SportlinkMutationGuard` (`Verwijderen`: alleen bij expliciet `IsKernelMatch = false` én `IsHomeMatch`, anders 409); **503 als de mutatie-auditservice ontbreekt (fail-closed, geldt voor alle Sportlink-mutaties)**; elke poging staat in de mutatie-audit met het `PublicMatchId`. Nooit automatisch herhaald. Respons `{ IsSuccess, Violations, IsDryRun, IsForcedDryRun, PublicMatchId }`; 400 bij een ongeldig `PublicMatchId`, 404 als Sportlink de wedstrijd niet kent. De GUI biedt dit alleen aan op het resultaat van "Wedstrijd aanmaken" |
 | `GET` | `/sportlink/club-match/dryrun-status` | **Wedstrijdzaken** | Actuele dry-run-stand (`{ DryRun }`) voor de banner op "Wedstrijd aanmaken" — leest alleen de club-instelling `sportlinkDryRun`, geen Sportlink-aanroep (#1427) |
 | `GET` | `/sportlink/koppeling-status` | **Wedstrijdzaken** | Koppelingsstatus van rol Wedstrijdzaken voor de vooraf-melding op de werkpagina's (#1773): `{ RolNaam, Niveau (Ok/Waarschuwing/Verbroken), IsVerbroken, Melding, LaatsteLoginUtc }`, afgeleid uit de opgeslagen automatische-loginstatus (credentials/refresh-token aanwezig, blokkade, retrydatum, sessieduur). Eigen database, geen Sportlink-aanroep, nooit een tokenwaarde; 503 als de beveiligde opslag ontbreekt |
@@ -1348,14 +1348,27 @@ curl http://localhost:7094/api/sync-matches
 job-rij en een bericht op de bestaande `AzureWebJobsStorage`-queue `sync-jobs`. Een aparte
 QueueTrigger-functie (`SyncJobProcessor`) verwerkt het bericht en werkt de status bij.
 
+**Herstel van onderbroken jobs (#1839, eigenaarsbesluit 2026-11-11 en kostenbesluit).** Blijft een job
+door een gecrashte of herstarte host op `running` staan, dan herstelt het systeem hem begrensd: een
+job die 30 minuten op `running` staat geldt als onderbroken en wordt hoogstens 2 keer opnieuw
+aangeboden (3 pogingen in totaal); daarna staat hij op `failed` met een vaste melding. Het herstel
+heeft bewust geen eigen timer (geen extra uitvoeringen of database-wake-ups): het loopt mee met
+bestaande activiteit, namelijk `POST /beheer/sync/trigger`, `GET /beheer/sync/status` en de geplande
+sync. Een fatale fout of configuratiefout blijft terminaal `failed`; een gedeeltelijke run zonder configuratiefout wordt `partial`. Beide worden niet automatisch
+herhaald. De claim (`pending` naar `running`) telt een poging in de kolom `Attempt`/`attempt` (een
+bestaande lopende job telt bij de upgrade als poging 1) en elke afronding is aan dat pogingnummer
+gebonden, zodat een verouderde worker een herstarte poging niet overschrijft. De drempels staan op
+één plek: `Planner.Shared/Sync/SyncJobRecoveryPolicy.cs`. De API zelf verandert niet.
+
 ```bash
 curl -X POST http://localhost:7094/api/beheer/sync/trigger
 # {"status":"gestart","jobId":"…","weekOffsetFrom":-1,"weekOffsetTo":15,"tijdstip":"…"}
 
 curl "http://localhost:7094/api/beheer/sync/status?jobId=<jobId>"
 # {"lastSyncTimestamp":"…","fetchSchedule":"…","status":"ok",
-#  "job":{"id":"…","status":"running|succeeded|failed","weekOffsetFrom":-1,"weekOffsetTo":15,
-#         "createdAt":"…","startedAt":"…","completedAt":null,"errorMessage":null}}
+#  "job":{"id":"…","status":"pending|running|succeeded|partial|failed","weekOffsetFrom":-1,"weekOffsetTo":15,
+#         "createdAt":"…","startedAt":"…","completedAt":null,"errorMessage":null,"attempt":1,"phases":[]},
+#  "activeJob":{…},"lastCompletedJob":null,"jobs":[…],"logAvailable":true}
 ```
 
 **Volledig seizoen opnieuw ophalen (#1352):** optionele JSON-body, zelfde semantiek als
@@ -1372,6 +1385,15 @@ curl -X POST http://localhost:7094/api/beheer/sync/trigger \
 JSON → `400` met `{"error":"…"}` (NL-melding). Validatie staat tier-onafhankelijk in
 `Planner.Shared/Sync/SyncTriggerCore.cs`.
 
-Zonder `?jobId=` geeft `/beheer/sync/status` de meest recente job terug. `job` is `null` zolang er
+Zonder `?jobId=` geeft `/beheer/sync/status` de actieve job terug, anders de laatste afgeronde job. `job` is `null` zolang er
 nog nooit een sync is gestart. Mogelijke `job.status`-waarden: `pending`, `running`, `succeeded`,
-`failed` — bij `failed` bevat `errorMessage` de reden.
+`partial` en `failed`. Bij `partial` en `failed` bevat `errorMessage` uitsluitend een vaste, veilige melding;
+historische foutteksten en exceptiontypen worden niet doorgegeven.
+
+### Sync-logboek en voortgang (#1912)
+
+`GET /beheer/sync/status` levert aanvullend `activeJob`, `lastCompletedJob`, maximaal tien `jobs` en `logAvailable`. Elke job bevat `attempt` en `phases` voor de actuele poging. Elke fase bevat start/einde in UTC, een vaste status (`pending`, `running`, `succeeded`, `partial`, `failed` of `skipped`) en een allowlisted `reasonCode`, aantallen `fetched`, `added`, `updated`, `failed` en voortgang `progress`/`total`. Onbekende aantallen zijn `null`; de UI toont geen verzonnen nul. Fasegegevens bevatten geen foutteksten of exception-details. `partial` maakt een onvolledige run zichtbaar.
+
+`POST /beheer/sync/trigger` kiest atomair per club een actieve job of maakt er één aan. Bij een bestaande job volgt HTTP 202 met `alreadyRunning: true`, dezelfde `jobId` en eventueel `startedAt`/`phase`; alleen de maker zet een bericht op de queue. Bij enqueue-falen volgt een vaste 503-melding. Een nooit geclaimde pending-rij (`attempt = 0`) wordt vanaf de hersteltermijn van 30 minuten atomair `failed`, met een UTC-eindtijd en de vaste melding “Sync niet gestart binnen de hersteltermijn; start de synchronisatie handmatig opnieuw.” De rij wordt niet opnieuw aangeboden en blokkeert geen nieuwe handmatige start. Een laat queuebericht voert niets uit en wijzigt de eindstatus niet. De API blijft uitsluitend de vaste veilige foutmelding tonen.
+
+De fasegegevens blijven 30 dagen bewaard op beide tiers; opruimen gebeurt binnen bestaande activiteit, zonder nieuwe timer. Logschrijven is best-effort en gebonden aan club, job en poging. Als de faseopslag niet bereikbaar is, blijft de jobstatus beschikbaar met `logAvailable: false`.

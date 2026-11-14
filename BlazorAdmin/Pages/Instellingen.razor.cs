@@ -39,7 +39,14 @@ public partial class Instellingen : ClubSelectorPageBase
     private EmailLogResponse? _emailLog;
     private bool _syncLoading = true;
     private bool _syncing;
+    private bool _syncStatusUnavailable;
     private string? _syncResult;
+    private CancellationTokenSource? _syncPollCancellation;
+    private int _syncPollGeneration;
+    private int _syncOperationGeneration;
+    private bool _disposed;
+    private int _syncPollIntervalMilliseconds = 3000;
+    private Task? _syncPollTask;
     private bool _toonResetBevestiging;
     private int _resetSeizoen = HuidigSeizoenStartjaar();
     private bool _toonEmailLog;
@@ -59,6 +66,11 @@ public partial class Instellingen : ClubSelectorPageBase
 
     protected override async Task OnClubChangedAsync()
     {
+        StopSyncPolling();
+        _syncing = false;
+        _syncStatusUnavailable = false;
+        _status = null;
+        _syncResult = null;
         _verwijderAdresBevestiging.Annuleer();
         await LoadAsync();
     }
@@ -67,12 +79,16 @@ public partial class Instellingen : ClubSelectorPageBase
     {
         var clubCode = ClubSelector.SelectedClubCode;
         var generatie = _loadGuard.Start(clubCode);
+        var syncGeneration = ++_syncOperationGeneration;
+        StopSyncPolling();
         errorMessage = null;
         settings = null;
         _syncLoading = true;
+        _syncStatusUnavailable = false;
 
         if (_isTestmodus)
         {
+            StopSyncPolling();
             _status = null;
             _emailLog = null;
             _reviewLog = null;
@@ -87,8 +103,17 @@ public partial class Instellingen : ClubSelectorPageBase
         var emailTask   = EmailApi.GetEmailLogAsync(vanaf: DateTime.UtcNow.AddHours(-24), limit: 200);
         var reviewTask  = EmailApi.GetEmailLogAsync(status: "Review", limit: EmailReviewMax);
 
-        await Task.WhenAll(settingsTask, syncTask, emailTask, reviewTask);
-        if (!IsActueleLading(generatie, clubCode)) return;
+        try { await Task.WhenAll(settingsTask, syncTask, emailTask, reviewTask); }
+        catch
+        {
+            if (IsActueleLading(generatie, clubCode) && IsActueleSyncOperatie(syncGeneration, clubCode))
+            {
+                errorMessage = "Instellingen konden niet worden geladen. Probeer het later opnieuw.";
+                _syncLoading = false;
+            }
+            return;
+        }
+        if (!IsActueleLading(generatie, clubCode) || !IsActueleSyncOperatie(syncGeneration, clubCode)) return;
 
         var reviewResult = await reviewTask;
         _reviewLog = reviewResult.Success ? reviewResult.Data : null;
@@ -107,7 +132,13 @@ public partial class Instellingen : ClubSelectorPageBase
         else errorMessage = r.ErrorMessage;
 
         var syncResult = await syncTask;
-        if (syncResult.Success) _status = syncResult.Data;
+        if (syncResult.Success)
+        {
+            _status = syncResult.Data;
+            _syncing = IsActieveSync(_status?.ActiveJob);
+            if (_syncing) StartSyncPolling(clubCode);
+            else FinishSync(_status?.LastCompletedJob ?? _status?.Job);
+        }
 
         var emailResult = await emailTask;
         if (emailResult.Success)
@@ -128,8 +159,10 @@ public partial class Instellingen : ClubSelectorPageBase
     }
 
     private bool IsActueleLading(int generatie, string? clubCode) =>
-        _loadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode;
+        !_disposed && _loadGuard.IsActueel(generatie) && ClubSelector.SelectedClubCode == clubCode;
 
+    private bool IsActueleSyncOperatie(int generatie, string? clubCode) =>
+        !_disposed && generatie == _syncOperationGeneration && !IsClubGewisseld(clubCode);
     private static int HuidigSeizoenStartjaar() => SeizoenKeuze.HuidigStartjaar(DateTime.Today);
 
     private IEnumerable<int> ResetSeizoenOpties => SeizoenKeuze.ResetOpties(DateTime.Today);
@@ -152,45 +185,130 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task StartSyncAsync(int? seizoenStartjaar)
     {
+        if (_disposed || _syncing) return;
+        var clubCode = ClubSelector.SelectedClubCode;
+        var generation = ++_syncOperationGeneration;
+        StopSyncPolling();
         _syncing = true;
+        _syncStatusUnavailable = false;
         _syncResult = null;
         var r = await InstellingenApi.TriggerSyncAsync(seizoenStartjaar);
+        if (!IsActueleSyncOperatie(generation, clubCode)) return;
         if (!r.Success || r.Data?.JobId is not Guid jobId)
         {
-            _syncResult = $"Sync starten mislukt: {r.ErrorMessage}";
+            _syncResult = "Synchronisatie starten is niet gelukt. Probeer het later opnieuw.";
             _syncing = false;
             return;
         }
-        _syncResult = "Synchronisatie gestart, even geduld…";
-        StateHasChanged();
-        // #1138: pollt de job-status i.p.v. te gissen naar een wijziging in LastSyncTimestamp —
-        // zo is ook een mislukte job direct zichtbaar in plaats van na 10 minuten stilzwijgend te stoppen.
-        var deadline = DateTime.UtcNow.AddMinutes(10);
-        while (DateTime.UtcNow < deadline)
+        _syncResult = r.Data.AlreadyRunning
+            ? "Er loopt al een synchronisatie. De actuele voortgang wordt hieronder getoond."
+            : $"Synchronisatiejob aangemaakt om {NaarLokaleTijd(r.Data.Tijdstip):HH:mm}.";
+        var statusResult = await InstellingenApi.GetSyncStatusAsync(jobId);
+        if (!IsActueleSyncOperatie(generation, clubCode)) return;
+        if (statusResult.Success && statusResult.Data != null)
         {
-            await Task.Delay(3000);
-            var statusResult = await InstellingenApi.GetSyncStatusAsync(jobId);
-            var job = statusResult.Success ? statusResult.Data?.Job : null;
-            if (job?.Status == "succeeded")
+            _status = statusResult.Data;
+            _syncStatusUnavailable = false;
+            _syncing = IsActieveSync(_status.ActiveJob);
+            if (_syncing) StartSyncPolling(clubCode);
+            else FinishSync(_status.LastCompletedJob ?? _status.Job);
+        }
+        else
+        {
+            _syncing = false;
+            _syncStatusUnavailable = true;
+            _syncResult = "Synchronisatie gestart. Voortgang is tijdelijk niet beschikbaar; ververs de pagina om opnieuw te proberen.";
+        }
+        StateHasChanged();
+    }
+
+    private void StartSyncPolling(string? clubCode)
+    {
+        StopSyncPolling();
+        var cancellation = new CancellationTokenSource();
+        _syncPollCancellation = cancellation;
+        var generation = _syncPollGeneration;
+        _syncPollTask = PollSyncStatusAsync(clubCode, generation, cancellation.Token);
+    }
+
+    private async Task PollSyncStatusAsync(string? clubCode, int generation, CancellationToken cancellationToken)
+    {
+        var opeenvolgendeFouten = 0;
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
             {
-                _status = statusResult!.Data;
-                _syncResult = "Synchronisatie voltooid.";
-                _syncing = false;
-                StateHasChanged();
-                return;
-            }
-            if (job?.Status == "failed")
-            {
-                _status = statusResult!.Data;
-                _syncResult = $"Synchronisatie mislukt: {job.ErrorMessage}";
-                _syncing = false;
-                StateHasChanged();
+                await Task.Delay(_syncPollIntervalMilliseconds, cancellationToken);
+                var result = await InstellingenApi.GetSyncStatusAsync(cancellationToken: cancellationToken);
+                if (cancellationToken.IsCancellationRequested || generation != _syncPollGeneration || IsClubGewisseld(clubCode)) return;
+                if (!result.Success || result.Data == null)
+                {
+                    if (++opeenvolgendeFouten < 3) continue;
+                    _syncStatusUnavailable = true;
+                    _syncing = false;
+                    _syncResult = "Synchronisatiestatus tijdelijk niet beschikbaar. De laatst bekende stand staat hieronder; probeer opnieuw.";
+                    StopSyncPolling();
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                opeenvolgendeFouten = 0;
+                _syncStatusUnavailable = false;
+                var status = result.Data;
+                _status = status;
+                await InvokeAsync(StateHasChanged);
+                if (cancellationToken.IsCancellationRequested || generation != _syncPollGeneration || IsClubGewisseld(clubCode) || _disposed) return;
+                if (IsActieveSync(status.ActiveJob)) continue;
+
+                FinishSync(status.LastCompletedJob ?? status.Job);
+                StopSyncPolling();
+                await InvokeAsync(StateHasChanged);
                 return;
             }
         }
-        _syncResult = "Synchronisatie loopt op de achtergrond. Herlaad de pagina later voor de actuele status.";
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Clubwissel of componentverwijdering beëindigt de polling zonder UI-fout.
+        }
+    }
+
+    private static bool IsActieveSync(SyncJobDto? job) => job?.Status is "pending" or "running";
+
+    private void FinishSync(SyncJobDto? job)
+    {
+        if (job == null) return;
         _syncing = false;
-        await LoadAsync();
+        _syncResult = job.Status switch
+        {
+            "succeeded" => "Synchronisatie voltooid.",
+            "partial" => "Synchronisatie gedeeltelijk voltooid. Controleer de fasen met fouten.",
+            "failed" => "Synchronisatie mislukt. Controleer de fasen hieronder.",
+            _ => _syncResult
+        };
+    }
+
+    private void StopSyncPolling()
+    {
+        _syncPollGeneration++;
+        var cancellation = _syncPollCancellation;
+        _syncPollCancellation = null;
+        if (cancellation == null) return;
+        cancellation.Cancel();
+        cancellation.Dispose();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && !_disposed)
+        {
+            _disposed = true;
+            _syncing = false;
+            _syncOperationGeneration++;
+            _loadGuard.Start(null);
+            _uitgeslotenEmailsLoadGuard.Start(null);
+            StopSyncPolling();
+        }
+        base.Dispose(disposing);
     }
 
     private static string CronNaarNederlands(string? cron)
@@ -201,7 +319,7 @@ public partial class Instellingen : ClubSelectorPageBase
         var clubCode = ClubSelector.SelectedClubCode;
         var generatie = _uitgeslotenEmailsLoadGuard.Start(clubCode);
         var r = await EmailApi.GetUitgeslotenEmailsAsync();
-        if (!_uitgeslotenEmailsLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
+        if (_disposed || !_uitgeslotenEmailsLoadGuard.IsActueel(generatie) || ClubSelector.SelectedClubCode != clubCode) return;
         uitgeslotenEmails = r.Success ? r.Data ?? new() : new();
     }
 

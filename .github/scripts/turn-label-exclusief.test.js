@@ -1,6 +1,6 @@
 // Unit-tests voor turn-label-exclusief.js (#1686) — zonder GitHub, token of netwerk.
 // Uitvoeren: node .github/scripts/turn-label-exclusief.test.js   (exit 0 = alles groen)
-// Wordt bij elke PR gedraaid door de job 'Build FunctionApp + BlazorAdmin' in build.yml.
+// Wordt bij elke PR gedraaid door de job 'Repo-guards (zonder .NET)' in build.yml.
 const helper = require('./turn-label-exclusief.js');
 const { maakTurnExclusief } = helper;
 

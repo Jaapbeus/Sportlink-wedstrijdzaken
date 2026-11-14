@@ -24,12 +24,25 @@ public class ManagementApiHttpClientTests
 
     private sealed class WaitingHandler : HttpMessageHandler
     {
-        public bool CancellationObserved { get; private set; }
+        private int cancellationObserved;
+
+        public bool CancellationObserved => Volatile.Read(ref cancellationObserved) == 1;
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            using var registration = cancellationToken.Register(() => CancellationObserved = true);
-            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // #1941: de vlag staat vast vóórdat de annulering de handler verlaat. Een losse
+                // cancellationToken.Register-callback liep soms pas na de aanroeper (callbacks lopen in
+                // omgekeerde registratievolgorde, Task.Delay registreert later), wat de test flaky maakte.
+                Volatile.Write(ref cancellationObserved, 1);
+                throw;
+            }
+
             return new HttpResponseMessage(System.Net.HttpStatusCode.OK);
         }
     }

@@ -1,6 +1,6 @@
 // Unit-tests voor claude-issue-turn-eindlabel.js (#1692, #1702) — zonder GitHub, token of netwerk.
 // Uitvoeren: node .github/scripts/claude-issue-turn-eindlabel.test.js   (exit 0 = alles groen)
-// Draait bij elke PR in de job 'Build FunctionApp + BlazorAdmin' (build.yml), naast de poorttest.
+// Draait bij elke PR in de job 'Repo-guards (zonder .NET)' (build.yml), naast de poorttest.
 
 const { applyEndLabel, requestedEndLabel, ownerOnlyReason, WAIT_COMMENT_HEADING } = require('./claude-issue-turn-eindlabel.js');
 

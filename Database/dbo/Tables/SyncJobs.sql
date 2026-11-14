@@ -8,8 +8,11 @@ CREATE TABLE [dbo].[SyncJobs] (
     [StartedAt]      DATETIME2        NULL,
     [CompletedAt]    DATETIME2        NULL,
     [ErrorMessage]   NVARCHAR(1000)   NULL,
+    [Attempt]        INT              NOT NULL CONSTRAINT [DF_SyncJobs_Attempt] DEFAULT (0),
     CONSTRAINT [PK_SyncJobs] PRIMARY KEY CLUSTERED ([Id] ASC)
 );
 GO
 CREATE NONCLUSTERED INDEX [IX_SyncJobs_ClubCode_CreatedAt] ON [dbo].[SyncJobs] ([ClubCode], [CreatedAt] DESC);
+GO
+CREATE UNIQUE NONCLUSTERED INDEX [UX_SyncJobs_Id_ClubCode] ON [dbo].[SyncJobs] ([Id], [ClubCode]);
 GO

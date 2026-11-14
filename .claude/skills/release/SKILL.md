@@ -20,6 +20,10 @@ argument-hint: "[--dry-run]"
 > niet beschikbaar voor de uitvoerende agent, dan is R1 niet voltooid: draag de securityreview
 > expliciet over aan Claude Code; geen versiebump/merge/deploy totdat het bewijs beschikbaar is.
 
+> **Protocol v1:** changelogfragmenten en late versie/API-toewijzing zijn alleen de gekozen
+> doelroute. In SHADOW blijven de huidige `CHANGELOG.md`, versie- en CI-regels gelden. Zie
+> `docs/SAMENWERKING-AGENTS.md`; een shadowrecord wijzigt geen releasebevoegdheid.
+
 Voer een release uit van `develop` naar `main` (productie). Dit is **de enige releaseprocedure**
 van dit project; `/autonoom --release` roept deze skill aan in plaats van een eigen kopie (#1470).
 

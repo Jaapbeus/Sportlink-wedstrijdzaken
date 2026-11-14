@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "change_id": "example.internal-maintenance",
+  "issues": [1940],
+  "category": "Changed",
+  "text": "Interne opschoning zonder wijziging voor beheerders",
+  "release_impact": "internal",
+  "provenance": {
+    "origin_release": null
+  }
+}

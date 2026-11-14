@@ -13,6 +13,10 @@ die moet groen zijn, anders zegt "rood" niets.
 Een mutatie die zijn doeltekst niet meer vindt (de guard is herschreven) faalt óók: een
 mutatielijst die stilzwijgend niets meer muteert is hetzelfde als geen lijst.
 
+Een mutant draait de suite met `unittest`-failfast (#1931): hij is gedood zodra één test rood wordt,
+de rest van de suite voegt dan niets toe. Een overlevende mutant draait vanzelf alle tests. De
+basislijn draait zonder failfast, zodat een kapotte ongewijzigde guard alle falende tests toont.
+
     python3 scripts/ci/check-agent-instructies.mutaties.py            # alle mutaties, parallel
     python3 scripts/ci/check-agent-instructies.mutaties.py --lijst    # alleen de namen
 
@@ -211,10 +215,9 @@ MUTATIES += [Mutatie(f"codex-toelating {k}", CODEX_TOEGESTAAN_REGEL, CODEX_TOEGE
              for k in CODEX_KANDIDATEN]
 
 
-def draai_suite(map_: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(map_ / TESTS)], capture_output=True, text=True, cwd=str(map_)
-    )
+def draai_suite(map_: Path, failfast: bool = False) -> subprocess.CompletedProcess:
+    argumenten = [sys.executable, str(map_ / TESTS)] + (["-f"] if failfast else [])
+    return subprocess.run(argumenten, capture_output=True, text=True, cwd=str(map_))
 
 
 def maak_werkmap(basis: Path, naam: str, guardtekst: str) -> Path:
@@ -234,7 +237,7 @@ def probeer(basis: Path, index: int, mutatie: Mutatie, bron: str) -> str:
     if mutatie.oud == mutatie.nieuw:
         return f"VEROUDERD   {mutatie.naam}: mutatie verandert niets"
     map_ = maak_werkmap(basis, f"m{index:03d}", bron.replace(mutatie.oud, mutatie.nieuw))
-    resultaat = draai_suite(map_)
+    resultaat = draai_suite(map_, failfast=True)
     if resultaat.returncode == 0:
         return f"OVERLEEFD   {mutatie.naam}: de testsuite bleef groen — er mist een test voor deze regel"
     return f"GEDOOD      {mutatie.naam}"

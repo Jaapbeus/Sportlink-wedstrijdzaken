@@ -22,10 +22,15 @@ namespace SportlinkFunction
             _targetTable = targetTable;
         }
 
-        public async Task ExecuteAsync(ILogger log)
+        public Task ExecuteAsync(ILogger log) => ExecuteCoreAsync(log, readCounts: false);
+
+        public Task<(int? Added, int? Updated)> ExecuteWithCountsAsync(ILogger log) => ExecuteCoreAsync(log, readCounts: true);
+
+        private async Task<(int? Added, int? Updated)> ExecuteCoreAsync(ILogger log, bool readCounts)
         {
             try
             {
+                (int? Added, int? Updated) counts = (null, null);
                 using (SqlConnection connection = new SqlConnection(DatabaseConfig.ConnectionString))
                 {
                     await connection.OpenAsync();
@@ -39,11 +44,28 @@ namespace SportlinkFunction
                         command.Parameters.AddWithValue("@srcTable",  _sourceTable);
                         command.Parameters.AddWithValue("@tgtSchema", _targetSchema);
                         command.Parameters.AddWithValue("@tgtTable",  _targetTable);
-                        await command.ExecuteNonQueryAsync();
+                        if (readCounts)
+                        {
+                            using var reader = await command.ExecuteReaderAsync();
+                            do
+                            {
+                                if (reader.FieldCount < 2 || !reader.GetName(0).Equals("Added", StringComparison.OrdinalIgnoreCase)
+                                    || !reader.GetName(1).Equals("Updated", StringComparison.OrdinalIgnoreCase))
+                                    continue;
+                                if (await reader.ReadAsync())
+                                    counts = (reader.IsDBNull(0) ? null : reader.GetInt32(0), reader.IsDBNull(1) ? null : reader.GetInt32(1));
+                                break;
+                            } while (await reader.NextResultAsync());
+                        }
+                        else
+                        {
+                            await command.ExecuteNonQueryAsync();
+                        }
                     }
                     connection.Close(); 
                     log.LogInformation($"{_sourceTable.ToUpper()} - Merged into {_targetTable.ToUpper()} table");
                 }
+                return counts;
             }
             catch (Exception ex)
             {

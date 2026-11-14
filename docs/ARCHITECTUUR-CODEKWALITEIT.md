@@ -326,7 +326,7 @@ Van de 34 ruwe treffers:
 |---|---:|---|
 | Commentaar dat juist **waarschuwt** tegen `GETDATE()` | 5 | Telden al niet mee: de guard slaat `--`-regels over |
 | Tijdstempelkolommen in `FunctionApp/setup/*.sql` | 8 | **Gecorrigeerd** naar `GETUTCDATE()`; allowlist-regel verwijderd |
-| Seizoenskalender in `sp_UpdateSeasonTable` + zijn kopie in `Script.PostDeployment1.sql` | 20 | Blijft, met reden |
+| Seizoenskalender in `sp_UpdateClubSeasonTable` + zijn kopie in `Script.PostDeployment1.sql` | 20 | Blijft, met reden |
 | `CAST(GETDATE() AS DATE)` in het AllStars-demoseedscript | 1 | Blijft, met reden |
 
 **Waarom de seizoenskalender blijft.** `YEAR(GETDATE())` leidt daar af *in welk seizoen we zitten*.
@@ -507,7 +507,7 @@ weer uitgezet — en bewaakt dan niets meer.
 **Testprojecten zijn uitgesloten in `.editorconfig` zelf**, niet in de guard. Zelfde redenering als
 hierboven: `SportlinkClubClientTests` raakt 96 typen aan, en dat is dekking, geen verstrengeling.
 
-*Guard: `scripts/ci/check-analyzer-complexiteit.sh` — bouwt de solution en telt. Weigert te meten
+*Guard (tot #1945): `scripts/ci/check-analyzer-complexiteit.sh` — bouwde de solution en telde. Weigerde te meten
 als `.editorconfig` de drie regels niet aanzet: zonder die controle zou hij stilzwijgend nul tellen
 en voor altijd groen staan, precies het no-op-patroon uit §67 van
 `ARCHITECTUUR-DATABASE-TIERS.md`.*
@@ -521,6 +521,20 @@ drie regels niet meer op `error`/`warning` zet (de `none`-regels van de testsect
 voor een proef kan `EDITORCONFIG_PAD` naar een ander bestand wijzen) en bewaakt
 dat het aantal op 0 blijft als de severity ooit teruggezet wordt; bij een overtreding meldt hij
 "De build faalde" en toont de CA150x-regels. Nazorg (fase-skelet en tier-duplicatie): #1650.
+
+**Vereenvoudigd bij #1945 (#1900 fase 3).** Bij severity `error` voegde de tweede, geforceerde
+solutionbuild van de guard niets toe (ca. 30 s op het kritieke pad): de gewone Release-build van
+`sportlink-wedstrijdzaken.slnf` in de job *Compileren en testen (.NET)* faalt al op elke
+overtreding. De guard telt daarom niet meer en heeft geen .NET meer nodig (hij draait in
+*Repo-guards*); het plafond `analyzer-overtredingen` is vervallen. Hij eist nu **strikt `error`** in
+`[*.cs]`: `warning` is niet meer genoeg, want zonder teller zou een overtreding dan stilzwijgend
+doorglippen. Omdat EditorConfig de **laatste** waarde neemt, is de controle fail-closed (review #1946): elke
+severity-toewijzing van de drie regels buiten de testsectie moet `error` zijn (een latere `warning`
+in `[*.cs]` of in een later productieblok faalt), de testsectie mag alleen `none`, en geen andere
+bron (geneste `.editorconfig`, `.globalconfig`, `.ruleset`, csproj/props/targets, bijv. `NoWarn`) mag
+ze noemen, hoofdletterongevoelig (`ca1502` werkt ook voor de compiler). Productiecode mag ze ook niet
+onderdrukken met `#pragma warning disable` of `[SuppressMessage]`. `check-codekwaliteit.test.sh` bewijst al deze faalwijzen. Rood-bewijs van de build zelf
+staat in de PR van #1945.
 
 ### Regel 9 — Elk HTTP-endpoint autoriseert via de wrapper, nooit via een eigen poort (#1350)
 
@@ -598,7 +612,7 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | 5 — skillkopieën in `.claude/skills/` identiek aan de bron in `.agents/skills/` (#1579) | `scripts/ci/sync-skills.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
 | 7, 8 — bestandsgrootte en methodelengte stijgen niet | `scripts/ci/check-bestandsgrootte.sh` | `build.yml` |
-| 7, 8 — maintainability-analyzers: ratchet op 0 afgerond, severity `error` (#1300, #1651) | `scripts/ci/check-analyzer-complexiteit.sh` | `build.yml` |
+| 7, 8 — maintainability-analyzers: ratchet op 0 afgerond, severity `error` (#1300, #1651); guard eist `error` in `[*.cs]`, de solutionbuild vangt de overtreding (#1945) | `scripts/ci/check-analyzer-complexiteit.sh` | `build.yml` |
 | 9 — elk HTTP-endpoint autoriseert via de wrapper, op Anonymous (#1350) | `scripts/ci/check-endpoint-autorisatie.sh` | `build.yml` |
 | Alle regels — de guards worden zelf getest | `scripts/ci/check-codekwaliteit.test.sh` | `build.yml` |
 
@@ -648,6 +662,10 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | 2b — tier-identieke wire-DTO's staan eenmalig in `GedeeldeBron/` (#1856) | onbewaakt: een guard (type-niveau-vergelijking van beide tierbomen) valt buiten de scope van #1856; `check-tier-duplicatie.sh` koppelt op bestandsnaam en ziet dit niet; wel gedekt door `PlannerDtoVormTests` voor de verhuisde typen, een nieuw tier-identiek DTO beoordeelt de reviewer (zie 'Eerlijk vermeld') | n.v.t. |
 | Vrije agentslots vullen en voltooide agents hergebruiken (#1860) | onbewaakt: alleen de actieve sessie kent de runtime-roster, taakautorisatie en acceptatie; geen guard of scheduler beheert dit | Handmatig per orkestratiecheckpoint: controleer de live roster, vul veilige vrije slots en verifieer dat de agent de taak heeft aangenomen |
 
+| Samenwerkingsroute, afronding en exclusieve lokale schrijver (#1940) | `.github/scripts/samenwerking-poort.test.js`, `scripts/samenwerking/` | `build.yml` |
+| Volledige integratietree en genegeerde lokale hookconfiguratie (#1940) | `scripts/dev/test_collaboration_tools.py` | `build.yml` |
+| Deterministische releasefragmenten en versievelden (#1940) | `scripts/release/` | `build.yml` |
+
 <!-- REGELREGISTER-EINDE -->
 
 `check-egressguard-dekking.sh` werkt op bestandsniveau. **Gescand:** elk `.cs`-bestand (behalve `bin/`/`obj/`) in
@@ -689,6 +707,7 @@ Eerlijk vermeld, zodat niemand denkt dat het gedekt is.
 | Verweesde `status: waiting-codex` (#1336, gedeprecieerd sinds #1343) — **bewaakt sinds #1858, signalerend** | Het label is uit `.github/labels.json` verwijderd; de `PROTECTED`-vermelding in `issue-status.js` volgt na PR #1825, dat dat bestand ook wijzigt. Staat het label toch (weer) op een issue, dan signaleert `beurt-invariant.yml` dat binnen 15 minuten als `VEROUDERDE_STATUS` (pas actief na de eerstvolgende release naar `main`, want een schedule draait alleen vanaf de default branch). Alleen signaleren: het label wordt niet automatisch verwijderd. | `beurt-invariant.test.js`; het label zelf uit de repository verwijderen is handwerk na merge en controle |
 | Precies één `turn:`-label per issue (#1343) — **bewaakt sinds #1858 (signalerend); dubbel label bewaakt sinds #1686** | Een dubbel `turn:`-label lost `turn-label-exclusief.yml` op bij elk nieuw `turn:`-label (het laatst gezette blijft; actief sinds v3.14.0.0). Sinds #1858 vergelijkt `beurt-invariant.yml` elke 15 minuten het `turn:`-label met de volgende beurt uit de nieuwste vertrouwde overdrachtscomment (issue én gekoppelde PR) en signaleert met één gededupliceerde comment: geen of meerdere `turn:`-labels, een label dat afwijkt na de wachttijd, een label dat nog staat terwijl de nieuwste overdracht geen volgende beurt noemt (merge door de implementer of eindfase), een onjuiste of verouderde head-SHA in een reviewaanvraag en `status: waiting-codex`. Hij wijzigt nooit labels (herstel blijft handwerk, `CONTRIBUTING.md`). Een schedule draait alleen vanaf de default branch: de bewaking is pas actief na de eerstvolgende release naar `main`. Labels die met de `GITHUB_TOKEN` worden gezet starten die workflow niet. Wanneer de poort van `claude-issue-turn.yml` zelf de beurt naar de eigenaar teruggeeft, gebeurt dat via `setTurnLabel()` in `.github/scripts/claude-issue-turn-gate.js` (eerst toevoegen, dan elk ander `turn:`-label verwijderen). Lokale wissels blijven `gh issue edit`-aanroepen volgens `AGENTS.md`; in die CI-run schrijft de agent zelf geen label meer en vervangt de job `eindlabel` uitsluitend `turn: claude-code` als vergelijk-en-zet, zonder `setTurnLabel()` en met terugdraaien bij een veranderde nacontrole (#1692, `claude-issue-turn-eindlabel.js`). | `turn-label-exclusief.test.js` (dubbel label), `claude-issue-turn-gate.test.js` voor het poortpad en `claude-issue-turn-eindlabel.test.js` voor het eindlabel, `beurt-invariant.test.js` voor de signalering; een issue zonder `turn:`-label én zonder overdrachtscomment blijft onzichtbaar, evenals de `source:`-controle (rij hierboven) |
 | `/security-review` vóór elke release (#1470) | Afgedwongen door de skill `/release` (stap R1), niet door CI: een review in GitHub Actions vraagt een Anthropic API-sleutel en dus API-kosten. Een release buiten `/release` om (handmatig mergen van een `develop` → `main`-PR) slaat de review over. De automatische ondergrens is de Security Gate met CodeQL, die wél verplicht is op `main`. | Geen; bewust zo gelaten. Vangrail is de verplichte Security Gate |
+| Samenwerking protocol 1: echte sessie-identiteit, inhoudelijke bevindingenafhandeling, basisinteracties en exclusiviteit buiten de lokale coördinator (#1940) | `handmatig`: transacties, taskbarrière, teller en routering worden getest, maar losse credentials kunnen het lokale register omzeilen; aangeleverd CI-/eigenaarbewijs is geen cryptografische authenticatie. Shadow verandert bestaande merge-eisen niet. | Per aanvraag/merge de exacte sessie, actuele GitHub-toestand, alle bevindingen en bevoegdheid onafhankelijk toetsen. Activering vereist eigenaar, passende protocolversies en default-branchcontrole; lokale preflight vóór elke nieuwe worktree. |
 | Afronding aan de eigenaar is een beslissurvey, het eindrapport een comment en de chat één regel (#1728) | `handmatig`: of iets een echt besluit is en of een rapport feiten of een besluit bevat is inhoud, geen structuur; geen script beoordeelt de survey of het uitvoerkanaal (comment versus chat). De regel staat in `AGENTS.md` (afronding en overdracht), uitgewerkt in `CONTRIBUTING.md`, "Afronding aan de eigenaar". | Handmatig bij elke review van een afronding: (1) zonder besluit is de chat één regel met link naar de eindrapport-comment, geen survey; (2) met besluit of blokkade komt het pad naar de lokale survey (3–5 opties met voor en tegen, aanbeveling) erbij; (3) niet-uitgevoerde controles staan in de eindrapport-comment; (4) geen details van een onverholpen securitybevinding in comment of survey |
 | Maximaal drie wederzijdse reviewrondes per PR zonder eigenaarsbesluit — **deels bewaakt sinds #1601** | De rondelimiet uit de wederzijdse reviewworkflow in `AGENTS.md` geldt voor beide agents; CI houdt nog geen teller per PR bij. Voor de automatische issue-beurt (`claude-issue-turn.yml`) is er wél een harde bovengrens: na drie eerdere runs voor hetzelfde issue start de poort geen run meer en gaat de beurt naar de eigenaar (`MAX_RUNS` in `claude-issue-turn-gate.js`). Het tellen van de reviewrondes zelf ("Fase: review"-aanvragen op het issue) staat bij een verwerkingsrun van de bot in de prompt, niet in code. Bij een review door de bot van een Codex-PR telt de poort de rondes wél in code (verschillende aangeboden SHA's, `MAX_REVIEW_ROUNDS`, #1727). | `claude-issue-turn-gate.test.js` voor de runbovengrens en de reviewrondes van de bot; de teller per PR blijft een los issue indien gewenst |
 
@@ -764,18 +783,18 @@ python3 scripts/ci/sync-skills.py
 # Alleen als je de guard zelf wijzigt (draait ~40 s): mist een test voor een regel, dan overleeft een mutant
 python3 scripts/ci/check-agent-instructies.mutaties.py
 
-# Deze ene bouwt de hele solution en duurt dus langer dan de rest bij elkaar:
+# Controleert alleen dat CA1502/1505/1506 in .editorconfig op error staan (#1945); de overtreding
+# zelf vangt `dotnet build sportlink-wedstrijdzaken.slnf -c Release`:
 bash scripts/ci/check-analyzer-complexiteit.sh
 
 # Skill in .agents/skills/ gewijzigd? Schrijf de kopie voor Claude Code:
 python3 scripts/ci/sync-skills.py --schrijf
 ```
 
-Alle guards behalve de laatste lezen enkel bestanden — geen database, geen secrets, geen SDK.
-`check-analyzer-complexiteit.sh` is de uitzondering: hij draait `dotnet build` op
-`sportlink-wedstrijdzaken.slnf`, omdat CA1502/1505/1506 compileertijd-analyzers zijn en er geen
-manier is om ze zonder compilatie te tellen. Hij weigert te meten als `.editorconfig` de drie
-regels niet aanzet — anders telt hij stilzwijgend nul en staat hij voor altijd groen.
+Alle guards lezen enkel bestanden — geen database, geen secrets, geen SDK. Sinds #1945 geldt dat ook
+voor `check-analyzer-complexiteit.sh`: CA1502/1505/1506 zijn compileertijd-analyzers op severity
+`error`, dus de gewone solutionbuild vangt een overtreding; de guard bewaakt alleen dat
+`.editorconfig` ze op `error` laat staan (anders glipt een overtreding stilzwijgend door).
 
 Een guard die faalt omdat je iets hebt verbeterd, zegt welk getal in
 `scripts/ci/codekwaliteit-plafonds.txt` moet. Neem dat over in dezelfde PR — winst die niet wordt

@@ -1,6 +1,6 @@
 // Unit-tests voor claude-issue-turn-gate.js — draaien zonder GitHub, zonder token, zonder netwerk.
 // Uitvoeren: node .github/scripts/claude-issue-turn-gate.test.js   (exit 0 = alles groen)
-// Wordt bij elke PR gedraaid door de job 'Build FunctionApp + BlazorAdmin' in build.yml,
+// Wordt bij elke PR gedraaid door de job 'Repo-guards (zonder .NET)' in build.yml,
 // naast .github/scripts/issue-status.test.js (zelfde reden: deze helper draait alleen op
 // zijn eigen trigger — labeled issues — dus een fout zou anders pas bij een echte run blijken).
 

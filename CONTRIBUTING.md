@@ -227,7 +227,7 @@ bij — `Closes #<nr>` in de PR-titel of -body is genoeg.
 | PR *ready for review* | `status: review-needed` |
 | Agent rondt Stap 5 af zonder escalatie (AGENTS.md) | `status: pr-aangemaakt` — de PR wacht op de merge, niet op de eigenaar, tenzij er een eigenaarspunt openstaat |
 | PR gesloten zonder merge | `status: triage` |
-| **PR gemerged naar `develop`** | **`status: awaiting-release` en geen `turn:`-label — het issue blijft open** |
+| **PR gemerged naar `develop`** | **`status: awaiting-release`, geen `turn:`-label en één fasecomment `Fase: gemerged` — het issue blijft open** |
 | Release-tag gepusht naar `main` | status-labels weg, issue gesloten |
 
 **Waarom een PR als draft beginnen.** Zonder `--draft` zet de automatisering meteen `status:
@@ -239,6 +239,27 @@ integratiebranch; er staat op dat moment nog niets van je wijziging live. Het is
 `status: awaiting-release` tot de eerstvolgende release naar `main`, waarna
 `close-released-issues.yml` het automatisch sluit. Je bijdrage is niet vergeten — ze wacht op een
 releasemoment.
+
+**Fasecomment, lifecycle-status en agentbezetting zijn drie aparte dingen (#1867).** De fasecomment op het issue
+legt de overdracht vast (fase, implementer, reviewer, PR, head-SHA, volgende beurt). Het `status:`-label is de
+lifecycle van het issue en is van de automatisering. Het `turn:`-label zegt wie nu aan zet is; dat is geen
+aanwijzing welke agent op dat moment actief is of welke worktree bezet is. Een van de drie zegt niets over de
+andere twee, dus wijzig er nooit één om een andere te "repareren".
+
+**Na een merge naar `develop` staat er een `gemerged`-fase.** `label-awaiting-release.yml` plaatst naast de
+status en het opschonen van `turn:` precies één comment `Fase: gemerged` met het PR-nummer, de volledige
+merge-SHA (40 tekens) en `Volgende beurt: geen` (zonder een herkend overdrachtsveld negeert de bewaking de comment). De comment draagt een verborgen marker per PR, zodat een herhaald event niets dubbel
+plaatst. `gemerged` is een eindfase zonder volgende beurt (`beurt-invariant.yml` leest hem zo); vervolgwerk
+begint met een nieuwe overdracht met een nieuwe implementer, sessie en status. Ontbreekt de merge-SHA of is die ongeldig, dan
+plaatst de workflow niets en faalt de run zichtbaar (`core.setFailed`).
+
+**Een verouderde status herstel je alleen met `reconcilieer-issue-status.yml` (#1867).** Start die handmatig
+(`gh workflow run reconcilieer-issue-status.yml -f issue_nummer=<nr>`) voor één open issue met **precies één**
+sterk gekoppelde open PR (`fix(#nr): …` in de titel of `Closes #nr`): een draft-PR geeft `status: in-progress`,
+een ready-PR `status: review-needed`. Er verandert niets bij geen of meerdere sterke koppelingen, een gesloten
+issue, een PR zonder bewezen herkomst of een beschermde status (`blocked`, `wont-fix`, `waiting-owner`,
+`awaiting-release`, `waiting-codex`). Een `turn:`-label wordt nooit aangeraakt en een herhaalde run verandert niets.
+Een open-PR-status zet je dus nooit met de hand. Bij meerdere koppelingen los je eerst de koppeling op.
 
 **Na een merge staat er alleen `status: awaiting-release`** (#1669). `label-awaiting-release.yml` zet die
 status en verwijdert in dezelfde stap elk `turn:`-label: na de merge is niemand meer aan zet, alleen de
@@ -306,10 +327,19 @@ release naar `main`; tot die tijd is de overdrachtsvolgorde hierboven niet autom
 
 ### Parallelle agentorkestratie (#1860)
 
-Controleer bij elk orkestratiepunt de live agentbezetting en geef elke vrije runtimeslot een veilige,
-afgebakende taak uit de al toegestane scope. Reken de orkestrator mee in de runtimelimiet. Hergebruik
-voltooide agents meteen en controleer dat zij hun volgende taak hebben aanvaard voordat je een slot als
-actief meldt.
+De bestaande review- en mergevoorwaarden in `AGENTS.md` blijven leidend. Het nieuwe protocol v1
+staat standaard in SHADOW: het registreert sessies, bevindingen en integratiebewijs, maar vervangt
+geen exacte-head-review of CI-gate en geeft geen bevoegdheden. Een issuecomment/claim of `turn:`-label
+is nooit een lock. De volledige staatsovergangen, verplichte join van verificaties, quota, herstel en
+toekomstige activeringsvoorwaarden staan in [SAMENWERKING-AGENTS.md](docs/SAMENWERKING-AGENTS.md).
+
+In shadow is er geen exclusieve technische lane of lock voor alle `develop`-schrijvers. Doe geen
+parallelle develop-integraties op grond van een registratie. Een latere actieve fase vereist dat
+iedere lokale, CI-, bot- en eigenaarsschrijver dezelfde lane kan gebruiken of aantoonbaar is gestopt.
+
+Controleer bij elk orkestratiepunt de live agentbezetting en geef alleen veilige, vooraf toegewezen
+scopes uit. Reken de orkestrator mee in de runtimelimiet. Verifieer acceptatie voordat je een slot als
+actief meldt; annuleer geen verplichte verificatie om een review af te ronden.
 
 Controleer vóór toewijzing de issue-eigenaar, reviewer, fase, beurt, worktree-eigenaar, afhankelijkheden
 en grenzen tussen bestanden, API-contracten, schema's en gedeelde logica. Laat schrijvers niet overlappen
@@ -319,10 +349,11 @@ eigenaarschapscontrole bij uitbreiding en vóór commit of PR.
 Een tekstverschil of aparte bestandslijst bewijst geen functionele isolatie; controleer ook gedeelde
 aanroepers, contracten en gegevensstromen.
 
-Is er geen veilige codetaak, wijs dan onafhankelijke, alleen-lezen status- of CI-controles toe, of een
-exacte-SHA-review als fase en reviewprotocol dat toestaan. Een review blijft alleen-lezen en bevroren op
-de aangeboden SHA. Volg CI en reviewreacties; meld een slot pas bezet nadat de taak aantoonbaar actief is.
-Rapporteer per agent de concrete taak en het bewijs, en vermeld als geen taak veilig beschikbaar is.
+Is er geen veilige codetaak, doe alleen geautoriseerde status-/CI-controle of exacte-SHA-review. Per
+reviewaanvraag is er één benoemde reviewer-sessie. Bewaar alle bevindingen, ook onverwachte; een
+schone review wist geen eerdere finding. Na ronde drie gaat dispositie eerst naar implementer en dan
+naar de eigenaar. Een base-update vraagt een apart integratieattest; dat attest vervangt geen nieuwe
+inhoudelijke review bij gewijzigde/onzekere bijdrage. Rapporteer taak, sessie en bewijs.
 
 ### Security Gate
 

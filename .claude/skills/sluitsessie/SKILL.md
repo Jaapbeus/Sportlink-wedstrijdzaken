@@ -18,6 +18,10 @@ disable-model-invocation: true
 > Poorten vrij betekent niet dat databases/testdata vrij zijn. Leg reservering en vrijgave vast
 > in de taak/sessie-overdracht; laat services intact als ze aan een andere sessie behoren.
 
+> **Protocol v1:** SHADOW vervangt de bestaande afsluitgates niet. Gebruik de actuele changelog-,
+> review- en exacte-head-CI-regels; ontbrekende of geannuleerde verplichte verificatie is geen
+> geslaagde afronding. Zie `docs/SAMENWERKING-AGENTS.md`.
+
 
 Voer de sessie-afsluiting uit als een gate-based pipeline. Elke fase is een poort:
 als een harde blocker gevonden wordt, stop je bij die fase en rapporteer je wat er

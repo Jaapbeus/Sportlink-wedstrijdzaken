@@ -35,6 +35,7 @@ SECRET-ROTATION.md
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
+!scripts/release/
 [Rr]eleases/
 [Bb]in/
 [Oo]bj/

@@ -4,33 +4,6 @@ using Planner.Shared.Email;
 
 namespace SportlinkFunction.Email;
 
-/// <summary>
-/// Stand van een bestaande verwerkingsrij, zoals de idempotentie-guard die nodig heeft (#712).
-/// <para>
-/// <c>AntwoordVerstuurd</c> is de harde grens tegen een dubbel antwoord. Sinds #718 komt die uit
-/// <c>IsBeantwoord</c> — een boolean die de AVG-anonimisering overleeft — met <c>VerstuurdNaar
-/// IS NOT NULL</c> als terugvalpad voor rijen van vóór die kolom. Voorheen was <c>VerstuurdNaar</c>
-/// de enige bron, en die wordt na 30 dagen leeggemaakt.
-/// </para>
-/// <para>
-/// De statuslijst blijft daarnaast een tweede, onafhankelijke grens: bij een rij die al geanonimiseerd
-/// was vóór de introductie van <c>IsBeantwoord</c> is het feit "er is geantwoord" niet meer uit de
-/// data te herleiden.
-/// </para>
-/// </summary>
-/// <param name="VerzendPogingOnbeslist">
-/// Er is een verzendpoging vastgelegd waarvan de uitkomst onbekend is (#716): de intentie werd gezet
-/// vlak vóór het versturen en is niet gewist, terwijl er ook geen antwoord is vastgelegd. Dat wijst op
-/// een harde afbreking tussen versturen en vastleggen. Opnieuw versturen is dan niet veilig, want het
-/// eerste antwoord kan de deur al uit zijn.
-/// </param>
-internal sealed record EmailVerwerkingStand(
-    int VerwerkingId,
-    string Status,
-    int Pogingen,
-    bool AntwoordVerstuurd,
-    bool VerzendPogingOnbeslist = false);
-
 internal interface IEmailPersistenceService : IReplyPersistentie
 {
     Task<HashSet<string>> LaadUitgeslotenAdressenAsync(ILogger log);

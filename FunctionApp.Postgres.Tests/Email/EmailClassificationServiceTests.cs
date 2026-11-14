@@ -15,6 +15,18 @@ namespace FunctionApp.Postgres.Tests.Email;
 public class EmailClassificationServiceTests
 {
     [Fact]
+    public async Task ClassificeerBatchAsync_NullBody_BlijfClassificeerbaar()
+    {
+        var result = await new EmailClassificationService().ClassificeerBatchAsync(
+            [new InkomendBericht { MessageId = "m1", Onderwerp = "Test", Body = null, Afzender = "trainer@voorbeeld.nl" }],
+            (_, _) => Task.FromResult(new BerichtClassificatie { Type = VerzoekType.Bevestiging }),
+            _ => false,
+            NullLogger.Instance);
+
+        result.Classificaties.Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task ClassificeerBatchAsync_ValideertDagDatumOpResultaat()
     {
         var service = new EmailClassificationService();

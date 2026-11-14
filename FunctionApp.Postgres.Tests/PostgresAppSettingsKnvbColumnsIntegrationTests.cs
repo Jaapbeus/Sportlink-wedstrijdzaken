@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using Xunit;
 
+using Planner.Shared.Email;
 namespace FunctionApp.Postgres.Tests;
 
 /// <summary>

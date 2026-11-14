@@ -187,7 +187,7 @@ heeft, worden die blokken netjes overgeslagen; de volgende deploy maakt ze aan.
 
 `node .github/scripts/issue-status.test.js` test de helper `.github/scripts/issue-status.js` achter de
 drie lifecycle-workflows (`label-issue-status.yml`, `label-awaiting-release.yml`,
-`close-released-issues.yml`) en draait bij elke PR in de CI-job *Build FunctionApp + BlazorAdmin*. Dat
+`close-released-issues.yml`) en draait bij elke PR in de CI-job *Repo-guards (zonder .NET)* van `build.yml`, onderdeel van de verplichte check *Build FunctionApp + BlazorAdmin* (#1942). Dat
 is nodig omdat de workflows zelf alleen op hun eigen trigger draaien: zonder deze test zou een fout pas
 bij een echte merge of release blijken. Om dezelfde reden draaien daar ook
 `node .github/scripts/claude-issue-turn-gate.test.js` (poort van `claude-issue-turn.yml`),
@@ -196,6 +196,28 @@ bij een echte merge of release blijken. Om dezelfde reden draaien daar ook
 `node .github/scripts/turn-label-exclusief.test.js` (helper van `turn-label-exclusief.yml`, #1686),
 `node .github/scripts/issue-router.test.js` (routetabel, structuur van `issue-router.yml` en `claude-issue-turn.yml`, guard tegen `checks: write`, #1721) en
 `node .github/scripts/claude-issue-turn-ledger.test.js` (rondeteller op ID's, fail-closed, #1721).
+
+Protocol v1 heeft daarnaast een lokale SHADOW-registratie en preview-/validatietooling. Die registratie
+is geen distributieve lock en bewijst niet dat alle CI-, bot-, owner- en lokale schrijvers meedoen.
+De bestaande exacte-head-, `Build (PR)`- en Security Gate-controles blijven leidend. Een protocolrecord
+kan geen ontbrekende check, onvoltooide verplichte verificatie of finding/dispositie vervangen. De
+acceptatie- en activeringsvoorwaarden staan in `docs/SAMENWERKING-AGENTS.md`; voer geen actieve lane
+of writer-exclusiviteit op basis van shadowbewijs op.
+
+De nieuwe `scripts/dev/check-worktree-preflight.py` valideert de opgegeven absolute worktree en
+branch vóór werk; `scripts/dev/integration-evidence.py` maakt een bewijsrapport voor de oude review,
+nieuwe base en kandidaat-head. Het rapporteert uitsluitend een exacte volledige integratietree of
+wijzigingen aan de elf gesynchroniseerde versievelden: `Version`, `AssemblyVersion` en `FileVersion`
+in elk van de drie applicatieprojecten, plus `info.version` in OpenAPI YAML en JSON. Alleen die
+scalaire versiewaarden mogen veranderen; overige tekst blijft bytegelijk. Dubbele JSON-sleutels,
+onduidelijke YAML-scopes en niet-ondersteunde of voorwaardelijke XML-versievelden krijgen geen
+versie-uitzondering. CHANGELOG-wijzigingen vallen buiten deze normalisatie.
+
+Conflicten, extra bestanden, moduswijzigingen en andere inhoud vragen gewone inhoudelijke of
+handmatige beoordeling. Het rapport behoudt de volledige tree-ID's, verschilpaden, geordende
+diff-hashes en overgeërfde commits. Ook bij een exacte tree of alleen versievelden blijft een
+onafhankelijke interactiereview verplicht; het rapport autoriseert geen reviewovername of merge.
+Controleer commandoreferentie en code bij wijzigingen.
 
 ### BlazorAdmin-build wordt overgeslagen bij een draaiende dev server
 
@@ -473,7 +495,7 @@ losse vertaling ergens anders (#816/#865).
 `scripts/ci/Test-TierMappingConsistency.ps1` bewijst dat die twee lezers voor elke tier in de
 tabel, plus een bewust onbekende naam, exact dezelfde uitkomst geven (gevonden/niet-gevonden,
 gebouwd/nog-niet-gebouwd, hetzelfde csproj-pad). Draait zonder database en zonder secrets, en zit
-als stap in `.github/workflows/build.yml` (job "Build FunctionApp + BlazorAdmin").
+als stap in `.github/workflows/build.yml` (job "Repo-guards (zonder .NET)", onderdeel van de verplichte check "Build FunctionApp + BlazorAdmin").
 
 **Lokaal op Windows, als `bash` naar WSL wijst:** het script detecteert dit automatisch (`bash`
 resolvend naar `System32\bash.exe` i.p.v. Git Bash) en compenseert twee WSL-eigenaardigheden die
@@ -556,7 +578,7 @@ kan overschrijven).
 dotnet test BlazorAdmin.Tests/BlazorAdmin.Tests.csproj --configuration Release
 ```
 
-Draait ook als stap in `.github/workflows/build.yml` (job "Build FunctionApp + BlazorAdmin"),
+Draait ook als stap in `.github/workflows/build.yml` (job "Compileren en testen (.NET)", onderdeel van de verplichte check "Build FunctionApp + BlazorAdmin"),
 direct na de BlazorAdmin-build. Een component-level test (bUnit) is bewust niet gekozen voor dit
 issue — de logica die de race daadwerkelijk voorkomt zit in een pure klasse, en die is zonder
 component-rendering volledig te bewijzen.
@@ -884,7 +906,7 @@ dat script staan, anders ontbreekt het op een verse deploy en falen functies met
 `Invalid object name`.
 
 Dat ging structureel mis: **12 objecten** stonden alleen in het DB-project — waaronder alle vier de
-ETL-procedures (`sp_CreateTargetTableFromSource`, `sp_MergeStgToHis`, `sp_UpdateSeasonTable`,
+ETL-procedures (`sp_CreateTargetTableFromSource`, `sp_MergeStgToHis`, `sp_UpdateSeasonTable` (inmiddels opgeruimd, #1747),
 `sp_CreateDateTable`), de stuurtabel `mta.source_target_mapping` (inclusief de seed-rijen, die alleen
 als SQL-comment bestonden), `dbo.Season`, de drie `pub`-views, `avg.ImportLog`,
 `planner.HerplanVerzoeken` en `dbo.Zonsondergang`.

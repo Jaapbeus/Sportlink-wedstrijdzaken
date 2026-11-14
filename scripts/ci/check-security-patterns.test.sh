@@ -314,3 +314,15 @@ for marker in "$email_prefix$email_domain" "$phone_prefix$phone_suffix" 'Synthet
 done
 
 echo "PASS: security pattern matcher handles unusual tracked paths, preserves pattern classes, and keeps public output value-free."
+
+# #1940: ook fragmenten en releasemanifest vallen onder de documentatiescan.
+new_repo changelog-fragment
+mkdir -p "$REPO/changelog.d"
+printf '{"text":"%s%s%s"}\n' 'synthetic' '@' 'niet-toegestaan.test' > "$REPO/changelog.d/entry.json"
+track_repo
+run_mode pii-docs
+assert_match_count "documentation PII" 1
+printf '{"text":"%s%s%s"}\n' 'trainer' '@' 'voorbeeld.nl' > "$REPO/changelog.d/entry.json"
+track_repo
+run_mode pii-docs
+assert_no_match_count "documentation PII"

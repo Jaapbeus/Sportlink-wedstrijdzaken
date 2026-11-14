@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using SportlinkFunction.Email;
 using Xunit;
 
+using Planner.Shared.Email;
 namespace FunctionApp.Tests.Email;
 
 /// <summary>

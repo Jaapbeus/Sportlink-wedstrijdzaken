@@ -25,6 +25,11 @@ argument-hint: "[--dry-run] [--features] [--release]"
 > Poorten vrij betekent niet dat databases/testdata vrij zijn. Leg reservering en vrijgave vast
 > in de taak/sessie-overdracht; laat services intact als ze aan een andere sessie behoren.
 
+> **Protocol v1:** registratie blijft SHADOW en verleent geen bevoegdheid of lock. Volg de
+> bestaande review-, changelog-, versie- en exacte-head-CI-regels uit `AGENTS.md` tot afzonderlijke
+> owner-activering. Verplichte verificaties moeten allemaal voltooid en gejoined zijn; annuleer ze
+> niet om een review af te ronden. Zie `docs/SAMENWERKING-AGENTS.md`.
+
 Voer de volledige autonome ontwikkelcyclus uit. Dit is de standaard werkmodus: van
 openstaande issues tot een schone, gesynchroniseerde codebase met een verse branch
 klaar voor de volgende iteratie.

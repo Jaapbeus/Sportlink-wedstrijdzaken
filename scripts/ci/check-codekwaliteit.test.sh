@@ -352,14 +352,45 @@ cp "$TMP_B" CLAUDE.md
 #    meer aanzet. Dat is de gevaarlijke faalwijze — zonder die controle telt hij stilzwijgend nul
 #    en staat hij voor altijd groen, precies het patroon van de splinter-no-op uit §67.
 #
-#    Alleen DEZE negatieve test staat hier, en niet die op het aantal overtredingen: die vraagt een
-#    volledige solution-build, en deze zelftest draait in CI vóór de buildstappen. De teltest is
-#    handmatig uitgevoerd bij #1300 (een methode met complexiteit 40 toegevoegd → 20 > 19 → rood).
-#    De controle hieronder breekt bewust af vóór de build, dus hij kost niets.
+#    Sinds #1945 telt de guard niet meer (de solutionbuild faalt zelf op elke overtreding bij
+#    severity error); hij eist alleen nog strikt 'error' in [*.cs]. Daarom ook het tweede geval:
+#    'warning' moet rood zijn, want dan glipt een overtreding stilzwijgend door de build.
 cp .editorconfig "$TMP_B"
 grep -v 'CA1506' "$TMP_B" > .editorconfig
 verwacht_falen "analyzers niet aangezet in .editorconfig" bash scripts/ci/check-analyzer-complexiteit.sh
 cp "$TMP_B" .editorconfig
+awk '/^\[/ { actief = ($0 == "[*.cs]") } { if (actief && $0 ~ /^dotnet_diagnostic\.CA1502\.severity/) print "dotnet_diagnostic.CA1502.severity = warning"; else print }' "$TMP_B" > .editorconfig
+verwacht_falen "CA1502 op warning in [*.cs]" bash scripts/ci/check-analyzer-complexiteit.sh
+cp "$TMP_B" .editorconfig
+#    #1946 review (Codex P2): EditorConfig neemt de LAATSTE waarde. Een latere 'warning' in hetzelfde
+#    blok of in een later productieblok moet rood zijn, ook al staat er eerder een 'error'-regel.
+awk '{ print } /^dotnet_diagnostic\.CA1506\.severity = error/ && !klaar { print "dotnet_diagnostic.CA1502.severity = warning"; klaar = 1 }' "$TMP_B" > .editorconfig
+verwacht_falen "latere CA1502 = warning in hetzelfde [*.cs]-blok" bash scripts/ci/check-analyzer-complexiteit.sh
+cp "$TMP_B" .editorconfig
+{ cat "$TMP_B"; printf '\n[FunctionApp/**.cs]\ndotnet_diagnostic.CA1505.severity = none\n'; } > .editorconfig
+verwacht_falen "later productieblok zet CA1505 op none" bash scripts/ci/check-analyzer-complexiteit.sh
+cp "$TMP_B" .editorconfig
+#    Een andere bron (geneste .editorconfig of NoWarn in een projectbestand) kan de severity ook stil uitzetten.
+printf '[*.cs]\ndotnet_diagnostic.CA1506.severity = none\n' > Planner.Shared/.editorconfig
+verwacht_falen "geneste .editorconfig noemt CA1506" bash scripts/ci/check-analyzer-complexiteit.sh
+rm -f Planner.Shared/.editorconfig
+cp Planner.Shared/Planner.Shared.csproj "$TMP_C"
+awk '/<\/Project>/ { print "  <PropertyGroup><NoWarn>$(NoWarn);CA1502</NoWarn></PropertyGroup>" } { print }' "$TMP_C" > Planner.Shared/Planner.Shared.csproj
+verwacht_falen "NoWarn CA1502 in een csproj" bash scripts/ci/check-analyzer-complexiteit.sh
+cp "$TMP_C" Planner.Shared/Planner.Shared.csproj
+printf '[*.cs]\ndotnet_diagnostic.ca1502.severity = none\n' > Planner.Shared/.editorconfig
+verwacht_falen "geneste .editorconfig met lowercase ca1502" bash scripts/ci/check-analyzer-complexiteit.sh
+rm -f Planner.Shared/.editorconfig
+printf 'namespace Proef;\n#pragma warning disable ca1502\npublic static class P { }\n' > Planner.Shared/ProefOnderdrukking.cs
+verwacht_falen "#pragma warning disable ca1502 in productiecode" bash scripts/ci/check-analyzer-complexiteit.sh
+printf 'namespace Proef;\n[System.Diagnostics.CodeAnalysis.SuppressMessage("Maintainability", "CA1506")]\npublic static class P { }\n' > Planner.Shared/ProefOnderdrukking.cs
+verwacht_falen "SuppressMessage CA1506 in productiecode" bash scripts/ci/check-analyzer-complexiteit.sh
+printf 'namespace Proef;\n[System.Diagnostics.CodeAnalysis.SuppressMessage(\n    "Maintainability",\n    "CA1502:AvoidExcessiveComplexity")]\npublic static class P { }\n' > Planner.Shared/ProefOnderdrukking.cs
+verwacht_falen "SuppressMessage over meerdere regels (CA1502 op regel 3)" bash scripts/ci/check-analyzer-complexiteit.sh
+printf 'namespace Proef;\n// Deze methode blijft onder de CA1502-grens; SuppressMessage is hier niet nodig.\npublic static class P { }\n' > Planner.Shared/ProefOnderdrukking.cs
+verwacht_slagen "commentaar dat CA1502 en SuppressMessage noemt is geen onderdrukking" bash scripts/ci/check-analyzer-complexiteit.sh
+rm -f Planner.Shared/ProefOnderdrukking.cs
+verwacht_slagen "echte .editorconfig (testsectie op none) is groen" bash scripts/ci/check-analyzer-complexiteit.sh
 
 echo
 echo "Resultaat: $geslaagd geslaagd, $mislukt mislukt."

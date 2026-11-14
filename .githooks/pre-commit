@@ -159,7 +159,7 @@ done < "$PATTERN_FILE"
 # ── 3b. Email-check specifiek in documentatiebestanden ───────────────────────
 # CHANGELOG.md en docs/ mogen NOOIT echte emailadressen bevatten (AVG).
 # Gebruik placeholder [emailadres] of example@example.nl.
-DOC_PATTERNS=("CHANGELOG.md" "docs/")
+DOC_PATTERNS=("CHANGELOG.md" "docs/" "changelog.d/")
 for doc in "${DOC_PATTERNS[@]}"; do
   while IFS= read -r file; do
     [ -z "$file" ] && continue

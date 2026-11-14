@@ -1014,59 +1014,10 @@ GO
 -- planner/avg bestaan. Ze staan nu als CREATE OR ALTER onderaan dit script — zie de sectie
 -- "#707: AVG-retentieprocedures".
 
--- ============================================================
--- #631: duplicaten in dbo.Season opruimen en een unique constraint aanbrengen.
---
--- De oude guard in sp_UpdateSeasonTable vergeleek YEAR(MAX(DateUntil)) met YEAR(GETDATE())+1.
--- Zodra er een toekomstig seizoen in de tabel stond kon die conditie nooit meer onwaar worden,
--- waardoor bij ELKE deploy hetzelfde seizoen opnieuw werd ingevoegd. In productie stonden zo
--- 3 identieke rijen voor 2026-2027. Omdat pub.DateTable een INNER JOIN op dbo.Season doet,
--- leverde die view 3 rijen per datum voor het huidige seizoen (2557 i.p.v. 2192 rijen).
---
--- De applicatie zelf was niet geraakt: alle C#-consumers gebruiken MAX()/MIN()-aggregaten.
---
--- Deze block draait VOOR de EXEC hieronder, zodat de deduplicatie klaar is voordat de procedure
--- iets kan invoegen. Volgorde is essentieel: de constraint kan pas na het opruimen, anders faalt
--- de deploy op de bestaande duplicaten.
--- ============================================================
-IF EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Season'))
-BEGIN
-    -- Rijen zonder naam zijn onbruikbaar (de naam is de business key) en blokkeren NOT NULL.
-    DELETE FROM [dbo].[Season] WHERE [Name] IS NULL;
-
-    -- Houd per seizoensnaam één rij over. ORDER BY op de datums zodat de bewaarde rij
-    -- deterministisch is en niet afhangt van de fysieke rijvolgorde.
-    ;WITH Duplicaten AS (
-        SELECT ROW_NUMBER() OVER (
-                   PARTITION BY [Name]
-                   ORDER BY [DateFrom], [DateUntil]
-               ) AS rn
-        FROM [dbo].[Season]
-    )
-    DELETE FROM Duplicaten WHERE rn > 1;
-
-    IF EXISTS (
-        SELECT 1 FROM sys.columns
-        WHERE object_id = OBJECT_ID('dbo.Season')
-          AND name = 'Name'
-          AND is_nullable = 1
-    )
-        ALTER TABLE [dbo].[Season] ALTER COLUMN [Name] NCHAR(9) NOT NULL;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM sys.indexes
-        WHERE object_id = OBJECT_ID('dbo.Season') AND name = 'UQ_Season_Name'
-    )
-        ALTER TABLE [dbo].[Season] ADD CONSTRAINT [UQ_Season_Name] UNIQUE ([Name]);
-END
-GO
-
--- #1715: hier stond de aanroep EXEC sp_UpdateSeasonTable @SeasonStartMonth met MIN(SeasonStartMonth) over
--- alle clubs, op het clubneutrale dbo.Season. De seizoenen staan nu per club in dbo.ClubSeason en worden per
--- club met de eigen startmaand bijgehouden door dbo.sp_UpdateClubSeasonTable, aangeroepen direct na de
--- definitie verderop. dbo.Season en sp_UpdateSeasonTable blijven voor de overgang ongewijzigd staan
--- (expand/contract): de vorige codeversie leest dbo.Season nog tijdens de deploy; de nieuwe code niet meer.
--- Opruimen is een aparte, latere release (docs/ARCHITECTUUR-DATABASE-TIERS.md §84).
+-- #1715/#1747: de seizoenen staan per club in dbo.ClubSeason en worden per club met de eigen startmaand
+-- bijgehouden door dbo.sp_UpdateClubSeasonTable, aangeroepen direct na de definitie verderop. Het clubneutrale
+-- dbo.Season (met de #631-opschoning) en dbo.sp_UpdateSeasonTable zijn in de contract-stap #1747 vervallen:
+-- zie het blok "#1747: oude seizoensobjecten opruimen" hieronder.
 GO
 -- ============================================================
 -- #30: Multi-club fundament — ClubCode + Accommodatie
@@ -2232,11 +2183,11 @@ DEALLOCATE hisCur;
 GO
 
 -- ============================================================
--- #595 (uitbreiding): dbo.Season en mta.source_target_mapping ontbraken om dezelfde reden.
+-- #595 (uitbreiding): mta.source_target_mapping ontbrak om dezelfde reden (en dbo.Season; #1747: die tabel is
+-- opgeruimd, de seizoenen staan in dbo.ClubSeason).
 --
--- Gevonden door de nieuwe schema-drift check in .github/workflows/build.yml. Beide tabellen stonden
+-- Gevonden door de nieuwe schema-drift check in .github/workflows/build.yml. De tabel stond
 -- alleen in het DB-project:
---   - dbo.Season               — sp_UpdateSeasonTable doet alleen INSERT, maakt de tabel niet aan
 --   - mta.source_target_mapping — stuurt sp_CreateTargetTableFromSource + sp_MergeStgToHis; zonder
 --                                 deze tabel (of zonder rijen) doet de volledige ETL stilzwijgend niets
 --
@@ -2244,19 +2195,6 @@ GO
 -- dus zelfs een dacpac-publish liet de tabel leeg achter. De drie rijen hieronder zijn exact de
 -- configuratie die in productie draait. Alle waarden zijn clubneutraal.
 -- ============================================================
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.Season'))
-BEGIN
-    -- #631: Name is NOT NULL met unique constraint, zodat een verse installatie meteen beschermd
-    -- is tegen duplicaatseizoenen. Bestaande installaties worden hierboven opgeruimd en gemigreerd.
-    CREATE TABLE [dbo].[Season] (
-        [Name]      NCHAR(9) NOT NULL,
-        [DateFrom]  DATE     NULL,
-        [DateUntil] DATE     NULL,
-        CONSTRAINT [UQ_Season_Name] UNIQUE ([Name])
-    );
-END
-GO
-
 -- #1715: de seizoenen per club, elk uit de eigen SeasonStartMonth. Bron: Database/dbo/Tables/ClubSeason.sql.
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.ClubSeason'))
 BEGIN
@@ -2371,70 +2309,6 @@ FROM    RecursiveDates d
 OPTION (MAXRECURSION 0); -- Allows for recursive CTE to handle larger datasets
 GO
 
--- Bron: Database/dbo/System Stored Procedures/sp_UpdateSeasonTable.sql
-CREATE OR ALTER PROCEDURE [dbo].[sp_UpdateSeasonTable]
-    @SeasonStartMonth INT
-AS
-BEGIN
-	DECLARE @YearStart INT;
-	DECLARE @YearEnd   INT;
-
-	-- No seasons found! Add last two seasons
-	IF (SELECT YEAR(MAX(DateUntil)) FROM [dbo].[Season]) IS NULL 
-	BEGIN
-		INSERT INTO [dbo].[Season]
-			(
-			[Name],
-			[DateFrom],
-			[DateUntil]
-			)
-		VALUES 
-			(
-			CONCAT(YEAR(GETDATE())-2,'-',YEAR(GETDATE())-1),
-			DATEFROMPARTS(YEAR(GETDATE())-2,@SeasonStartMonth,1),
-			EOMONTH(DATEFROMPARTS(YEAR(GETDATE())-1,@SeasonStartMonth-1,1))
-			),
-			(
-			CONCAT(YEAR(GETDATE())-1,'-',YEAR(GETDATE())),
-			DATEFROMPARTS(YEAR(GETDATE())-1,@SeasonStartMonth,1),
-			EOMONTH(DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth-1,1))
-			);
-	END
-
-	-- Create 2 months before start of a new season a new record in season table
-	--
-	-- #631: de guard controleerde YEAR(MAX(DateUntil)) <> YEAR(GETDATE())+1. Zodra er een
-	-- TOEKOMSTIG seizoen in de tabel staat is MAX(DateUntil) niet meer het huidige seizoen en kan
-	-- die vergelijking nooit meer onwaar worden. In productie stond 2027-2028, dus de conditie was
-	-- permanent waar en werd 2026-2027 bij ELKE deploy opnieuw ingevoegd (3 identieke rijen).
-	-- Nu wordt gecontroleerd of het seizoen dat we gaan maken al bestaat. Dat is idempotent en
-	-- werkt ook met toekomstige seizoenen in de tabel.
-	DECLARE @NewSeasonName NCHAR(9) = CONCAT(YEAR(GETDATE()),'-',YEAR(GETDATE())+1);
-
-	IF NOT EXISTS (SELECT 1 FROM [dbo].[Season] WHERE [Name] = @NewSeasonName)
-		AND GETDATE() >= DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth-2,1)
-	BEGIN
-		INSERT INTO [dbo].[Season]
-			(
-			[Name],
-			[DateFrom],
-			[DateUntil]
-			)
-		 VALUES
-			(
-			@NewSeasonName,
-			DATEFROMPARTS(YEAR(GETDATE()),@SeasonStartMonth,1),
-			EOMONTH(DATEFROMPARTS(YEAR(GETDATE())+1,@SeasonStartMonth-1,1))
-			)
-	END;
-
-	-- Create a new DateTable based on the new start and enddate in seasons table
-	SELECT @YearStart = YEAR(MIN(DateFrom))  FROM [dbo].[Season];
-	SELECT @YearEnd   = YEAR(MAX(DateUntil)) FROM [dbo].[Season];
-	EXEC [dbo].[sp_CreateDateTable] @YearStart, @YearEnd;
-END;
-GO
-
 -- Bron: Database/dbo/System Stored Procedures/sp_UpdateClubSeasonTable.sql
 CREATE OR ALTER PROCEDURE [dbo].[sp_UpdateClubSeasonTable]
     @ClubCode NVARCHAR(20),
@@ -2514,30 +2388,6 @@ BEGIN
 END;
 GO
 
--- ============================================================
--- #1715: dbo.ClubSeason eenmalig per club vullen uit het clubneutrale dbo.Season en daarna per club doorrollen.
---
--- Elke club die nog geen rij heeft, krijgt dezelfde seizoensnamen als in dbo.Season, met de datums uit de eigen
--- SeasonStartMonth (standaard 7, dus bestaand gedrag blijft gelijk). Clubs met een ongeldige maand worden
--- overgeslagen: de procedure zaait die hieronder met de standaardmaand. dbo.Season wordt niet gewijzigd.
--- Idempotent: een club met rijen (ook na een herbouw vanuit Beheer > Instellingen) wordt niet opnieuw gevuld.
--- ============================================================
-IF OBJECT_ID('dbo.Season') IS NOT NULL AND OBJECT_ID('dbo.ClubSeason') IS NOT NULL
-BEGIN
-    INSERT INTO [dbo].[ClubSeason] ([ClubCode], [Name], [DateFrom], [DateUntil])
-    SELECT a.[ClubCode],
-           s.[Name],
-           DATEFROMPARTS(TRY_CAST(LEFT(s.[Name], 4) AS INT), a.[SeasonStartMonth], 1),
-           DATEADD(DAY, -1, DATEFROMPARTS(TRY_CAST(LEFT(s.[Name], 4) AS INT) + 1, a.[SeasonStartMonth], 1))
-    FROM [dbo].[Season] s
-    CROSS JOIN [dbo].[AppSettings] a
-    WHERE s.[Name] LIKE '[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]'
-      AND a.[ClubCode] IS NOT NULL
-      AND a.[SeasonStartMonth] BETWEEN 1 AND 12
-      AND NOT EXISTS (SELECT 1 FROM [dbo].[ClubSeason] x WHERE x.[ClubCode] = a.[ClubCode]);
-END
-GO
-
 -- Seizoenen en DateTable bijwerken, per club met de eigen startmaand. Geen aggregaat over de rijen van
 -- alle clubs: een scalar subquery zonder aggregatie faalde met Msg 512 (#435), MIN() gaf een gok (#1715).
 -- Op een verse database bestaat de procedure pas vanaf dit punt, dus de aanroep staat hier (#734).
@@ -2556,6 +2406,22 @@ BEGIN
     CLOSE seizoen_clubs;
     DEALLOCATE seizoen_clubs;
 END
+GO
+
+-- ============================================================
+-- #1747: oude seizoensobjecten opruimen (contract-stap van #1715, expand/contract).
+--
+-- Sinds #1715 lezen en schrijven alle consumenten (sync-venster, KNVB-seizoen, planner, bewaartermijn, pub.DateTable)
+-- uitsluitend dbo.ClubSeason. dbo.Season (clubneutraal, met MIN() over clubs) en dbo.sp_UpdateSeasonTable
+-- (de oude doorrol) werden alleen nog bewaard omdat deploy.yml het schema vóór de code toepast en de vorige
+-- codeversie nog uit dbo.Season las; die versie is inmiddels vervangen. Zonder CASCADE: een object dat nog naar
+-- deze twee verwijst laat de deploy hard falen in plaats van stil mee te verdwijnen. Idempotent.
+-- ============================================================
+IF OBJECT_ID('dbo.sp_UpdateSeasonTable', 'P') IS NOT NULL
+    DROP PROCEDURE [dbo].[sp_UpdateSeasonTable];
+GO
+IF OBJECT_ID('dbo.Season', 'U') IS NOT NULL
+    DROP TABLE [dbo].[Season];
 GO
 
 -- Bron: Database/dbo/System Stored Procedures/sp_CreateTargetTableFromSource.sql
@@ -2684,6 +2550,7 @@ BEGIN
     1.0     | 12-01-2025 | Jaap van Beusekom | Initial setup
     1.1     | 25-01-2025 | Jaap van Beusekom | NULL handling for non-string columns using CAST AS NVARCHAR(MAX)
     1.2     | 2025       | Jaap van Beusekom | Multi-column business key support using CONCAT
+    1.3     | 2026-10    | #1558             | Herstel mta_deleted bij terugkeer in stg (reconciliatie)
     */
     SET NOCOUNT ON;
     -- Create the target table from source structure if it does not yet exist
@@ -2695,7 +2562,8 @@ BEGIN
     DECLARE @SqlStringTmp   NVARCHAR(MAX) = '';
 
     SET @SqlString +=
-'MERGE [' + @TargetSchema + '].[' + @TargetName + '] AS target
+'DECLARE @Actions TABLE ([Action] nvarchar(10));
+MERGE [' + @TargetSchema + '].[' + @TargetName + '] AS target
 USING [' + @SourceSchema + '].[' + @SourceName + '] AS source
 ';
     -- Retrieve primary key columns and target key definition from metadata
@@ -2829,13 +2697,18 @@ WHEN NOT MATCHED BY TARGET THEN ';
     -- Preserve single-column keys; separate composite components like the PostgreSQL tier.
     SET @SqlString += '
 INSERT (' + @TargetPk + @SqlStringTargets + ', mta_inserted, mta_modified)
-VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE());';
+VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE())
+OUTPUT $action INTO @Actions;
+SELECT COUNT(CASE WHEN [Action] = ''INSERT'' THEN 1 END) AS Added,
+       COUNT(CASE WHEN [Action] = ''UPDATE'' THEN 1 END) AS Updated
+FROM @Actions;';
 
     EXEC sp_executesql @SqlString;
 
     PRINT 'Merged ' + @SourceName + ' into ' + @TargetName;
 END;
 GO
+
 
 -- Bron: Database/pub/Views/DateTable.sql
 -- #734: alleen aanmaken als de onderliggende tabellen bestaan. Op een verse clubinstallatie
@@ -3838,6 +3711,56 @@ BEGIN
     );
     CREATE NONCLUSTERED INDEX [IX_SyncJobs_ClubCode_CreatedAt] ON [dbo].[SyncJobs] ([ClubCode], [CreatedAt] DESC);
 END
+GO
+
+-- #1839: pogingsteller voor het begrensde herstel van onderbroken sync-jobs. De claim telt een poging;
+-- een afronding is aan het pogingnummer gebonden. Bestaande rijen krijgen 0. Additief en idempotent.
+-- Postgres-tegenhanger: Database.Postgres/migrations/052_syncjobs_attempt.sql.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SyncJobs') AND name = 'Attempt')
+    ALTER TABLE [dbo].[SyncJobs] ADD [Attempt] INT NOT NULL CONSTRAINT [DF_SyncJobs_Attempt] DEFAULT (0);
+GO
+-- Een bestaande running-job is al één keer gestart en telt als poging 1 (anders krijgt hij bij herstel een
+-- extra poging boven de limiet); pending-jobs blijven 0. Idempotent: raakt alleen running met teller 0.
+UPDATE [dbo].[SyncJobs] SET [Attempt] = 1 WHERE [Status] = 'running' AND [Attempt] = 0;
+GO
+
+-- #1912: privacyveilige fasevoortgang van sync-jobs, met 30 dagen bewaartermijn.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.SyncJobs') AND name = 'UX_SyncJobs_Id_ClubCode')
+    CREATE UNIQUE NONCLUSTERED INDEX [UX_SyncJobs_Id_ClubCode] ON [dbo].[SyncJobs] ([Id], [ClubCode]);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.SyncJobPhaseLog'))
+BEGIN
+    CREATE TABLE [dbo].[SyncJobPhaseLog] (
+        [JobId]       UNIQUEIDENTIFIER NOT NULL,
+        [ClubCode]    NVARCHAR(20)     NOT NULL,
+        [Attempt]     INT              NOT NULL,
+        [Phase]       NVARCHAR(30)     NOT NULL,
+        [StartedAt]   DATETIME2        NOT NULL,
+        [CompletedAt] DATETIME2        NULL,
+        [Status]      NVARCHAR(20)     NOT NULL,
+        [Fetched]     INT              NULL,
+        [Added]       INT              NULL,
+        [Updated]     INT              NULL,
+        [Failed]      INT              NULL,
+        [Progress]    INT              NULL,
+        [Total]       INT              NULL,
+        [ReasonCode]  NVARCHAR(40)     NULL,
+        CONSTRAINT [PK_SyncJobPhaseLog] PRIMARY KEY CLUSTERED ([JobId], [Attempt], [Phase]),
+        CONSTRAINT [FK_SyncJobPhaseLog_SyncJobs] FOREIGN KEY ([JobId], [ClubCode]) REFERENCES [dbo].[SyncJobs] ([Id], [ClubCode]) ON DELETE CASCADE,
+        CONSTRAINT [CK_SyncJobPhaseLog_Attempt] CHECK ([Attempt] > 0),
+        CONSTRAINT [CK_SyncJobPhaseLog_Phase] CHECK ([Phase] IN ('teams', 'programma', 'uitslagen', 'matchdetails', 'planner-view', 'canonicalisatie', 'reconciliatie', 'configuratie')),
+        CONSTRAINT [CK_SyncJobPhaseLog_Status] CHECK ([Status] IN ('pending', 'running', 'succeeded', 'partial', 'failed', 'skipped')),
+        CONSTRAINT [CK_SyncJobPhaseLog_ReasonCode] CHECK ([ReasonCode] IS NULL OR [ReasonCode] IN ('operation_failed', 'partial_failure', 'configuration_missing', 'egress_blocked', 'programme_truncated', 'reconciliation_skipped', 'source_failed', 'not_applicable')),
+        CONSTRAINT [CK_SyncJobPhaseLog_Dates] CHECK ([CompletedAt] IS NULL OR [CompletedAt] >= [StartedAt]),
+        CONSTRAINT [CK_SyncJobPhaseLog_Counts] CHECK (([Fetched] IS NULL OR [Fetched] >= 0) AND ([Added] IS NULL OR [Added] >= 0) AND ([Updated] IS NULL OR [Updated] >= 0) AND ([Failed] IS NULL OR [Failed] >= 0) AND ([Progress] IS NULL OR [Progress] >= 0) AND ([Total] IS NULL OR [Total] >= 0) AND ([Progress] IS NULL OR [Total] IS NULL OR [Progress] <= [Total]))
+    );
+END
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.SyncJobPhaseLog') AND name = 'IX_SyncJobPhaseLog_ClubCode_StartedAt')
+    CREATE NONCLUSTERED INDEX [IX_SyncJobPhaseLog_ClubCode_StartedAt] ON [dbo].[SyncJobPhaseLog] ([ClubCode], [StartedAt] DESC);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.SyncJobPhaseLog') AND name = 'IX_SyncJobPhaseLog_StartedAt')
+    CREATE NONCLUSTERED INDEX [IX_SyncJobPhaseLog_StartedAt] ON [dbo].[SyncJobPhaseLog] ([StartedAt]);
 GO
 
 -- #1320: testnotitie gekoppeld aan een Sportlink-mutatiepoging — eigenaar-gestuurde

@@ -87,10 +87,9 @@ public static class SportlinkClubMatchFunction
 
                 var auditService = context.InstanceServices.GetService<ISportlinkMutationAuditService>();
                 if (auditService == null) return SportlinkEndpointSupportCore.AuditNietBeschikbaarFout();
-                var triggerdDoor = EasyAuthHelper.GetAuditActor(req);
                 var correlationId = Guid.NewGuid().ToString();
                 var auditEntry = new SportlinkMutationAuditEntry(
-                    clubCode, RolNaam, triggerdDoor, AuditPublicMatchIdPlaceholder, "CreateClubMatch",
+                    clubCode, RolNaam, EasyAuthHelper.GetAuditActor(req), AuditPublicMatchIdPlaceholder, "CreateClubMatch",
                     WaardeVoor: null,
                     WaardeNa: JsonConvert.SerializeObject(new { Invoer = dto, Aanvraag = aanvraag, VeldNaam = gegevens!.VeldNaam, Waarschuwingen = waarschuwingen }),
                     CorrelationId: correlationId);
@@ -99,9 +98,10 @@ public static class SportlinkClubMatchFunction
                 var mutationResult = await sportlinkClient!.CreateClubMatchAsync(RolNaam, aanvraag!);
                 // #1879: leg het echte PublicMatchId van een geslaagde aanmaak vast op de audit-rij, vóór de afronding.
                 await KoppelPublicMatchIdAsync(mutationResult.Data, id => auditId.HasValue ? auditService.ZetPublicMatchIdAsync(auditId.Value, clubCode, id) : Task.FromResult(false), context.GetLogger("SqlSportlinkClubMatch"));
+                var terugleesWaarschuwingen = await ClubMatchTerugleesCore.VoegTerugleesWaarschuwingToeAsync(sportlinkClient!, RolNaam, mutationResult.Data, aanvraag!, waarschuwingen, log);
                 return await SportlinkEndpointSupport.RondMutatieAfAsync(
                     mutationResult, auditService, auditId, r => r,
-                    r => new OkObjectResult(Resultaat(r, aanvraag!, gegevens!.VeldNaam, waarschuwingen)),
+                    r => new OkObjectResult(Resultaat(r, aanvraag!, gegevens!.VeldNaam, terugleesWaarschuwingen)),
                     context.GetLogger("SqlSportlinkClubMatch"));
             });
 

@@ -37,6 +37,7 @@
 //     plaatsen. Alleen PR's uit deze repo van een bevoegde auteur tellen, en de agent krijgt
 //     uitsluitend tekst van bevoegde schrijvers aangereikt (collectTrustedContext).
 
+const { parseProtocolFields, ciBlock } = require('./samenwerking-poort.js');
 const { extractIssueRefs } = require('./issue-status.js');
 const ledgerLib = require('./claude-issue-turn-ledger.js');
 
@@ -112,6 +113,8 @@ function labelNames(issue) {
 
 /** Wisselt het turn:-label met remove+add — nooit los, zie AGENTS.md "turn:-workflow". */
 async function setTurnLabel({ github, context, core, issueNumber, label }) {
+  const protocolStop = ciBlock(null);
+  if (protocolStop) return { proceed: false, reason: protocolStop };
   const issue = (
     await github.rest.issues.get({
       owner: context.repo.owner,
@@ -283,6 +286,7 @@ function parseFaseComment(body) {
   const pr = Number(field(PR_RE));
   return {
     fase: fase[1].toLowerCase(),
+    ...parseProtocolFields(body),
     reviewer: field(REVIEWER_RE),
     implementer: field(IMPLEMENTER_RE),
     prNumber: Number.isInteger(pr) && pr > 0 ? pr : null,
@@ -599,6 +603,8 @@ async function evaluateGateInner({ github, context, core, issueNumber, dryRun, f
   // #1727: een reviewaanvraag aan Claude Code bepaalt de fase vóór de herkomstcontrole, omdat
   // `source: codex` alleen voor een review is toegestaan.
   const reviewRequest = await findReviewRequest({ github, context, issueNumber });
+  const routeStop = ciBlock(reviewRequest);
+  if (routeStop) return { proceed: false, reason: routeStop };
   const allowedSources = reviewRequest ? [...REQUIRED_SOURCE_LABELS, ...REVIEW_SOURCE_LABELS] : REQUIRED_SOURCE_LABELS;
   const hasRequiredSource = allowedSources.some((l) => labels.includes(l));
   if (!hasRequiredSource) {

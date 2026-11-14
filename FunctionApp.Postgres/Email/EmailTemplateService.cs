@@ -131,11 +131,3 @@ public static class EmailTemplateService
     public static string ApplyPlaceholders(string body, IDictionary<string, string> values)
         => BerichtAntwoordGenerator.VulPlaceholdersIn(body, values);
 }
-
-/// <summary>
-/// Eenvoudig sjabloon-record voor e-mailuitvoer. Tier-lokale kopie van het gelijknamige type in
-/// <c>FunctionApp/Email/EmailTemplateService.cs</c> — pure databagger zonder gedrag, dus geen
-/// architectuurbezwaar tegen een tweede definitie (zelfde redenering als
-/// <c>FunctionApp.Postgres/Email/EmailModels.cs</c>).
-/// </summary>
-public record EmailTemplate(string Key, string Onderwerp, string Body) : IAntwoordSjabloon;
