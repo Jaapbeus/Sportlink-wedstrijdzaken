@@ -507,7 +507,7 @@ weer uitgezet — en bewaakt dan niets meer.
 **Testprojecten zijn uitgesloten in `.editorconfig` zelf**, niet in de guard. Zelfde redenering als
 hierboven: `SportlinkClubClientTests` raakt 96 typen aan, en dat is dekking, geen verstrengeling.
 
-*Guard: `scripts/ci/check-analyzer-complexiteit.sh` — bouwt de solution en telt. Weigert te meten
+*Guard (tot #1945): `scripts/ci/check-analyzer-complexiteit.sh` — bouwde de solution en telde. Weigerde te meten
 als `.editorconfig` de drie regels niet aanzet: zonder die controle zou hij stilzwijgend nul tellen
 en voor altijd groen staan, precies het no-op-patroon uit §67 van
 `ARCHITECTUUR-DATABASE-TIERS.md`.*
@@ -521,6 +521,15 @@ drie regels niet meer op `error`/`warning` zet (de `none`-regels van de testsect
 voor een proef kan `EDITORCONFIG_PAD` naar een ander bestand wijzen) en bewaakt
 dat het aantal op 0 blijft als de severity ooit teruggezet wordt; bij een overtreding meldt hij
 "De build faalde" en toont de CA150x-regels. Nazorg (fase-skelet en tier-duplicatie): #1650.
+
+**Vereenvoudigd bij #1945 (#1900 fase 3).** Bij severity `error` voegde de tweede, geforceerde
+solutionbuild van de guard niets toe (ca. 30 s op het kritieke pad): de gewone Release-build van
+`sportlink-wedstrijdzaken.slnf` in de job *Compileren en testen (.NET)* faalt al op elke
+overtreding. De guard telt daarom niet meer en heeft geen .NET meer nodig (hij draait in
+*Repo-guards*); het plafond `analyzer-overtredingen` is vervallen. Hij eist nu **strikt `error`** in
+`[*.cs]`: `warning` is niet meer genoeg, want zonder teller zou een overtreding dan stilzwijgend
+doorglippen. `check-codekwaliteit.test.sh` bewijst beide faalwijzen (regel ontbreekt; regel op
+`warning`). Rood-bewijs van de build zelf staat in de PR van #1945.
 
 ### Regel 9 — Elk HTTP-endpoint autoriseert via de wrapper, nooit via een eigen poort (#1350)
 
@@ -598,7 +607,7 @@ endpoint laat hem ook falen. Dezelfde knip als de Layer-5-scan in
 | 5 — skillkopieën in `.claude/skills/` identiek aan de bron in `.agents/skills/` (#1579) | `scripts/ci/sync-skills.py` | `build.yml` |
 | 6 — elke regel heeft een guard | `scripts/ci/check-regelregister.sh` | `build.yml` |
 | 7, 8 — bestandsgrootte en methodelengte stijgen niet | `scripts/ci/check-bestandsgrootte.sh` | `build.yml` |
-| 7, 8 — maintainability-analyzers: ratchet op 0 afgerond, severity `error` (#1300, #1651) | `scripts/ci/check-analyzer-complexiteit.sh` | `build.yml` |
+| 7, 8 — maintainability-analyzers: ratchet op 0 afgerond, severity `error` (#1300, #1651); guard eist `error` in `[*.cs]`, de solutionbuild vangt de overtreding (#1945) | `scripts/ci/check-analyzer-complexiteit.sh` | `build.yml` |
 | 9 — elk HTTP-endpoint autoriseert via de wrapper, op Anonymous (#1350) | `scripts/ci/check-endpoint-autorisatie.sh` | `build.yml` |
 | Alle regels — de guards worden zelf getest | `scripts/ci/check-codekwaliteit.test.sh` | `build.yml` |
 
@@ -764,18 +773,18 @@ python3 scripts/ci/sync-skills.py
 # Alleen als je de guard zelf wijzigt (draait ~40 s): mist een test voor een regel, dan overleeft een mutant
 python3 scripts/ci/check-agent-instructies.mutaties.py
 
-# Deze ene bouwt de hele solution en duurt dus langer dan de rest bij elkaar:
+# Controleert alleen dat CA1502/1505/1506 in .editorconfig op error staan (#1945); de overtreding
+# zelf vangt `dotnet build sportlink-wedstrijdzaken.slnf -c Release`:
 bash scripts/ci/check-analyzer-complexiteit.sh
 
 # Skill in .agents/skills/ gewijzigd? Schrijf de kopie voor Claude Code:
 python3 scripts/ci/sync-skills.py --schrijf
 ```
 
-Alle guards behalve de laatste lezen enkel bestanden — geen database, geen secrets, geen SDK.
-`check-analyzer-complexiteit.sh` is de uitzondering: hij draait `dotnet build` op
-`sportlink-wedstrijdzaken.slnf`, omdat CA1502/1505/1506 compileertijd-analyzers zijn en er geen
-manier is om ze zonder compilatie te tellen. Hij weigert te meten als `.editorconfig` de drie
-regels niet aanzet — anders telt hij stilzwijgend nul en staat hij voor altijd groen.
+Alle guards lezen enkel bestanden — geen database, geen secrets, geen SDK. Sinds #1945 geldt dat ook
+voor `check-analyzer-complexiteit.sh`: CA1502/1505/1506 zijn compileertijd-analyzers op severity
+`error`, dus de gewone solutionbuild vangt een overtreding; de guard bewaakt alleen dat
+`.editorconfig` ze op `error` laat staan (anders glipt een overtreding stilzwijgend door).
 
 Een guard die faalt omdat je iets hebt verbeterd, zegt welk getal in
 `scripts/ci/codekwaliteit-plafonds.txt` moet. Neem dat over in dezelfde PR — winst die niet wordt
