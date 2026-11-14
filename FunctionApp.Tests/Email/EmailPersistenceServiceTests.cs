@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using SportlinkFunction.Email;
 using Xunit;
 
+using Planner.Shared.Email;
 namespace FunctionApp.Tests.Email;
 
 public class EmailPersistenceServiceTests
