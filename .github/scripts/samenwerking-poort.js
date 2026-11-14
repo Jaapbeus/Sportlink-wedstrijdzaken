@@ -7,9 +7,19 @@ const fields = {
 function parseProtocolFields(body) {
   const result = {};
   for (const [key, label] of Object.entries(fields)) {
-    const matches = [...String(body || '').matchAll(new RegExp('^[ \t>*_`-]*' + label + '[ *_`]*:[ \t]*(.*?)[ \t]*$', 'gim'))];
-    if (matches.length) result[key] = matches[0][1];
-    if (matches.length > 1) result.protocolInvalid = true;
+    const lines = String(body || '').split(/\r?\n/);
+    const explicit = new RegExp('^[\\s>*_`#\\[\\]-]*' + label + '(?=$|[^a-z0-9_-])', 'i');
+    const valid = new RegExp('^[ \t>*_`-]*' + label + '[ *_`]*:[ \t]*(.*?)[ \t]*$', 'i');
+    let count = 0;
+    for (const line of lines) {
+      // Ook een misvormd expliciet veld mag nooit terugvallen op de legacy-route.
+      if (!explicit.test(line.normalize('NFKC'))) continue;
+      count++;
+      const match = line.match(valid);
+      if (match) result[key] = match[1];
+      else result.protocolInvalid = true;
+    }
+    if (count > 1) result.protocolInvalid = true;
   }
   return result;
 }

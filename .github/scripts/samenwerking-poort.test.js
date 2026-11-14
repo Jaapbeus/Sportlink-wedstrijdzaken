@@ -16,10 +16,19 @@ for (const text of ['Request-ID: r1', 'Reviewer-sessie: claude-een',
   'Request-ID: een\nRequest-ID: twee', '**Request-ID:** r1', '- Reviewroute: lokaal', '> `Reviewer-sessie`: claude-een']) {
   assert.ok(ciBlock(parseProtocolFields(text), shadow));
 }
+for (const label of ['Request-ID', 'Reviewer-sessie', 'Reviewroute', 'Protocol-versie']) {
+  for (const text of [`${label}\t: waarde`, `${label}： waarde`, `${label} : waarde`,
+    `**${label}**\t: waarde`, `> ${label}： waarde`, `${label}`, `# ${label}: waarde`,
+    `\u00a0${label}: waarde`, `- [ ] ${label}: waarde`]) {
+    assert.ok(ciBlock(parseProtocolFields(text), shadow), `Expliciet veld blokkeert: ${text}`);
+  }
+}
+assert.equal(parseProtocolFields('Request-ID\t: r1').protocolInvalid, true);
+assert.equal(parseProtocolFields('Request-ID： r1').protocolInvalid, true);
 assert.equal(parseProtocolFields('Request-ID: een\nRequest-ID: twee').protocolInvalid, true);
 (async () => {
   let writes = 0;
-  const body = `Fase: review\nReviewer: Claude Code\nImplementer: Codex\nPR: #43\nAangeboden head-SHA: ${sha}\nRequest-ID: r1\nReviewer-sessie: claude-een\nReviewroute: local\nProtocol-versie: 1`;
+  let body = `Fase: review\nReviewer: Claude Code\nImplementer: Codex\nPR: #43\nAangeboden head-SHA: ${sha}\nRequest-ID: r1\nReviewer-sessie: claude-een\nReviewroute: local\nProtocol-versie: 1`;
   const github = {
     paginate: async (fn, args) => (await fn(args)).data,
     rest: {
@@ -34,12 +43,17 @@ assert.equal(parseProtocolFields('Request-ID: een\nRequest-ID: twee').protocolIn
     },
   };
   const context = { repo: { owner: 'o', repo: 'r' }, eventName: 'issues', runId: 1 };
-  const result = await evaluateGate({ github, context, core: { notice() {}, warning() {} }, issueNumber: 42 });
-  assert.equal(result.proceed, false);
-  assert.match(result.reason, /lokale reviewsessie/);
-  const publication = await checkRequest({ github, context, issueNumber: 42, prNumber: 43, sha,
-    expected: { commentId: 1, implementer: 'Codex' } });
-  assert.match(publication, /lokale reviewsessie/);
+  const legacy = `Fase: review\nReviewer: Claude Code\nImplementer: Codex\nPR: #43\nAangeboden head-SHA: ${sha}`;
+  for (const candidate of [body, `${legacy}\nRequest-ID\t: r1`, `${legacy}\nRequest-ID： r1`,
+    `${legacy}\n> **Reviewroute**\t: local`]) {
+    body = candidate;
+    const result = await evaluateGate({ github, context, core: { notice() {}, warning() {} }, issueNumber: 42 });
+    assert.equal(result.proceed, false);
+    assert.match(result.reason, /lokale reviewsessie/);
+    const publication = await checkRequest({ github, context, issueNumber: 42, prNumber: 43, sha,
+      expected: { commentId: 1, implementer: 'Codex' } });
+    assert.match(publication, /lokale reviewsessie/);
+  }
   assert.equal(writes, 0, 'Geen overname, publicatie of labelwijziging bij een lokale route');
   console.log('Samenwerkingspoort: configuratie, routering, poort en publicatie groen.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

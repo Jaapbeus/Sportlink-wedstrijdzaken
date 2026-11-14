@@ -29,7 +29,7 @@ class IntegrationTests(unittest.TestCase):
         self.git('config', 'user.email', 'trainer@voorbeeld.nl')
         self.write('app.txt', 'basis\n')
         for path in proof.PROJECTS:
-            self.write(path, '<Project><Version>1.0.0.0</Version><AssemblyVersion>1.0.0.0</AssemblyVersion><FileVersion>1.0.0.0</FileVersion></Project>\n')
+            self.write(path, '<Project><PropertyGroup><Version>1.0.0.0</Version><AssemblyVersion>1.0.0.0</AssemblyVersion><FileVersion>1.0.0.0</FileVersion></PropertyGroup></Project>\n')
         self.write(proof.YAML, 'openapi: 3.0.0\ninfo:\n  version: 1.0.0.0\n  title: Test\n')
         self.write(proof.JSON, json.dumps({'openapi': '3.0.0', 'info': {'version': '1.0.0.0', 'title': 'Test'}}))
         self.base = self.commit()
@@ -87,6 +87,66 @@ class IntegrationTests(unittest.TestCase):
         self.write(proof.PROJECTS[0], (self.repo / proof.PROJECTS[0]).read_text().replace('1.0.0.1', '1.0.0.2'))
         self.candidate = self.commit()
         self.assertEqual(self.result()['classification'], 'inhoudelijke-of-handmatige-beoordeling')
+
+    def synchronized_versions(self):
+        for path in (*proof.PROJECTS, proof.YAML, proof.JSON):
+            file = self.repo / path
+            file.write_text(file.read_text().replace('1.0.0.0', '1.0.0.1'))
+
+    def assert_substantive(self, path, text):
+        self.synchronized_versions()
+        self.write(path, text)
+        self.candidate = self.commit()
+        result = self.result()
+        self.assertEqual(result['classification'], 'inhoudelijke-of-handmatige-beoordeling')
+        self.assertIn(path, result['difference_paths'])
+        self.assertEqual(len(result['ordered_candidate_diff_sha256']), 64)
+
+    def test_duplicate_json_info_cannot_hide_title_change(self):
+        self.assert_substantive(proof.JSON, '{"openapi":"3.0.0",'
+                                '"info":{"version":"1.0.0.1","title":"Gewijzigd"},'
+                                '"info":{"version":"1.0.0.1","title":"Test"}}')
+
+    def test_duplicate_json_nested_keys_rejected(self):
+        with self.assertRaises(ValueError):
+            proof.normalize(proof.JSON, '{"info":{"version":"1.0.0.1","version":"1.0.0.1"}}')
+        with self.assertRaises(ValueError):
+            proof.normalize(proof.JSON, '{"info":{"version":"1.0.0.1"},"x":{"a":1,"a":2}}')
+
+    def test_nonstandard_json_rejected(self):
+        with self.assertRaises(ValueError):
+            proof.normalize(proof.JSON, '{"info":{"version":"1.0.0.1"},"x":NaN}')
+
+    def test_json_nonversion_bytes_preserved(self):
+        text = (self.repo / proof.JSON).read_text().replace('1.0.0.0', '1.0.0.1')
+        self.assert_substantive(proof.JSON, text.replace('"title": "Test"', '"title":"Test"'))
+        raw = ' {"info": {"description":"version: \\"9.9.9.9\\"", "version" : "1.2.3.4"}} '
+        self.assertEqual(proof.normalize(proof.JSON, raw), raw.replace('"1.2.3.4"', '"<VERSION>"'))
+
+    def test_yaml_version_outside_info_is_substantive(self):
+        self.assert_substantive(proof.YAML, 'openapi: 3.0.0\ninfo:\n  title: Test\nx-extra:\n  version: 1.0.0.1\n')
+
+    def test_ambiguous_yaml_scopes_rejected(self):
+        for text in ('info:\n  version: 1.0.0.1\ninfo:\n  title: Test\n',
+                     'info:\n  version: 1.0.0.1\n  version: 1.0.0.1\n',
+                     'info: &anchor\n  version: 1.0.0.1\n',
+                     '"info":\n  version: 1.0.0.1\n',
+                     'info:\n  title: "multiline\n  version: 1.0.0.1\n  end"\n',
+                     'info:\n  <<: *other\n  version: 1.0.0.1\n',
+                     'info:\n  contact:\n    name: "multiline\n  version: 1.0.0.1\n    end"\n',
+                     'x-extra:\n  nested: [\ninfo:\n  version: 1.0.0.1\n]\n'):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                proof.normalize(proof.YAML, text)
+
+    def test_project_commented_or_conditional_versions_rejected(self):
+        raw = (self.repo / proof.PROJECTS[0]).read_text()
+        for text in (raw.replace('<PropertyGroup>', '<PropertyGroup Condition="x">'),
+                     raw.replace('<Version>', '<Version Condition="x">'),
+                     raw.replace('<Version>1.0.0.0</Version>', '<!-- <Version>1.0.0.0</Version> -->'),
+                     raw.replace('<Version>1.0.0.0</Version>', '<Version>1.0.0.0</Version><!-- <Version>1.0.0.0</Version> -->'),
+                     raw.replace('PropertyGroup', 'Target'), raw.replace('</Project>', '')):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                proof.normalize(proof.PROJECTS[0], text)
 
     def test_csproj_dependency_is_not_metadata(self):
         file = self.repo / proof.PROJECTS[0]
