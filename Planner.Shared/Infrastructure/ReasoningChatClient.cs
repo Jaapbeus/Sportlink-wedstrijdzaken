@@ -29,6 +29,22 @@ public sealed class ReasoningChatClient : DelegatingChatClient
             && Enum.IsDefined(inspanning);
     }
 
+    /// <summary>
+    /// Herkent modelfamilies met reasoning (#1958) aan de modelnaam: <c>gpt-5*</c>, <c>gpt-6*</c> en de o-serie
+    /// (<c>o1</c>, <c>o3</c>, <c>o4</c>). Zulke modellen weigeren een vaste temperatuur, ook als de beheerder
+    /// <c>AiReasoningEffort</c> vergat te zetten. Alleen een vangnet: een geldige expliciete waarde blijft leidend.
+    /// </summary>
+    public static bool IsReasoningModel(string? modelnaam)
+    {
+        if (string.IsNullOrWhiteSpace(modelnaam)) return false;
+        var naam = modelnaam.Trim();
+        return naam.StartsWith("gpt-5", StringComparison.OrdinalIgnoreCase)
+            || naam.StartsWith("gpt-6", StringComparison.OrdinalIgnoreCase)
+            || new[] { "o1", "o3", "o4" }.Any(o =>
+                naam.StartsWith(o, StringComparison.OrdinalIgnoreCase)
+                && (naam.Length == o.Length || naam[o.Length] == '-'));
+    }
+
     public override Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
         => base.GetResponseAsync(messages, Pas(options), cancellationToken);

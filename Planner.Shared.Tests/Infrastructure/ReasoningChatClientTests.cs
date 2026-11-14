@@ -137,4 +137,32 @@ public class ReasoningChatClientTests
         services.Single(d => d.ServiceType == typeof(IChatClient)).ImplementationInstance
             .Should().BeOfType<OptiesVastleggendeClient>();
     }
+
+    [Theory]
+    [InlineData("gpt-6-luna")]
+    [InlineData("GPT-5-mini")]
+    [InlineData("o3")]
+    [InlineData("o4-mini")]
+    public void TryRegister_ReasoningModelZonderInspanning_PastStandaardNoneToe(string modelnaam)
+    {
+        var services = new ServiceCollection();
+
+        AiClientRegistration.TryRegister(
+            services, "synthetic-test-key", modelnaam, true,
+            (_, _) => new OptiesVastleggendeClient(), null).Should().BeTrue();
+
+        services.Single(d => d.ServiceType == typeof(IChatClient)).ImplementationInstance
+            .Should().BeOfType<ReasoningChatClient>();
+    }
+
+    [Theory]
+    [InlineData("gpt-4o-mini")]
+    [InlineData("gpt-4.1")]
+    [InlineData("o10-x")]
+    [InlineData("omni")]
+    [InlineData("synthetic-test-model")]
+    public void IsReasoningModel_ModelZonderReasoning_GeeftFalse(string modelnaam)
+    {
+        ReasoningChatClient.IsReasoningModel(modelnaam).Should().BeFalse();
+    }
 }

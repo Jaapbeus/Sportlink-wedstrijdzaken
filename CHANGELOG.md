@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- De e-mailtester en andere AI-aanroepen falen niet meer met "Dry-run mislukt" als bij een model met reasoning (zoals `gpt-6-luna`) de instelling `AiReasoningEffort` ontbreekt: dan geldt automatisch `none` (#1958).
+
 ## [3.18.0.0] — 2026-11-14
 
 - Samenwerking tussen ontwikkelagents krijgt een expliciete reviewroute, vooraf verplichte verificatie en een blijvend bevindingenregister dat ook latere rondes blokkeert bij open punten. Releasevoorbereiding is herstelbaar en herhaalbaar; invoering begint in schaduwmodus met behoud van bestaande waarborgen (#1940).
