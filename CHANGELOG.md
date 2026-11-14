@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Het clubneutrale seizoensschema van vóór de seizoensstartmaand per club is opgeruimd (#1747): `public.season` (migratie 051) en op SQL Server `dbo.Season` en `dbo.sp_UpdateSeasonTable`. De seizoenen staan al sinds #1715 per club in `public.clubseason` / `dbo.ClubSeason`; geen gedragswijziging, wel een schemawijziging op beide databasetiers.
+
 ## [3.17.0.0] — 2026-11-12
 
 - De auditregistratie van een aangemaakte clubwedstrijd legt nu het echte `PublicMatchId` van Sportlink vast in plaats van de tijdelijke waarde, op beide databasetiers. Daardoor is een latere wijziging of verwijdering aan de aanmaak te koppelen. Alleen bij een geslaagde, echte aanmaak; een fout bij het bijwerken breekt de aanmaak niet af (#1879).
