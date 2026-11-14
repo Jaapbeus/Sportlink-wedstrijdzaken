@@ -167,6 +167,8 @@ else
         {
             <dl class="row mb-0 mt-2 small">
                 <dt class="col-sm-4">Omschrijving</dt><dd class="col-sm-8">@_resultaat.Omschrijving</dd>
+                <dt class="col-sm-4">Thuisteam</dt><dd class="col-sm-8">@(_resultaat.Thuisteam ?? "—")</dd>
+                <dt class="col-sm-4">Uitteam</dt><dd class="col-sm-8">@(_resultaat.Uitteam ?? "—") <span class="text-muted">(@(_resultaat.UitteamGekoppeld ? "gekoppeld aan een team" : "geen teamkoppeling"))</span></dd>
                 <dt class="col-sm-4">Sportlink-team-ID</dt><dd class="col-sm-8">@(_resultaat.SportlinkTeamId ?? "—")</dd>
                 <dt class="col-sm-4">Leeftijdscategorie</dt><dd class="col-sm-8">@(_resultaat.AgeClassCode ?? "—")</dd>
                 <dt class="col-sm-4">Wedstrijdnummer</dt><dd class="col-sm-8">@(_resultaat.WedstrijdNummer?.ToString() ?? "—")</dd>

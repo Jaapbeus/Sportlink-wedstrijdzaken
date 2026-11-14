@@ -10,8 +10,8 @@ namespace FunctionApp.Tests.Admin;
 /// Seizoenen per club op de SQL Server-tier (#1715) tegen een echte database, met de gevallen uit
 /// Codex-review #1743 ronde 1: doorrol van januari-/februariseizoenen vóór de jaarwisseling
 /// (<c>dbo.sp_UpdateClubSeasonTable</c>), een afgebroken en twee overlappende wijzigingen van
-/// <c>SeasonStartMonth</c> (<see cref="AdminSettingsFunction.PasWijzigingenToeAsync"/>), en de overgang:
-/// de leesquery's van de vorige codeversie op het clubneutrale <c>dbo.Season</c> blijven werken.
+/// <c>SeasonStartMonth</c> (<see cref="AdminSettingsFunction.PasWijzigingenToeAsync"/>), en de contract-stap (#1747):
+/// het clubneutrale <c>dbo.Season</c> en <c>dbo.sp_UpdateSeasonTable</c> bestaan niet meer.
 /// Opzet: database met <c>Database/Script.PostDeployment1.sql</c>, <c>SQLSERVER_TEST_CONNECTION_STRING</c>
 /// gezet (CI-job "PostDeployment op verse database"). Testdata synthetisch, eigen testclub.
 /// </summary>
@@ -120,29 +120,21 @@ public class SqlServerSeizoenIntegrationTests
     }
 
     /// <summary>
-    /// P1, overgang: de vorige codeversie leest tijdens de deploy nog uit <c>dbo.Season</c>. Haar query's
-    /// (letterlijk uit origin/main: <c>SystemUtilities.SeasonHelper</c>, <c>PlannerSettingsRepository</c>,
-    /// <c>SqlServerHisRetentie</c>) moeten na het PostDeployment-script blijven werken; dbo.Season houdt zijn vorm.
+    /// Contract-stap (#1747): het clubneutrale <c>dbo.Season</c> en <c>dbo.sp_UpdateSeasonTable</c> bestaan na het
+    /// PostDeployment-script niet meer, ook niet op een database die ze van de vorige release nog had; de seizoenen
+    /// van elke club staan in <c>dbo.ClubSeason</c>.
     /// </summary>
     [SqlServerFact]
-    public async Task Overgang_LeesqueryVanDeVorigeCode_WerktOpDbo_Season()
+    public async Task Contractstap_OudeSeizoensobjectenBestaanNietMeer_ClubSeasonWel()
     {
         await using var conn = await OpenAsync();
-        foreach (var vorigeQuery in new[]
-                 {
-                     "SELECT MAX(DateUntil) FROM [dbo].[Season]",
-                     "SELECT MIN(DateFrom) FROM [dbo].[Season] WHERE YEAR(DateFrom) = 2026",
-                     "SELECT TOP 1 [DateFrom], [DateUntil] FROM [dbo].[Season] WHERE [DateUntil] >= '2026-10-13' ORDER BY [DateFrom] ASC",
-                     "SELECT [DateUntil] FROM [dbo].[Season] WHERE [DateUntil] IS NOT NULL",
-                 })
-        {
-            await using var cmd = new SqlCommand(vorigeQuery, conn);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync()) { }
-        }
-
-        await using var kolom = new SqlCommand("SELECT COL_LENGTH('dbo.Season', 'ClubCode')", conn);
-        (await kolom.ExecuteScalarAsync()).Should().Be(DBNull.Value, "dbo.Season blijft clubneutraal tot de contract-stap");
+        await using var cmd = new SqlCommand(
+            "SELECT OBJECT_ID('dbo.Season', 'U'), OBJECT_ID('dbo.sp_UpdateSeasonTable', 'P'), OBJECT_ID('dbo.ClubSeason', 'U')", conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        (await reader.ReadAsync()).Should().BeTrue();
+        reader.IsDBNull(0).Should().BeTrue("dbo.Season is opgeruimd");
+        reader.IsDBNull(1).Should().BeTrue("dbo.sp_UpdateSeasonTable is opgeruimd");
+        reader.IsDBNull(2).Should().BeFalse("de seizoenen staan in dbo.ClubSeason");
     }
 
     // ── hulpjes ────────────────────────────────────────────────────────────

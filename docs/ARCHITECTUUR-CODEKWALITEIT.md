@@ -326,7 +326,7 @@ Van de 34 ruwe treffers:
 |---|---:|---|
 | Commentaar dat juist **waarschuwt** tegen `GETDATE()` | 5 | Telden al niet mee: de guard slaat `--`-regels over |
 | Tijdstempelkolommen in `FunctionApp/setup/*.sql` | 8 | **Gecorrigeerd** naar `GETUTCDATE()`; allowlist-regel verwijderd |
-| Seizoenskalender in `sp_UpdateSeasonTable` + zijn kopie in `Script.PostDeployment1.sql` | 20 | Blijft, met reden |
+| Seizoenskalender in `sp_UpdateClubSeasonTable` + zijn kopie in `Script.PostDeployment1.sql` | 20 | Blijft, met reden |
 | `CAST(GETDATE() AS DATE)` in het AllStars-demoseedscript | 1 | Blijft, met reden |
 
 **Waarom de seizoenskalender blijft.** `YEAR(GETDATE())` leidt daar af *in welk seizoen we zitten*.

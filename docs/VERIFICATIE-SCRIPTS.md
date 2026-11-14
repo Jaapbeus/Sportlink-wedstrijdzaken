@@ -884,7 +884,7 @@ dat script staan, anders ontbreekt het op een verse deploy en falen functies met
 `Invalid object name`.
 
 Dat ging structureel mis: **12 objecten** stonden alleen in het DB-project — waaronder alle vier de
-ETL-procedures (`sp_CreateTargetTableFromSource`, `sp_MergeStgToHis`, `sp_UpdateSeasonTable`,
+ETL-procedures (`sp_CreateTargetTableFromSource`, `sp_MergeStgToHis`, `sp_UpdateSeasonTable` (inmiddels opgeruimd, #1747),
 `sp_CreateDateTable`), de stuurtabel `mta.source_target_mapping` (inclusief de seed-rijen, die alleen
 als SQL-comment bestonden), `dbo.Season`, de drie `pub`-views, `avg.ImportLog`,
 `planner.HerplanVerzoeken` en `dbo.Zonsondergang`.
