@@ -1,21 +1,21 @@
 using Planner.Shared.Email;
+using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace SportlinkFunction.Email;
 
-// VerzoekType, NamensWie, BerichtClassificatie en EmailStatus staan sinds #1716 slice 5 eenmalig in
-// Planner.Shared/Email/ (gelijk voor beide tiers). InkomendBericht blijft per tier: de vorm verschilt
-// (ConversationId en Body zijn hier niet-nullable met standaard "", op de Postgres-tier nullable).
+// VerzoekType, NamensWie, BerichtClassificatie, EmailStatus en de zes gemeenschappelijke
+// berichtvelden staan eenmalig in Planner.Shared/Email/. Dit concrete model blijft per tier omdat
+// ConversationId en Body hier niet-nullable zijn met standaard "" (Postgres houdt ze nullable).
 
 // Inkomend bericht (kanaal-agnostisch: email, WhatsApp, dry-run, etc.)
-public class InkomendBericht : IInkomendBericht
+public class InkomendBericht : InkomendBerichtBasis
 {
-    public string MessageId { get; set; } = "";
+    [JsonProperty(Order = 1)]
+    [JsonPropertyOrder(1)]
     public string ConversationId { get; set; } = "";
-    public string Afzender { get; set; } = "";
-    public string AfzenderNaam { get; set; } = "";
-    public string Onderwerp { get; set; } = "";
-    public DateTime OntvangstDatum { get; set; }
+
+    [JsonProperty(Order = 6)]
+    [JsonPropertyOrder(6)]
     public string Body { get; set; } = "";
-    /// <summary>Internetheaders van het bericht (naam, waarde); alleen gevuld door de Graph-adapter, gebruikt om automatische afzenders te herkennen.</summary>
-    public IReadOnlyList<KeyValuePair<string, string>> InternetHeaders { get; set; } = [];
 }
