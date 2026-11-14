@@ -9,64 +9,24 @@ namespace FunctionApp.Postgres.Email;
 /// </summary>
 internal sealed class EmailBatchFilterService
 {
-    internal async Task<List<InkomendBericht>> PreFilterVoorClassificatieAsync(
+    internal Task<List<InkomendBericht>> PreFilterVoorClassificatieAsync(
         IEnumerable<InkomendBericht> emails,
         string eigenMailbox,
         IReadOnlySet<string> uitgeslotenCache,
         IEmailGraphService graphService,
         ILogger log)
-    {
-        var teClassificeren = new List<InkomendBericht>();
-
-        foreach (var email in emails)
-        {
-            if (email.Afzender.Equals(eigenMailbox, StringComparison.OrdinalIgnoreCase))
-            {
-                log.LogInformation("Email {MessageId} is van eigen mailbox, overslaan", email.MessageId);
-                await EmailVerwerkingsAfhandeling.MarkeerGefilterdBerichtGelezenAsync(email.MessageId, graphService, log);
-            }
-            else if (uitgeslotenCache.Contains(email.Afzender))
-            {
-                log.LogInformation("Email {MessageId} van uitgesloten adres (cache), overslaan (afzender niet gelogd — AVG #210)", email.MessageId);
-                await EmailVerwerkingsAfhandeling.MarkeerGefilterdBerichtGelezenAsync(email.MessageId, graphService, log);
-            }
-            else if (AutomatischeAfzenderHerkenning.IsAutomatisch(email.InternetHeaders))
-            {
-                await EmailVerwerkingsAfhandeling.HandelAutomatischeAfzenderAsync(
-                    email.MessageId, email.InternetHeaders, new EmailMailboxAdapter(graphService), log);
-            }
-            else
-            {
-                teClassificeren.Add(email);
-            }
-        }
-
-        return teClassificeren;
-    }
+        => EmailBatchFilterKern.PreFilterVoorClassificatieAsync(
+            emails, eigenMailbox, uitgeslotenCache, email => email.InternetHeaders,
+            graphService, new EmailMailboxAdapter(graphService), log);
 
     internal List<InkomendBericht> FilterUitgeslotenAdressen(
         IEnumerable<InkomendBericht> emails,
         IReadOnlySet<string> uitgeslotenAdressen)
-        => emails.Where(e => !uitgeslotenAdressen.Contains(e.Afzender)).ToList();
+        => EmailBatchFilterKern.FilterUitgeslotenAdressen(emails, uitgeslotenAdressen, email => email.Afzender);
 
-    internal async Task LabelBuitenScopeAsync(
+    internal Task LabelBuitenScopeAsync(
         IEnumerable<(InkomendBericht Email, BerichtClassificatie Classificatie)> classificaties,
         IEmailGraphService graphService,
         ILogger log)
-    {
-        foreach (var (email, _) in classificaties.Where(c => c.Classificatie.Type == VerzoekType.BuitenScope))
-        {
-            try
-            {
-                await graphService.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
-                await graphService.SetCategoriesAsync(email.MessageId, EmailCategorieLabels.GeenAiAntwoord);
-                await graphService.MarkAsReadAsync(email.MessageId);
-                log.LogInformation("Email {MessageId} buiten scope — gelabeld in Outlook, database slaapt", email.MessageId);
-            }
-            catch (Exception ex)
-            {
-                log.LogWarning(ex, "Fout bij Outlook-labeling BuitenScope email {MessageId}", email.MessageId);
-            }
-        }
-    }
+        => EmailBatchFilterKern.LabelBuitenScopeAsync(classificaties, email => email.MessageId, graphService, log);
 }
