@@ -30,6 +30,10 @@ namespace SportlinkFunction.Planner
         public string? Competitiesoort { get; set; }
         /// <summary>Netto speelduur volgens Sportlink (his.matchdetails.Duration), indien bekend (#1547).</summary>
         public int? SportlinkSpeelduur { get; set; }
+        /// <summary>Het bondswedstrijdnummer (his.matches.wedstrijdnummer); koppelsleutel naar de veldplanner (#1915).</summary>
+        public long? Wedstrijdnummer { get; set; }
+        /// <summary>Sportlinks PublicMatchId uit de geverifieerde cache, indien bekend; koppelsleutel naar de veldplanner (#1915).</summary>
+        public string? PublicMatchId { get; set; }
     }
 
 
@@ -54,6 +58,12 @@ namespace SportlinkFunction.Planner
         public bool NietInSportlink { get; set; }
         /// <summary>"Sportlink" als veld, tijd en duur uit de veldplanner komen (#1582).</summary>
         public string? Bron { get; set; }
+        /// <summary>Koppelsleutel naar de Sportlink-veldplanner (#1915). Alleen intern: niet in het API-antwoord.</summary>
+        [System.Text.Json.Serialization.JsonIgnore, Newtonsoft.Json.JsonIgnore]
+        public long? Wedstrijdnummer { get; set; }
+        /// <summary>Koppelsleutel naar de Sportlink-veldplanner (#1915). Alleen intern: niet in het API-antwoord.</summary>
+        [System.Text.Json.Serialization.JsonIgnore, Newtonsoft.Json.JsonIgnore]
+        public string? PublicMatchId { get; set; }
     }
 
     // #1856: de overige auto-plan-DTO's staan in GedeeldeBron/PlannerDto/AutoPlanModels.cs. Deze twee

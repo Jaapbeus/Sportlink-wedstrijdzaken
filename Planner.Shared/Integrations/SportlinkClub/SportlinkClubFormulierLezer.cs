@@ -99,17 +99,17 @@ internal sealed class SportlinkClubFormulierLezer
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "JSON deserialisatie fout voor {Entity} endpoint", entityName);
+            _logger.LogWarning("JSON deserialisatie fout voor {Entity} endpoint ({ErrorType})", entityName, ex.GetType().Name);
             return new SportlinkClubResponse<T>(SportlinkClubCallStatus.SportlinkFout, null, "JSON deserialisatie fout", null);
         }
         catch (TaskCanceledException ex)
         {
-            _logger.LogWarning(ex, "{Entity} endpoint timeout", entityName);
+            _logger.LogWarning("{Entity} endpoint timeout ({ErrorType})", entityName, ex.GetType().Name);
             return new SportlinkClubResponse<T>(SportlinkClubCallStatus.NetwerkFout, null, $"Timeout bij {entityName} endpoint", null);
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "{Entity} endpoint netwerk fout", entityName);
+            _logger.LogWarning("{Entity} endpoint netwerk fout ({ErrorType})", entityName, ex.GetType().Name);
             return new SportlinkClubResponse<T>(SportlinkClubCallStatus.NetwerkFout, null, $"Netwerk fout bij {entityName} endpoint", null);
         }
     }
@@ -187,10 +187,10 @@ internal sealed class SportlinkClubFormulierLezer
 
                 if (element is not { ValueKind: JsonValueKind.Array } arrayElement)
                 {
-                    // #1427: alleen de STRUCTUUR loggen (propertynamen + JSON-soorten), nooit
-                    // waarden — zo is de echte vorm uit de log af te leiden zonder netwerktrace.
-                    _logger.LogWarning("{Entity}-respons had onverwachte vorm: {Structuur}",
-                        entityName, BeschrijfJsonStructuur(doc.RootElement));
+                    // Beperkt logcontract (Codex-review #1917): alleen de JSON-soort van de wortel, nooit propertynamen of
+                    // waarden — die zijn vrije antwoordinhoud en horen niet in het log van de timer.
+                    _logger.LogWarning("{Entity}-respons had onverwachte vorm ({RootSoort})",
+                        entityName, doc.RootElement.ValueKind);
                     return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(
                         SportlinkClubCallStatus.SportlinkFout, null, $"{entityName}-respons had onverwachte vorm", (int)response.StatusCode);
                 }
@@ -201,24 +201,24 @@ internal sealed class SportlinkClubFormulierLezer
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "JSON deserialisatie fout voor {Entity} endpoint", entityName);
+                _logger.LogWarning("JSON deserialisatie fout voor {Entity} endpoint ({ErrorType})", entityName, ex.GetType().Name);
                 return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(
                     SportlinkClubCallStatus.SportlinkFout, null, "JSON deserialisatie fout", (int)response.StatusCode);
             }
         }
         catch (TaskCanceledException ex)
         {
-            _logger.LogWarning(ex, "{Entity} endpoint timeout", entityName);
+            _logger.LogWarning("{Entity} endpoint timeout ({ErrorType})", entityName, ex.GetType().Name);
             return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(SportlinkClubCallStatus.NetwerkFout, null, $"Timeout bij {entityName} endpoint", null);
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "{Entity} endpoint netwerk fout", entityName);
+            _logger.LogWarning("{Entity} endpoint netwerk fout ({ErrorType})", entityName, ex.GetType().Name);
             return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(SportlinkClubCallStatus.NetwerkFout, null, $"Netwerk fout bij {entityName} endpoint", null);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Onverwachte fout bij {Entity} endpoint", entityName);
+            _logger.LogWarning("Onverwachte fout bij {Entity} endpoint ({ErrorType})", entityName, ex.GetType().Name);
             return new SportlinkClubResponse<IReadOnlyList<SportlinkPickListItem>>(SportlinkClubCallStatus.SportlinkFout, null, $"Onverwachte fout bij {entityName} endpoint", null);
         }
     }

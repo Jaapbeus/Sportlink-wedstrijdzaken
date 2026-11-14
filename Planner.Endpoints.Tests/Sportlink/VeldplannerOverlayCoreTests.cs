@@ -11,7 +11,7 @@ namespace Planner.Endpoints.Tests.Sportlink;
 
 public class VeldplannerOverlayCoreTests
 {
-    private static readonly SportlinkVeldplannerBlok Blok = new("A - B", "veld 1", "09:00", 1m, 75, null);
+    private static readonly SportlinkVeldplannerBlok Blok = new("A - B", "veld 1", "09:00", 1m, 75, "M-A");
 
     private static Mock<ISportlinkClubClient> Client(string accommodatieId, DateTime? _ = null, SportlinkClubCallStatus status = SportlinkClubCallStatus.Ok)
     {
@@ -128,7 +128,7 @@ public class VeldplannerOverlayCoreTests
         mock.Verify(c => c.GetVeldplannerAsync(It.IsAny<string>(), "F-7", datum, It.IsAny<CancellationToken>()), Times.Exactly(2));
     }
 
-    private sealed record Regel(string Wedstrijd, string? Tijd, bool NietInSportlink = false, string? Bron = null);
+    private sealed record Regel(string Wedstrijd, string? Tijd, bool NietInSportlink = false, string? Bron = null, string? PublicMatchId = null, long? Nummer = null);
 
     private static async Task<IReadOnlyList<Regel>> Samenvoeg(ISportlinkClubClient client, string clubCode, string accommodatie, params Regel[] eigen)
         => (await SamenvoegMetStatus(client, clubCode, accommodatie, eigen)).Wedstrijden;
@@ -136,7 +136,7 @@ public class VeldplannerOverlayCoreTests
     private static Task<VeldbezettingAntwoord<Regel>> SamenvoegMetStatus(ISportlinkClubClient client, string clubCode, string accommodatie, params Regel[] eigen)
         => VeldplannerOverlayCore.SamenvoegAsync<Regel>(eigen, clubCode, () => SportlinkTimerStatus.MagDraaien, () => (client, null), "Rol", accommodatie,
             new DateOnly(2030, 5, 4), NullLogger.Instance,
-            sleutel: r => (r.Wedstrijd, r.Tijd),
+            sleutel: r => new EigenSleutel(r.PublicMatchId, r.Nummer),
             overschrijf: (r, b) => r with { Tijd = b.StartTijd, Bron = "Sportlink" },
             nieuw: b => new Regel(b.Label, b.StartTijd, false, "Sportlink"),
             nietInSportlink: r => r with { NietInSportlink = true },
@@ -145,9 +145,9 @@ public class VeldplannerOverlayCoreTests
     [Fact]
     public async Task SamenvoegAsync_KoppeltEenBekendeWedstrijd_EnToontDeRest()
     {
-        var resultaat = await Samenvoeg(Client("F-8").Object, "CLUB", Naam("F-8"), new Regel("A - B", "09:30"));
+        var resultaat = await Samenvoeg(Client("F-8").Object, "CLUB", Naam("F-8"), new Regel("A - B", "09:30", PublicMatchId: "M-A"));
 
-        resultaat.Should().ContainSingle().Which.Should().Be(new Regel("A - B", "09:00", false, "Sportlink"));
+        resultaat.Should().ContainSingle().Which.Should().Be(new Regel("A - B", "09:00", false, "Sportlink", "M-A"));
     }
 
     [Fact]
@@ -172,7 +172,7 @@ public class VeldplannerOverlayCoreTests
 
     [Fact]
     public async Task SamenvoegAsync_Geslaagd_HeeftStatusGeraadpleegd()
-        => (await SamenvoegMetStatus(Client("F-16").Object, "CLUB", Naam("F-16"), new Regel("A - B", "09:30"))).Sportlink.Geraadpleegd.Should().BeTrue();
+        => (await SamenvoegMetStatus(Client("F-16").Object, "CLUB", Naam("F-16"), new Regel("A - B", "09:30", PublicMatchId: "M-A"))).Sportlink.Geraadpleegd.Should().BeTrue();
 
     [Fact]
     public async Task SamenvoegAsync_Democlub_VraagNooitNaarSportlink()
@@ -183,6 +183,139 @@ public class VeldplannerOverlayCoreTests
         resultaat.Wedstrijden.Should().ContainSingle().Which.Should().Be(eigen);
         resultaat.Sportlink.Reden.Should().Be(SportlinkVeldplannerStatus.RedenDemoclub);
         mock.VerifyNoOtherCalls();
+    }
+
+    private const string Sentinel = "sentinel-clientid-123";
+
+    /// <summary>Legt bericht én uitzonderingsobject vast, zodat het beperkte logcontract meetbaar is.</summary>
+    private sealed class VastleggendeLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<(string Bericht, Exception? Uitzondering)> Regels { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter)
+            => Regels.Add((formatter(state, null), exception));
+    }
+
+    private static void ControleerLogcontract(VastleggendeLogger logger)
+    {
+        logger.Regels.Should().NotBeEmpty("de fout moet zichtbaar blijven in het log");
+        foreach (var (bericht, uitzondering) in logger.Regels)
+        {
+            uitzondering.Should().BeNull("alleen het uitzonderingstype hoort in het log (hoofd- en binnenste uitzondering kunnen een URL dragen)");
+            bericht.Should().NotContain(Sentinel);
+        }
+    }
+
+    /// <summary>Codex-review #1917: de timer gebruikt dit pad; een onverwachte fout logt geen uitzonderingsobject.</summary>
+    [Fact]
+    public async Task HaalBlokkenAsync_OnverwachteFout_LogtGeenUitzonderingsobject()
+    {
+        var mock = Client("F-20");
+        mock.Setup(c => c.GetVeldplannerAsync(It.IsAny<string>(), "F-20", It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException($"fout naar https://host/?clientId={Sentinel}", new IOException(Sentinel)));
+        var logger = new VastleggendeLogger();
+
+        var resultaat = await VeldplannerOverlayCore.HaalBlokkenAsync(() => SportlinkTimerStatus.MagDraaien, () => (mock.Object, null), "Rol",
+            Naam("F-20"), new DateOnly(2030, 7, 6), logger);
+
+        resultaat.Blokken.Should().BeNull();
+        ControleerLogcontract(logger);
+    }
+
+    /// <summary>Codex-review #1917: een mislukte opslag logt alleen het type, ook met een binnenste uitzondering.</summary>
+    [Fact]
+    public async Task SamenvoegAsync_OpslagFout_LogtGeenUitzonderingsobject()
+    {
+        var logger = new VastleggendeLogger();
+        var store = new Mock<IVeldplannerBlokStore>();
+        store.Setup(s => s.LeesDagAsync(It.IsAny<string>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException($"db {Sentinel}", new Exception(Sentinel)));
+
+        var resultaat = await VeldplannerOverlayCore.SamenvoegAsync<Regel>([], "CLUB", () => SportlinkTimerStatus.MagDraaien,
+            () => (Client("F-21").Object, null), "Rol", Naam("F-21"), new DateOnly(2030, 7, 13), logger,
+            sleutel: r => new EigenSleutel(r.PublicMatchId, r.Nummer),
+            overschrijf: (r, b) => r with { Tijd = b.StartTijd, Bron = "Sportlink" },
+            nieuw: b => new Regel(b.Label, b.StartTijd, false, "Sportlink"),
+            nietInSportlink: r => r with { NietInSportlink = true },
+            sorteerTijd: r => r.Tijd, store: store.Object);
+
+        resultaat.Wedstrijden.Should().ContainSingle("de Planning blijft werken zonder opslag");
+        ControleerLogcontract(logger);
+    }
+
+    /// <summary>Een in-geheugen-store die bijhoudt wat de overlay wegschrijft.</summary>
+    private sealed class GeheugenStore(bool kapot = false) : IVeldplannerBlokStore
+    {
+        public Dictionary<string, VeldplannerBlokRij> Rijen { get; } = new(StringComparer.Ordinal);
+
+        public Task<IReadOnlyDictionary<string, BlokOpslagStand>> LeesDagAsync(string clubCode, DateOnly datum, CancellationToken ct = default)
+            => kapot ? throw new InvalidOperationException("database weg")
+                : Task.FromResult<IReadOnlyDictionary<string, BlokOpslagStand>>(Rijen.Values.Where(r => r.Datum == datum)
+                    .ToDictionary(r => r.PublicMatchId, r => new BlokOpslagStand(r.RijHash, r.ExternalMatchId), StringComparer.Ordinal));
+
+        public Task SchrijfAsync(string clubCode, DateOnly datum, IReadOnlyList<VeldplannerBlokRij> rijen,
+            IReadOnlyList<string> verwijderSleutels, DateOnly bewaarVanaf, CancellationToken ct = default)
+        {
+            foreach (var rij in rijen) Rijen[rij.PublicMatchId] = rij;
+            foreach (var sleutel in verwijderSleutels) Rijen.Remove(sleutel);
+            return Task.CompletedTask;
+        }
+    }
+
+    private static Task<VeldbezettingAntwoord<Regel>> SamenvoegMetStore(
+        ISportlinkClubClient client, IVeldplannerBlokStore store, string accommodatie, params Regel[] eigen)
+        => VeldplannerOverlayCore.SamenvoegAsync<Regel>(eigen, "CLUB", () => SportlinkTimerStatus.MagDraaien, () => (client, null), "Rol", accommodatie,
+            new DateOnly(2030, 5, 4), NullLogger.Instance,
+            sleutel: r => new EigenSleutel(r.PublicMatchId, r.Nummer),
+            overschrijf: (r, b) => r with { Tijd = b.StartTijd, Bron = "Sportlink" },
+            nieuw: b => new Regel(b.Label, b.StartTijd, false, "Sportlink"),
+            nietInSportlink: r => r with { NietInSportlink = true },
+            sorteerTijd: r => r.Tijd, store: store);
+
+    /// <summary>#1915: de dataservice noemt een club anders dan de veldplanner; de koppeling loopt via het opgevraagde wedstrijdnummer.</summary>
+    [Fact]
+    public async Task SamenvoegAsync_KoppeltViaHetOpgevraagdeWedstrijdnummer_ZonderNaam_EnBewaartHetNummer()
+    {
+        var client = Client("F-20");
+        client.Setup(c => c.GetMatchAsync(It.IsAny<string>(), "M-A", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SportlinkClubResponse<SportlinkMatch>(SportlinkClubCallStatus.Ok, new SportlinkMatch { ExternalMatchId = "101066" }, null, 200));
+        var store = new GeheugenStore();
+
+        var antwoord = await SamenvoegMetStore(client.Object, store, Naam("F-20"),
+            new Regel("Heel Andere Clubnaam - Team", "10:00", Nummer: 101066));
+
+        antwoord.Wedstrijden.Should().ContainSingle("één wedstrijd is één regel, hoe de club ook heet")
+            .Which.Bron.Should().Be("Sportlink");
+        store.Rijen["M-A"].ExternalMatchId.Should().Be(101066);
+    }
+
+    [Fact]
+    public async Task SamenvoegAsync_TweedeAanvraag_VraagHetBewaardeNummerNietOpnieuwOp()
+    {
+        var client = Client("F-21");
+        client.Setup(c => c.GetMatchAsync(It.IsAny<string>(), "M-A", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SportlinkClubResponse<SportlinkMatch>(SportlinkClubCallStatus.Ok, new SportlinkMatch { ExternalMatchId = "5" }, null, 200));
+        var store = new GeheugenStore();
+        var regel = new Regel("X - Y", "10:00", Nummer: 5);
+
+        await SamenvoegMetStore(client.Object, store, Naam("F-21"), regel);
+        var tweede = await SamenvoegMetStore(client.Object, store, Naam("F-21"), regel);
+
+        tweede.Wedstrijden.Should().ContainSingle().Which.Bron.Should().Be("Sportlink");
+        client.Verify(c => c.GetMatchAsync(It.IsAny<string>(), "M-A", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SamenvoegAsync_StoreKapot_PlanningWerktDoor_MetZichtbareAfwijking()
+    {
+        var antwoord = await SamenvoegMetStore(Client("F-22").Object, new GeheugenStore(kapot: true), Naam("F-22"),
+            new Regel("X - Y", "10:00", Nummer: 5));
+
+        antwoord.Sportlink.Geraadpleegd.Should().BeTrue();
+        antwoord.Wedstrijden.Should().HaveCount(2, "zonder wedstrijdnummer koppelt niets: de eigen regel en het blok blijven beide zichtbaar");
+        antwoord.Wedstrijden.Should().Contain(r => r.NietInSportlink);
     }
 
     [Fact]

@@ -1001,7 +1001,7 @@ Niet alle verzoeken gaan over veldbeschikbaarheid. De volgende typen verzoeken v
 > reden (bij een verlopen koppeling met een verwijzing naar de beheerpagina), de HTML/PDF-deelweergave dezelfde
 > bronmelding, en het log dezelfde redencode. Een mislukte locatielijst (bijvoorbeeld `HerkoppelingVereist`) is daarbij
 > géén "accommodatie onbekend" meer. Per aanroep logt de Planning de aantallen gekoppeld / niet in Sportlink / alleen in
-> Sportlink, zodat koppelingsproblemen op teamlabel meetbaar zijn. Elke dag wordt ook gevraagd als onze database geen enkele wedstrijd heeft. De kolom
+> Sportlink, zodat koppelingsproblemen op sleutel meetbaar zijn. Elke dag wordt ook gevraagd als onze database geen enkele wedstrijd heeft. De kolom
 > Tegenstander is de andere kant van het label (`tegenstander`), niet meer de uitploeg. De tekst hieronder beschrijft de koppeling
 > zelf, die ongewijzigd is.
 
@@ -1016,13 +1016,32 @@ precies die som is `DuurMinuten`, en de starttijd schuift met het inloopdeel mee
 | Leesaanroep `competition/facilityoccupation/FacilityOccupation` (alleen GET) | `Planner.Shared/Integrations/SportlinkClub/SportlinkWedstrijdLezer.cs`, via `SportlinkClubTransport.ExecuteWithTokenRetryAsync` |
 | Respons naar blokken (`SportlinkVeldplannerParser`) | `Planner.Shared/Integrations/SportlinkClub/SportlinkVeldplannerBlok.cs` |
 | Koppeling aan onze regels | `Planner.Shared/Planning/SportlinkVeldplannerKoppeling.cs` |
+| Tabel met veldplanner-blokken, hash en synchronisatie (#1915) | `Planner.Shared/Planning/VeldplannerBlokOpslag.cs`, `VeldplannerBlokSynchronisatie.cs`; opslag per tier in `Planner/Repositories/*VeldplannerBlokStore.cs` |
 | Orkestratie: facility-opzoeking, cache, toggle, EgressGuard, terugval | `Planner.Endpoints/Sportlink/VeldplannerOverlayCore.cs` |
 | Toepassing op het tier-eigen item | `Planner/VeldbezettingSportlinkOverlay.cs` op beide tiers |
 
-- **Koppeling op teamlabel, niet op wedstrijdnummer.** `ExternalMatchId` van Sportlink is bij clubwedstrijden vaak 1 en dus
-  niet uniek. Ronde 1 vergelijkt het genormaliseerde label "Thuis - Uit" (alleen letters en cijfers); ronde 2 laat een
-  ploegnaam de andere bevatten ("v.v. Uit 35+2" tegenover "Uit 35+2"). Bij meerdere blokken met hetzelfde label
-  wint de dichtstbijzijnde starttijd, en elk blok koppelt aan hooguit één regel.
+- **Koppeling op sleutel, nooit op naam (#1915).** Een teamnaam is geen identiteit: Sportlink noemt een club in de dataservice
+  anders dan in de veldplanner, en elke nieuwe afwijking gaf een dubbele regel. Ronde 1 koppelt op `PublicMatchId`, het ID dat
+  Sportlink aan elk blok geeft en dat onze eigen regel uit de geverifieerde cache kent (`verifiedpublicmatchid`). Ronde 2, voor
+  wat overbleef, koppelt op het bondswedstrijdnummer (`his.matches.wedstrijdnummer` = `ExternalMatchId`), alleen als dat nummer
+  aan beide kanten precies één keer voorkomt (bij een clubwedstrijd is het vaak 1). Elk blok koppelt aan hooguit één regel; wat
+  niet koppelt blijft zichtbaar als afwijking (*Niet in Sportlink* / *Alleen in Sportlink*).
+- **De tabel `sportlinkveldplannerblok` (#1915)** is een afgeleide kopie van de veldplanner, met `PublicMatchId` als sleutel per
+  club en een hash (`VeldplannerBlokHash`) over label, veld, starttijd, afmeting en duur. Bij elke planningsaanvraag wordt per
+  sleutel de hash vergeleken en alleen het verschil geschreven (toevoegen, wijzigen, verwijderen); Sportlink blijft leidend.
+  Het veldplanner-antwoord draagt het wedstrijdnummer niet. Het wordt daarom eenmalig per nieuwe sleutel via `GetMatchAsync`
+  opgevraagd (hooguit 150 per aanvraag, 10 tegelijk), bewaard en nooit overschreven met "onbekend". Een timer legt de blokken en nummers vooraf vast (#1917, hieronder), zodat die opvraag zelden nog in een planningsaanvraag plaatsvindt. Mislukt dat, of mislukt de
+  database, dan werkt de Planning gewoon door zonder nummers: de koppeling loopt dan alleen via `PublicMatchId` en een niet
+  gekoppelde wedstrijd is een zichtbare afwijking. Rijen ouder dan 14 dagen worden opgeruimd.
+- **Vooraf vastleggen op een timer (#1917).** De eerste keer dat een datum werd geopend duurde ±15 s (±40 opvragen van het
+  wedstrijdnummer), de tweede keer 2,8 s. De timer `SportlinkVeldplannerVoorbereiding` (`FunctionApp.Postgres/Sportlink/` en
+  `FunctionApp/Sportlink/VeldplannerVoorbereidingTimerFunction.cs`, gedeelde kern `Planner.Endpoints/Sportlink/VeldplannerVoorbereidingCore.cs`)
+  draait twee keer per dag (06:30 en 18:30 UTC, buiten de sync en de PublicMatchId-warmup) en doorloopt de datums met eigen wedstrijden op de
+  accommodatie in de komende `SportlinkEndpointCore.VeldplannerVoorbereidDagen` = 28 dagen. Per datum dezelfde stappen als een planningsaanvraag
+  (blokken ophalen, hash vergelijken, alleen het verschil schrijven, onbekende nummers opvragen), dus een run zonder wijzigingen kost één
+  veldplanner-aanroep per datum. Toegang als de andere timers (`ClientVoorTimer`: extensie-toggle en EgressGuard); de democlub doet niets; een fout bij één datum stopt de
+  rest niet en na drie opeenvolgende mislukte datums stopt de run (verlopen koppeling of storing). Alleen aantallen in het log. Bewust niet vaker:
+  de nummers zijn onveranderlijk, de aanvraag ververst de tabel toch live, en elke run kost GB-seconden van het gratis tegoed.
 - **Altijd een terugval, nooit een fout, nooit stil (#1774).** Extensie uit, EgressGuard dicht, koppeling verlopen, Sportlink
   onbereikbaar, onbekende accommodatie of onbekende wedstrijd: de regel behoudt `VeldbezettingDuur.Bepaal` (Sportlinks
   speelduur + 15, dan Speeltijden) en het antwoord draagt de reden. De democlub `ALLSTARS` vraagt nooit naar Sportlink.

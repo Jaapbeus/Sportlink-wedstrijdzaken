@@ -213,7 +213,7 @@ internal sealed class SportlinkWedstrijdLezer
                 }
                 catch (JsonException ex)
                 {
-                    _logger.LogWarning(ex, "JSON deserialisatie fout voor match endpoint");
+                    _logger.LogWarning("JSON deserialisatie fout voor match endpoint ({ErrorType})", ex.GetType().Name);
                     return new SportlinkClubResponse<SportlinkMatch>(
                         SportlinkClubCallStatus.SportlinkFout,
                         null,
@@ -240,7 +240,7 @@ internal sealed class SportlinkWedstrijdLezer
         }
         catch (TaskCanceledException ex)
         {
-            _logger.LogWarning(ex, "Match endpoint timeout voor publicMatchId '{PublicMatchId}'", publicMatchId);
+            _logger.LogWarning("Match endpoint timeout voor publicMatchId '{PublicMatchId}' ({ErrorType})", publicMatchId, ex.GetType().Name);
             return new SportlinkClubResponse<SportlinkMatch>(
                 SportlinkClubCallStatus.NetwerkFout,
                 null,
@@ -249,7 +249,7 @@ internal sealed class SportlinkWedstrijdLezer
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "Match endpoint netwerk fout");
+            _logger.LogWarning("Match endpoint netwerk fout ({ErrorType})", ex.GetType().Name);
             return new SportlinkClubResponse<SportlinkMatch>(
                 SportlinkClubCallStatus.NetwerkFout,
                 null,
@@ -258,7 +258,7 @@ internal sealed class SportlinkWedstrijdLezer
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Onverwachte fout bij match endpoint");
+            _logger.LogWarning("Onverwachte fout bij match endpoint ({ErrorType})", ex.GetType().Name);
             return new SportlinkClubResponse<SportlinkMatch>(
                 SportlinkClubCallStatus.SportlinkFout,
                 null,
@@ -298,17 +298,17 @@ internal sealed class SportlinkWedstrijdLezer
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "JSON deserialisatie fout voor {Entity} endpoint", entityName);
+            _logger.LogWarning("JSON deserialisatie fout voor {Entity} endpoint ({ErrorType})", entityName, ex.GetType().Name);
             return Fout(SportlinkClubCallStatus.SportlinkFout, "JSON deserialisatie fout", null);
         }
         catch (TaskCanceledException ex)
         {
-            _logger.LogWarning(ex, "{Entity} endpoint timeout", entityName);
+            _logger.LogWarning("{Entity} endpoint timeout ({ErrorType})", entityName, ex.GetType().Name);
             return Fout(SportlinkClubCallStatus.NetwerkFout, $"Timeout bij {entityName} endpoint", null);
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "{Entity} endpoint netwerk fout", entityName);
+            _logger.LogWarning("{Entity} endpoint netwerk fout ({ErrorType})", entityName, ex.GetType().Name);
             return Fout(SportlinkClubCallStatus.NetwerkFout, $"Netwerk fout bij {entityName} endpoint", null);
         }
 

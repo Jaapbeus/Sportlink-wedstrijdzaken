@@ -172,9 +172,13 @@ internal static class PostgresSyncPipeline
         {
             try
             {
-                await FetchAndStoreProgrammaAsync(
-                    connectionString, $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log, budget: budget);
+                var volledig = await FetchAndStoreProgrammaAsync(
+                    connectionString,
+                    $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}&aantaldagen={ProgrammaAfkapping.VensterDagen}",
+                    clubCode, log, budget: budget);
                 log.LogInformation("MATCHES/PROGRAMMA - GET weekOffset={WeekOffset}", weekOffset);
+                // #1915: een afgekapt venster is een onvolledige snapshot — nooit reconciliëren op wat ontbreekt.
+                if (!volledig) partialFailure = true;
             }
             catch (Exception ex)
             {
@@ -397,17 +401,35 @@ internal static class PostgresSyncPipeline
         return global::Planner.Shared.Sync.ReconciliatieOndergrens.IsVolledigeTeamsSnapshot(teams?.Count);
     }
 
-    internal static async Task FetchAndStoreProgrammaAsync(string connectionString, string apiUrl, string clubCode, ILogger log,
+    /// <summary>
+    /// Haalt één <c>/programma</c>-venster op en slaat het op in staging. Raakt het venster Sportlinks plafond van 100
+    /// rijen, dan volgt een gesplitste ophaling in thuis en uit (#1915, <see cref="ProgrammaAfkapping"/>).
+    /// </summary>
+    /// <returns><c>false</c> als het venster ook na splitsing afgekapt is: dan ontbreken er wedstrijden en mag de
+    /// aanroeper niet reconciliëren.</returns>
+    internal static async Task<bool> FetchAndStoreProgrammaAsync(string connectionString, string apiUrl, string clubCode, ILogger log,
         HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null)
     {
-        var json = await SportlinkDataserviceHttp.HaalTekstAsync(
-            httpClient ?? HttpClient, apiUrl, budget ?? new HerhaalBudget(), "MATCHES/PROGRAMMA", log, herhaalWachttijd);
-        var matches = JsonConvert.DeserializeObject<List<Match>>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
-        if (matches is { Count: > 0 })
+        var herhaalBudget = budget ?? new HerhaalBudget();
+        var ophaling = await ProgrammaAfkapping.HaalVolledigAsync<Match>(apiUrl, async url =>
         {
-            log.LogInformation("MATCHES/PROGRAMMA - {Count} gevonden.", matches.Count);
-            await PostgresStagingRepository.SaveProgrammaAsync(connectionString, matches, clubCode, log);
+            var json = await SportlinkDataserviceHttp.HaalTekstAsync(
+                httpClient ?? HttpClient, url, herhaalBudget, "MATCHES/PROGRAMMA", log, herhaalWachttijd);
+            return JsonConvert.DeserializeObject<List<Match>>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore })
+                ?? new List<Match>();
+        }, () => PostgresStagingRepository.GetTeamcodesAsync(connectionString));
+        if (ophaling.Gesplitst)
+            log.LogInformation("MATCHES/PROGRAMMA - venster raakte het plafond van {Plafond} rijen; opgehaald {Wijze} ({Count} rijen).",
+                ProgrammaAfkapping.Plafond, ophaling.PerTeam ? "per team" : "als thuis + uit", ophaling.Rijen.Count);
+        if (!ophaling.Volledig)
+            log.LogWarning("MATCHES/PROGRAMMA - venster is ook na splitsing (thuis/uit, per team) afgekapt op {Plafond} rijen; sync telt als onvolledig.",
+                ProgrammaAfkapping.Plafond);
+        if (ophaling.Rijen.Count > 0)
+        {
+            log.LogInformation("MATCHES/PROGRAMMA - {Count} gevonden.", ophaling.Rijen.Count);
+            await PostgresStagingRepository.SaveProgrammaAsync(connectionString, ophaling.Rijen.ToList(), clubCode, log);
         }
+        return ophaling.Volledig;
     }
 
     internal static async Task FetchAndStoreUitslagenAsync(string connectionString, string apiUrl, string clubCode, ILogger log,

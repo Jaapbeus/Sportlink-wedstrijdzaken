@@ -57,6 +57,9 @@
              Link="Shared\SportlinkFixtureServer.cs" />
     <Compile Include="..\FunctionApp.Tests\Sync\SportlinkFixtures.cs"
              Link="Shared\SportlinkFixtures.cs" />
+    <!-- #1915: nagebootste /programma met het plafond van 100 rijen en de filters thuis/uit. -->
+    <Compile Include="..\FunctionApp.Tests\Sync\PlafondDataservice.cs"
+             Link="Shared\PlafondDataservice.cs" />
     <!-- #866: env-gestuurde [PostgresFact]/[PostgresTheory] — dezelfde variabelenaam en dezelfde
          skip-reden als Database.Postgres.Tests, zodat één CI-variabele beide suites aanzet. -->
     <Compile Include="..\Database.Postgres.Tests\PostgresIntegrationTestAttributes.cs"

@@ -61,7 +61,9 @@ internal static class AllstarsTestDataRepository
                             THEN m.[uitteam] ELSE m.[thuisteam] END AS uitteam,
                        m.[aanvangstijd], m.[veld], m.[competitiesoort],
                        NULL AS leeftijdscategorie,
-                       md.[Duration] AS sportlinkspeelduur
+                       md.[Duration] AS sportlinkspeelduur,
+                       CAST(NULL AS BIGINT) AS wedstrijdnummer,
+                       CAST(NULL AS NVARCHAR(50)) AS publicmatchid
                 FROM [his].[matches] m
                 OUTER APPLY (
                     SELECT TOP 1 [Duration]
@@ -76,8 +78,14 @@ internal static class AllstarsTestDataRepository
             : $@"SELECT m.[wedstrijdcode], m.[wedstrijd], m.[teamnaam], m.[uitteam],
                        m.[aanvangstijd], m.[veld], m.[competitiesoort],
                        {LeeftijdNormalisatieSql.SqlExpr("ISNULL(t.[leeftijdscategorie], '')")} AS leeftijdscategorie,
-                       md.[Duration] AS sportlinkspeelduur
+                       md.[Duration] AS sportlinkspeelduur,
+                       m.[wedstrijdnummer],
+                       c.[PublicMatchId] AS publicmatchid
                 FROM [his].[matches] m
+                LEFT JOIN [dbo].[SportlinkPublicMatchIdCache] c
+                       ON c.[Wedstrijdcode] = m.[wedstrijdcode] AND c.[ClubCode] = m.[ClubCode]
+                      AND c.[PublicMatchId] COLLATE Latin1_General_100_BIN2 = c.[VerifiedPublicMatchId] COLLATE Latin1_General_100_BIN2
+                      AND DATALENGTH(c.[PublicMatchId]) = DATALENGTH(c.[VerifiedPublicMatchId])
                 OUTER APPLY (
                     SELECT TOP 1 [leeftijdscategorie]
                     FROM [his].[teams]
@@ -102,21 +110,27 @@ internal static class AllstarsTestDataRepository
 
         using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            results.Add(new WedstrijdRaw
-            {
-                WedstrijdCode = reader.IsDBNull(0) ? null : reader.GetInt64(0),
-                Wedstrijd = reader.IsDBNull(1) ? "" : reader.GetString(1),
-                TeamNaam = reader.IsDBNull(2) ? "" : reader.GetString(2),
-                Uitteam = reader.IsDBNull(3) ? null : reader.GetString(3),
-                AanvangsTijd = reader.IsDBNull(4) ? null : reader.GetString(4)?.Trim(),
-                Veld = reader.IsDBNull(5) ? null : reader.GetString(5)?.Trim(),
-                Competitiesoort = reader.IsDBNull(6) ? null : reader.GetString(6),
-                LeeftijdsCategorie = reader.IsDBNull(7) ? null :
-                    (string.IsNullOrWhiteSpace(reader.GetString(7)) ? null : reader.GetString(7)),
-                SportlinkSpeelduur = reader.IsDBNull(8) ? null : Convert.ToInt32(reader.GetValue(8))
-            });
+            results.Add(LeesWedstrijd(reader));
         return results;
     }
+
+    /// <summary>Eén rij van <see cref="GetAllMatchesForDatumAsync(SqlConnection, SqlTransaction?, DateOnly, string)"/> naar het model.</summary>
+    private static WedstrijdRaw LeesWedstrijd(SqlDataReader reader)
+        => new WedstrijdRaw
+        {
+            WedstrijdCode = reader.IsDBNull(0) ? null : reader.GetInt64(0),
+            Wedstrijd = reader.IsDBNull(1) ? "" : reader.GetString(1),
+            TeamNaam = reader.IsDBNull(2) ? "" : reader.GetString(2),
+            Uitteam = reader.IsDBNull(3) ? null : reader.GetString(3),
+            AanvangsTijd = reader.IsDBNull(4) ? null : reader.GetString(4)?.Trim(),
+            Veld = reader.IsDBNull(5) ? null : reader.GetString(5)?.Trim(),
+            Competitiesoort = reader.IsDBNull(6) ? null : reader.GetString(6),
+            LeeftijdsCategorie = reader.IsDBNull(7) ? null :
+                (string.IsNullOrWhiteSpace(reader.GetString(7)) ? null : reader.GetString(7)),
+            SportlinkSpeelduur = reader.IsDBNull(8) ? null : Convert.ToInt32(reader.GetValue(8)),
+            Wedstrijdnummer = reader.IsDBNull(9) ? null : Convert.ToInt64(reader.GetValue(9)),
+            PublicMatchId = reader.IsDBNull(10) ? null : reader.GetString(10)
+        };
 
     internal static async Task<int> UpdateAllstarsMatchAsync(long wedstrijdCode, string nieuweVeld, string nieuweTijd)
     {

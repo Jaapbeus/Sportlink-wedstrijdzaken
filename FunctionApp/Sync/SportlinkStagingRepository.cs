@@ -28,6 +28,22 @@ internal static class SportlinkStagingRepository
         return list;
     }
 
+    /// <summary>
+    /// De teamcodes uit de zojuist geladen <c>stg.teams</c> (#1915), voor de terugval per team bij een afgekapte
+    /// <c>/programma</c>-respons. Alleen echte KNVB-teams: <c>-1</c> is een lokaal team zonder bondscode.
+    /// </summary>
+    internal static async Task<IReadOnlyList<long>> GetTeamcodesAsync()
+    {
+        var codes = new List<long>();
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand("SELECT DISTINCT [teamcode] FROM [stg].[teams] WHERE [teamcode] > 0", conn);
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            codes.Add(Convert.ToInt64(reader.GetValue(0)));
+        return codes;
+    }
+
     internal static async Task SaveTeamsAsync(List<Team> teams, string clubCode, ILogger log)
     {
         // #1712: een dubbele sleutel in stg.teams laat sp_MergeStgToHis falen (fout 8672 of een

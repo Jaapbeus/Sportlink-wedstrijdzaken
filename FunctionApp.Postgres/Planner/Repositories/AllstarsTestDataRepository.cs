@@ -73,7 +73,9 @@ internal static class AllstarsTestDataRepository
                             THEN m.uitteam ELSE m.thuisteam END AS uitteam,
                        m.aanvangstijd, m.veld, m.competitiesoort,
                        NULL AS leeftijdscategorie,
-                       md.duration AS sportlinkspeelduur
+                       md.duration AS sportlinkspeelduur,
+                       NULL::bigint AS wedstrijdnummer,
+                       NULL::text AS publicmatchid
                 FROM his.matches m
                 LEFT JOIN LATERAL (
                     SELECT duration
@@ -90,8 +92,13 @@ internal static class AllstarsTestDataRepository
             : $@"SELECT m.wedstrijdcode, m.wedstrijd, m.teamnaam, m.uitteam,
                        m.aanvangstijd, m.veld, m.competitiesoort,
                        {PostgresLeeftijdNormalisatie.SqlExpr("COALESCE(t.leeftijdscategorie, '')")} AS leeftijdscategorie,
-                       md.duration AS sportlinkspeelduur
+                       md.duration AS sportlinkspeelduur,
+                       m.wedstrijdnummer,
+                       c.publicmatchid
                 FROM his.matches m
+                LEFT JOIN public.sportlinkpublicmatchidcache c
+                       ON c.wedstrijdcode = m.wedstrijdcode AND c.clubcode = m.clubcode
+                      AND c.publicmatchid = c.verifiedpublicmatchid
                 LEFT JOIN LATERAL (
                     SELECT leeftijdscategorie
                     FROM his.teams
@@ -119,7 +126,13 @@ internal static class AllstarsTestDataRepository
 
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
-            results.Add(new WedstrijdRaw(
+            results.Add(LeesWedstrijd(reader));
+        return results;
+    }
+
+    /// <summary>Eén rij van <see cref="GetAllMatchesForDatumAsync(NpgsqlConnection, NpgsqlTransaction?, DateOnly, string)"/> naar het model.</summary>
+    private static WedstrijdRaw LeesWedstrijd(NpgsqlDataReader reader)
+        => new WedstrijdRaw(
                 WedstrijdCode: reader.IsDBNull(0) ? null : reader.GetInt64(0),
                 Wedstrijd: reader.IsDBNull(1) ? "" : reader.GetString(1),
                 TeamNaam: reader.IsDBNull(2) ? "" : reader.GetString(2),
@@ -129,9 +142,9 @@ internal static class AllstarsTestDataRepository
                 Competitiesoort: reader.IsDBNull(6) ? null : reader.GetString(6),
                 LeeftijdsCategorie: reader.IsDBNull(7) ? null :
                     (string.IsNullOrWhiteSpace(reader.GetString(7)) ? null : reader.GetString(7)),
-                SportlinkSpeelduur: reader.IsDBNull(8) ? null : Convert.ToInt32(reader.GetValue(8))));
-        return results;
-    }
+                SportlinkSpeelduur: reader.IsDBNull(8) ? null : Convert.ToInt32(reader.GetValue(8)),
+                Wedstrijdnummer: reader.IsDBNull(9) ? null : reader.GetInt64(9),
+                PublicMatchId: reader.IsDBNull(10) ? null : reader.GetString(10));
 
     /// <summary>
     /// De demovelden van de testmodus: veldnummers &gt;= 100 (issue 888 vervolg, §42).
@@ -275,7 +288,7 @@ internal static class AllstarsTestDataRepository
 internal sealed record WedstrijdRaw(
     long? WedstrijdCode, string Wedstrijd, string TeamNaam, string? Uitteam,
     string? AanvangsTijd, string? Veld, string? Competitiesoort, string? LeeftijdsCategorie,
-    int? SportlinkSpeelduur = null);
+    int? SportlinkSpeelduur = null, long? Wedstrijdnummer = null, string? PublicMatchId = null);
 
 /// <summary>
 /// AVG: bevat persoonsgegevens — uitsluitend voor interne notificaties. Postgres-tier-tegenhanger
