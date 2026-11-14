@@ -20,6 +20,12 @@ on:
   push:
     branches: [develop]
   workflow_dispatch:
+    # PROEFBRANCH #1942 — alleen voor het live rood-bewijs van de aggregatiejob; nooit mergen.
+    inputs:
+      rood_scenario:
+        description: "geen | skip | compile | db | cancel"
+        required: false
+        default: geen
 
 # #1370 (retro v3.6.0.0, bevinding 2) — GEPROBEERD EN BEWUST TERUGGEDRAAID.
 # Een eerdere versie van deze workflow voegde hier een `concurrency: group:
@@ -412,6 +418,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: PROEF rood-scenario cancel (wacht op annulering)
+        if: ${{ inputs.rood_scenario == 'cancel' }}
+        run: sleep 900
 
       # AGENTS.md is de enige bron van de agentinstructies (#1579); CLAUDE.md is een stub die hem
       # importeert. Toen beide nog met de hand werden bijgehouden, miste AGENTS.md negen secties —
@@ -438,6 +447,7 @@ jobs:
 
   guard-zelftests-overig:
     name: Guard-zelftests — schrijven tijdelijk in de werkboom
+    if: ${{ inputs.rood_scenario != 'skip' }}
     runs-on: ubuntu-latest
     # Deze twee zelftests wijzigen tijdelijk bestanden in de checkout (EgressGuard zet een
     # Proef.cs in FunctionApp*/, check-codekwaliteit.test.sh doet `git checkout --`). Daarom een
@@ -474,6 +484,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: PROEF rood-scenario compile
+        if: ${{ inputs.rood_scenario == 'compile' }}
+        run: exit 1
 
       # Alle projecten targeten net10.0 (#1073) — alleen de .NET 10 SDK is nodig.
       - name: .NET SDK installeren
@@ -971,6 +984,9 @@ jobs:
       # #1700: lokale autorisatiebypass expliciet uit; zie de toelichting bij de job build.
       LOCAL_AUTH_BYPASS: "false"
     steps:
+      - name: PROEF rood-scenario db
+        if: ${{ inputs.rood_scenario == 'db' }}
+        run: exit 1
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
