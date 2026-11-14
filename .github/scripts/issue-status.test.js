@@ -1,7 +1,8 @@
 // Unit-tests voor issue-status.js — draaien zonder GitHub, zonder token, zonder netwerk.
 // Uitvoeren: node .github/scripts/issue-status.test.js   (exit 0 = alles groen)
 // Wordt bij elke PR gedraaid door de job 'Build FunctionApp + BlazorAdmin' in build.yml.
-const { extractIssueRefs, setIssueStatus, clearIssueStatus, clearTurnLabels, isEpic, updatePullRequestIssueStatuses } = require('./issue-status.js');
+const { extractIssueRefs, setIssueStatus, clearIssueStatus, clearTurnLabels, isEpic, updatePullRequestIssueStatuses,
+  statusVoorPullRequest, plaatsFasecommentGemerged, reconcileIssueStatus, FASE_GEMERGED_MARKER } = require('./issue-status.js');
 
 let failures = 0;
 function check(name, actual, expected) {
@@ -398,6 +399,214 @@ async function run() {
   gh = fakeGithubRemoveFout(['turn: owner'], { 'turn: owner': 404 });
   turns = await clearTurnLabels({ github: gh, context: ctx, core, issueNumber: 1 });
   check('404 (al afwezig) is idempotent en geen fout', turns, ['turn: owner']);
+
+
+  // ---------- #1867: fasecomment na merge ----------
+  console.log('\nplaatsFasecommentGemerged (#1867):');
+  function fakeComments(bestaand = []) {
+    const calls = { created: [], listed: 0 };
+    return {
+      calls,
+      paginate: async (fn, args) => { calls.listed++; return bestaand; },
+      rest: { issues: {
+        listComments: () => {},
+        createComment: async ({ body, issue_number }) => { calls.created.push({ body, issue_number }); },
+      } },
+    };
+  }
+  const SHA = 'a'.repeat(40);
+  gh = fakeComments();
+  res = await plaatsFasecommentGemerged({ github: gh, context: ctx, core, issueNumber: 7, prNumber: 55, mergeSha: SHA });
+  check('merge: fasecomment geplaatst', res, 'posted');
+  check('comment bevat fase, PR en volledige merge-SHA',
+    gh.calls.created.length === 1 && /Fase: gemerged\nPR: #55\nMerge-SHA: a{40}/.test(gh.calls.created[0].body), true);
+  check('comment bevat de idempotentiemarker', gh.calls.created[0].body.includes(FASE_GEMERGED_MARKER(55)), true);
+
+  // Regressie (review ronde 1, P2): het ÉCHT gegenereerde comment moet door de hele keten
+  // (isOverdracht → verzamelOverdrachten → beoordeel) als nieuwste overdracht tellen, anders
+  // blijft een oudere overdracht leidend en volgt een valse GEEN_TURN-melding.
+  const { evalueerIssue, parseOverdracht, isOverdracht } = require('./beurt-invariant.js');
+  const gegenereerd = gh.calls.created[0].body;
+  const NU_MS = Date.parse('2026-11-14T12:00:00Z');
+  const oudeReview = {
+    body: `Fase: review\nImplementer: Claude Code\nReviewer: Codex\nPR: #55\nAangeboden head-SHA: ${'b'.repeat(40)}\nVolgende beurt: codex`,
+    author_association: 'OWNER', created_at: '2026-11-14T09:00:00Z',
+  };
+  const botComment = (body) => ({ body, user: { type: 'Bot', login: 'github-actions[bot]' }, author_association: 'NONE', created_at: '2026-11-14T10:00:00Z' });
+  const keten = (body, labels) => evalueerIssue({ now: NU_MS, graceMinuten: 30, prs: [], labels, issueComments: [oudeReview, botComment(body)] }).map(f => f.code);
+
+  check('gegenereerde comment telt als overdracht', isOverdracht(parseOverdracht(gegenereerd)), true);
+  check('eindfase wint over oudere reviewoverdracht (geen valse GEEN_TURN)', keten(gegenereerd, []), []);
+  check('eindfase wint: achtergebleven turn-label wordt wél gesignaleerd', keten(gegenereerd, ['turn: codex']), ['TURN_BIJ_EINDE']);
+  // Bewijs dat de test rood kan worden: het eerdere formaat zonder herkend veld werd genegeerd.
+  const oudFormaat = gegenereerd.replace('Volgende beurt: geen\n', '');
+  check('zonder herkend veld wordt de comment genegeerd (oud formaat)', isOverdracht(parseOverdracht(oudFormaat)), false);
+  check('oud formaat: oudere overdracht blijft leidend (valse GEEN_TURN)', keten(oudFormaat, []), ['GEEN_TURN']);
+
+  gh = fakeComments([{ body: `${FASE_GEMERGED_MARKER(55)}\nFase: gemerged` }]);
+  res = await plaatsFasecommentGemerged({ github: gh, context: ctx, core, issueNumber: 7, prNumber: 55, mergeSha: SHA });
+  check('herhaald event: geen tweede comment', { res, n: gh.calls.created.length }, { res: 'unchanged', n: 0 });
+
+  gh = fakeComments([{ body: `${FASE_GEMERGED_MARKER(54)}\nFase: gemerged` }]);
+  res = await plaatsFasecommentGemerged({ github: gh, context: ctx, core, issueNumber: 7, prNumber: 55, mergeSha: SHA });
+  check('andere PR eerder gemerged: wel een nieuwe comment', { res, n: gh.calls.created.length }, { res: 'posted', n: 1 });
+
+  gh = fakeComments();
+  res = await plaatsFasecommentGemerged({ github: gh, context: ctx, core, issueNumber: 7, prNumber: 55, mergeSha: null });
+  check('ontbrekende merge-SHA: niets geplaatst', { res, n: gh.calls.created.length }, { res: 'skipped', n: 0 });
+  res = await plaatsFasecommentGemerged({ github: gh, context: ctx, core, issueNumber: 7, prNumber: 55, mergeSha: 'abc123' });
+  check('afgekapte merge-SHA: niets geplaatst', { res, n: gh.calls.created.length }, { res: 'skipped', n: 0 });
+
+  // ---------- #1867: merge versus sluiten zonder merge ----------
+  console.log('\nstatusVoorPullRequest (#1867):');
+  check('draft', statusVoorPullRequest({ state: 'open', draft: true }), 'status: in-progress');
+  check('ready', statusVoorPullRequest({ state: 'open', draft: false }), 'status: review-needed');
+  check('gemerged', statusVoorPullRequest({ state: 'closed', merged: true }), 'status: awaiting-release');
+  check('gemerged via merged_at', statusVoorPullRequest({ state: 'closed', merged_at: '2026-01-01T00:00:00Z' }), 'status: awaiting-release');
+  check('gesloten zonder merge: geen status', statusVoorPullRequest({ state: 'closed', merged: false }), null);
+  check('ontbrekende PR: geen status', statusVoorPullRequest(null), null);
+
+  console.log('\nsluiten zonder merge raakt awaiting-release niet:');
+  const prSluit = (merged) => ({
+    title: 'fix(#9): iets', body: '', draft: false, merged,
+    user: { login: 'dev', type: 'User' },
+    base: { repo: { id: 1 } }, head: { repo: { id: 1 } },
+  });
+  function fakeRepoGithub({ issueLabels = [], issueState = 'open', open = [], permission = 'write' }) {
+    const calls = { added: [], removed: [], created: [] };
+    return {
+      calls,
+      paginate: async () => open,
+      request: async () => ({ data: { permission } }),
+      rest: { issues: {
+        get: async () => ({ data: { labels: issueLabels.map(name => ({ name })), state: issueState } }),
+        addLabels: async ({ labels: l }) => { calls.added.push(...l); },
+        removeLabel: async ({ name }) => { calls.removed.push(name); },
+        createComment: async ({ body }) => { calls.created.push(body); },
+      }, pulls: { list: () => {} } },
+    };
+  }
+  const ctxPr = (action, pr) => ({ repo: { owner: 'o', repo: 'r' }, payload: { action, pull_request: pr, repository: { id: 1 } } });
+  gh = fakeRepoGithub({ issueLabels: ['status: awaiting-release'] });
+  res = await updatePullRequestIssueStatuses({ github: gh, context: ctxPr('closed', prSluit(false)), core });
+  check('gesloten zonder merge: awaiting-release blijft (beschermd)', { added: gh.calls.added, removed: gh.calls.removed }, { added: [], removed: [] });
+  gh = fakeRepoGithub({ issueLabels: ['status: review-needed'] });
+  res = await updatePullRequestIssueStatuses({ github: gh, context: ctxPr('closed', prSluit(false)), core });
+  check('gesloten zonder merge: terug naar triage', { res, added: gh.calls.added }, { res: 'updated', added: ['status: triage'] });
+  gh = fakeRepoGithub({ issueLabels: ['status: review-needed'] });
+  res = await updatePullRequestIssueStatuses({ github: gh, context: ctxPr('closed', prSluit(true)), core });
+  check('gemerged: dit pad wijzigt niets (merge-workflow is eigenaar)', { res, added: gh.calls.added }, { res: 'merged', added: [] });
+
+
+  // ---------- #1867: de echte workflow-code van label-awaiting-release.yml ----------
+  // Voert het script-blok uit het YAML-bestand zelf uit (geen nagebootste beslislogica), zodat een
+  // wijziging in de workflow door deze test wordt gezien.
+  console.log('\nlabel-awaiting-release.yml (echte scriptblok):');
+  const fs = require('fs');
+  const path = require('path');
+  const repoRoot = path.resolve(__dirname, '..', '..');
+  function laadWorkflowScript() {
+    const regels = fs.readFileSync(path.join(repoRoot, '.github/workflows/label-awaiting-release.yml'), 'utf8').split('\n');
+    const i = regels.findIndex(r => /^\s+script: \|\s*$/.test(r));
+    const inspringing = regels[i + 1].match(/^ */)[0].length;
+    const blok = [];
+    for (let j = i + 1; j < regels.length; j++) {
+      if (regels[j].trim() !== '' && regels[j].match(/^ */)[0].length < inspringing) break;
+      blok.push(regels[j].slice(inspringing));
+    }
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    return new AsyncFunction('github', 'context', 'core', 'require', blok.join('\n'));
+  }
+  async function draaiWorkflow({ mergeSha, bestaandeComments = [], labels = ['status: in-progress', 'turn: codex'] }) {
+    process.env.GITHUB_WORKSPACE = repoRoot;
+    const out = { failed: [], created: [], added: [], removed: [] };
+    const github = {
+      paginate: async () => bestaandeComments,
+      rest: { issues: {
+        get: async () => ({ data: { labels: labels.map(name => ({ name })), state: 'open' } }),
+        addLabels: async ({ labels: l }) => { out.added.push(...l); },
+        removeLabel: async ({ name }) => { out.removed.push(name); },
+        createComment: async ({ body }) => { out.created.push(body); },
+        update: async () => {},
+        listComments: () => {},
+      } },
+    };
+    const context = {
+      repo: { owner: 'o', repo: 'r' },
+      payload: { pull_request: { number: 77, title: 'fix(#9): iets', body: '', merge_commit_sha: mergeSha } },
+    };
+    const wcore = { notice: () => {}, warning: () => {}, setFailed: (m) => { out.failed.push(m); } };
+    await laadWorkflowScript()(github, context, wcore, require);
+    return out;
+  }
+
+  let wf = await draaiWorkflow({ mergeSha: 'c'.repeat(40) });
+  check('geldige merge-SHA: één fasecomment, geen fout', { n: wf.created.length, failed: wf.failed }, { n: 1, failed: [] });
+  check('geldige merge-SHA: status gezet en turn opgeschoond', { added: wf.added, removed: wf.removed },
+    { added: ['status: awaiting-release'], removed: ['status: in-progress', 'turn: codex'] });
+
+  for (const [naam, sha] of [['ontbrekende', null], ['lege', ''], ['afgekapte', 'abc123'], ['niet-hexadecimale', 'z'.repeat(40)]]) {
+    wf = await draaiWorkflow({ mergeSha: sha });
+    check(`${naam} merge-SHA: workflow faalt zichtbaar (core.setFailed)`, { n: wf.failed.length, created: wf.created.length }, { n: 1, created: 0 });
+  }
+
+  wf = await draaiWorkflow({ mergeSha: 'c'.repeat(40), bestaandeComments: [{ body: `${FASE_GEMERGED_MARKER(77)}\nFase: gemerged` }] });
+  check('herhaalde run met bestaande marker: geen tweede comment en geen fout', { created: wf.created.length, failed: wf.failed }, { created: 0, failed: [] });
+
+  // ---------- #1867: reconciliatie ----------
+  console.log('\nreconcileIssueStatus (#1867):');
+  const prOpen = (nr, draft, extra = {}) => ({
+    number: nr, title: `fix(#9): werk ${nr}`, body: '', draft, state: 'open',
+    user: { login: 'dev', type: 'User' }, base: { repo: { id: 1 } }, head: { repo: { id: 1 } }, ...extra,
+  });
+  const ctxRec = { repo: { owner: 'o', repo: 'r' }, payload: { repository: { id: 1 } } };
+  const rec = (g, nr = 9) => reconcileIssueStatus({ github: g, context: ctxRec, core, issueNumber: nr });
+
+  gh = fakeRepoGithub({ issueLabels: ['status: review-needed', 'turn: owner'], open: [prOpen(100, true)] });
+  res = await rec(gh);
+  check('draft-PR: review-needed hersteld naar in-progress', { res, added: gh.calls.added, removed: gh.calls.removed },
+    { res: 'set', added: ['status: in-progress'], removed: ['status: review-needed'] });
+  check('turn-label wordt nooit aangeraakt', gh.calls.removed.includes('turn: owner') || gh.calls.added.some(l => l.startsWith('turn:')), false);
+
+  gh = fakeRepoGithub({ issueLabels: ['status: in-progress'], open: [prOpen(100, false)] });
+  res = await rec(gh);
+  check('ready-PR: in-progress hersteld naar review-needed', { res, added: gh.calls.added }, { res: 'set', added: ['status: review-needed'] });
+
+  gh = fakeRepoGithub({ issueLabels: ['status: in-progress'], open: [prOpen(100, true)] });
+  res = await rec(gh);
+  check('al juist: idempotent', { res, added: gh.calls.added, removed: gh.calls.removed }, { res: 'unchanged', added: [], removed: [] });
+  res = await rec(gh);
+  check('tweede run: nog steeds idempotent', res, 'unchanged');
+
+  gh = fakeRepoGithub({ issueLabels: ['status: review-needed'], open: [] });
+  res = await rec(gh);
+  check('geen gekoppelde PR: niets gewijzigd', { res, added: gh.calls.added, removed: gh.calls.removed }, { res: 'unlinked', added: [], removed: [] });
+
+  gh = fakeRepoGithub({ issueLabels: ['status: review-needed'], open: [prOpen(100, true, { title: 'chore: zie #9 in proza', body: 'verwijst naar #9' })] });
+  res = await rec(gh);
+  check('alleen zwakke verwijzing telt niet als koppeling', { res, added: gh.calls.added }, { res: 'unlinked', added: [] });
+
+  gh = fakeRepoGithub({ issueLabels: ['status: review-needed'], open: [prOpen(100, true), prOpen(101, false)] });
+  res = await rec(gh);
+  check('meerdere sterke koppelingen: niets gewijzigd', { res, added: gh.calls.added, removed: gh.calls.removed }, { res: 'ambiguous', added: [], removed: [] });
+
+  for (const beschermd of ['status: blocked', 'status: waiting-owner', 'status: wont-fix', 'status: awaiting-release']) {
+    gh = fakeRepoGithub({ issueLabels: [beschermd], open: [prOpen(100, true)] });
+    res = await rec(gh);
+    check(`${beschermd} blijft beschermd`, { res, added: gh.calls.added, removed: gh.calls.removed }, { res: 'protected', added: [], removed: [] });
+  }
+
+  gh = fakeRepoGithub({ issueLabels: ['status: review-needed'], issueState: 'closed', open: [prOpen(100, true)] });
+  res = await rec(gh);
+  check('gesloten issue: niets gewijzigd', { res, added: gh.calls.added }, { res: 'closed', added: [] });
+
+  gh = fakeRepoGithub({ issueLabels: ['status: review-needed'], open: [prOpen(100, true, { head: { repo: { id: 2 } } })] });
+  res = await rec(gh);
+  check('fork-PR (onbewezen herkomst): niets gewijzigd', { res, added: gh.calls.added }, { res: 'untrusted', added: [] });
+
+  gh = fakeRepoGithub({ issueLabels: ['status: review-needed'], open: [prOpen(100, true)], permission: 'read' });
+  res = await rec(gh);
+  check('auteur zonder schrijfrechten: niets gewijzigd', { res, added: gh.calls.added }, { res: 'untrusted', added: [] });
 
   console.log(failures === 0 ? '\nALLE TESTS GESLAAGD' : `\n${failures} TEST(S) GEFAALD`);
   process.exit(failures === 0 ? 0 : 1);

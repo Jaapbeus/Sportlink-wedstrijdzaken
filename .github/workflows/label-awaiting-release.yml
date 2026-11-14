@@ -32,7 +32,7 @@ jobs:
             // 'status: '-label op een issue staat. Voorheen werd 'awaiting-release'
             // alleen toegevoegd, waardoor een issue dat al op 'in-progress' of
             // 'review-needed' stond twee statussen tegelijk kreeg (#690).
-            const { extractIssueRefs, setIssueStatus, clearTurnLabels, isEpic, API_VERSION_HEADERS } =
+            const { extractIssueRefs, setIssueStatus, clearTurnLabels, plaatsFasecommentGemerged, isEpic, API_VERSION_HEADERS } =
               require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/issue-status.js`);
 
             const label = 'status: awaiting-release';
@@ -48,6 +48,7 @@ jobs:
             const { strong } = extractIssueRefs(pr.title, pr.body);
             const numbers = [...strong];
             const turnFouten = [];
+            const faseFouten = [];
 
             if (numbers.length === 0) {
               core.notice('Geen sterke #issuenummer-referentie (titel of sluitend keyword) gevonden — niets te labelen.');
@@ -107,6 +108,26 @@ jobs:
                 turnFouten.push(e.message);
               }
 
+              // #1867: de fasecomment sluit de overdrachtsketen af, zodat het issue niet op een
+              // oudere 'verwerking'- of 'eigenaarsbesluit'-comment blijft staan. Idempotent per PR.
+              try {
+                const faseResultaat = await plaatsFasecommentGemerged({
+                  github,
+                  context,
+                  core,
+                  issueNumber: number,
+                  prNumber: pr.number,
+                  mergeSha: pr.merge_commit_sha,
+                });
+                // 'skipped' (ontbrekende of ongeldige merge-SHA) is geen succes: de labels zijn al
+                // gewijzigd, dus de run moet zichtbaar falen in plaats van groen zonder fasecomment.
+                if (faseResultaat !== 'posted' && faseResultaat !== 'unchanged') {
+                  faseFouten.push(`#${number}: fasecomment niet geplaatst (${faseResultaat})`);
+                }
+              } catch (e) {
+                faseFouten.push(e.message);
+              }
+
               if (issue.state === 'closed') {
                 await github.rest.issues.update({
                   owner: context.repo.owner,
@@ -131,4 +152,7 @@ jobs:
 
             if (turnFouten.length > 0) {
               core.setFailed(`turn-labels niet opgeschoond: ${turnFouten.join(' | ')}`);
+            }
+            if (faseFouten.length > 0) {
+              core.setFailed(`fasecomment niet geplaatst: ${faseFouten.join(' | ')}`);
             }
