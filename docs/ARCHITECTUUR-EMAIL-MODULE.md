@@ -62,7 +62,7 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 > | Verschil | SQL Server | Postgres (productie) |
 > |---|---|---|
 > | `IEmailGraphService` | eigen bestand `Email/IEmailGraphService.cs` | in `Email/EmailGraphService.cs` (regel 23) |
-> | `InkomendBericht`, `ClassificatieCorrectieVoorbeeld` (`EmailStatus` is sinds #1716 slice 5 gedeeld) | `Email/BerichtModels.cs` | `Email/EmailModels.cs` |
+> | Concrete `InkomendBericht`-variant; de zes gelijke velden komen uit `Planner.Shared/Email/InkomendBerichtBasis.cs` | `Email/BerichtModels.cs`: niet sealed, `ConversationId`/`Body` niet-nullable met standaard `""` | `Email/EmailModels.cs`: sealed, beide velden nullable met standaard `null` |
 > | Persistentielaag | `IEmailPersistenceRepository` + `SqlEmailPersistenceRepository` + `EmailPersistenceService` (DI-wrapper) | alleen `SqlEmailPersistenceRepository` — een `internal static class`, geen interface, geen wrapper |
 > | Teamlijst-vangnet / uitvalmonitor | `TeamlijstGereedheid`, `Monitoring/DatabaseUitvalMonitorFunction` | bestaan niet (Postgres-tier roept in plaats daarvan onvoorwaardelijk `TeamCanonicalisatieService.RefreshAsync` aan, zie `docs/ARCHITECTUUR-TEAMRESOLUTIE.md`) |
 
@@ -79,7 +79,8 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 | `Planner.Shared/Email/EmailReplyAfhandeling.cs` (omhulsel per tier: `FunctionApp*/Email/EmailReplyPolicyService.cs`, #1760) | Beslist óf en bouwt het antwoord, markeert verzendintentie vóór het versturen (#716), roept `EmailGraphService.SendReplyAsync` aan. Bij een verzendfout classificeert `Planner.Shared.EmailVerzendFoutClassificatie` (#1133) of dit een bewezen afwijzing is (intentie wissen, opnieuw proberen) of een onbekende uitkomst (intentie laten staan, direct naar `Review`) |
 | `FunctionApp/Email/EmailTemplateService.cs` | DB-templates (`dbo.EmailTemplateInstellingen`) met 5-minuten TTL-cache per `(clubCode, key)`, valt terug op hardcoded defaults, `ApplyPlaceholders` voor `{{key}}`-substitutie; `EmailTemplate` is sinds #1716 slice 13 het gedeelde resultaatrecord |
 | `FunctionApp/Email/BerichtAiService.cs` | AI-classificatie; gebruikt al `IChatClient` (regel 11-14) — goed precedent voor provider-abstractie |
-| `FunctionApp/Email/BerichtModels.cs` | `InkomendBericht` (kanaal-agnostisch bericht-DTO) en `ClassificatieCorrectieVoorbeeld`; blijven per tier omdat de vorm van `InkomendBericht` verschilt (`ConversationId`/`Body` nullable op de Postgres-tier, niet-nullable met standaard `""` op SQL Server) |
+| `FunctionApp/Email/BerichtModels.cs` + `FunctionApp.Postgres/Email/EmailModels.cs` | Concrete `InkomendBericht`-varianten met hun bestaande naamruimten, sealedness en twee bewust verschillende velden: `ConversationId`/`Body` nullable met standaard `null` op Postgres, niet-nullable met standaard `""` op SQL Server. Sinds #1716 slice 14 (zie issue #1937) erven zij de zes identieke velden uit `Planner.Shared/Email/InkomendBerichtBasis.cs`; beide serializers houden de oorspronkelijke propertyvolgorde. |
+| `Planner.Shared/Email/ClassificatieCorrectieVoorbeeld.cs` | Gedeeld, onveranderd few-shot-voorbeeld voor classificatiecorrecties; dit record is geen tierlokaal model. |
 | `Planner.Shared/Email/BerichtClassificatie.cs` + `EmailStatus.cs` | #1716 slice 5: `VerzoekType`, `NamensWie`, `BerichtClassificatie` en `EmailStatus` staan één keer hier in plaats van identiek per tier. **Tier-onafhankelijk**, zonder gedragswijziging. Contract: de classificatie gaat via Newtonsoft (enums als getal) naar `planner.EmailVerwerking`, de status als naam; volgorde, getallen, namen, standaardwaarden en JSON-vorm bewaakt `Planner.Shared.Tests/Email/BerichtDomeinTypenTests.cs`. Mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice5.tsv scripts/ci/mutatiebewijs-1716.sh` (13 mutanten) |
 | `Planner.Shared/Email/BerichtAntwoordGenerator.cs` (+ `.Herplan.cs`, `.Overig.cs`) + `BerichtAntwoordPoorten.cs` | #1758 (slice 6 van #1716): bouwt onderwerp+body per classificatietype, met/zonder DB-template-override. **Tier-onafhankelijk**: plannergegevens, bericht, sjabloon en clubinstellingen komen via de poorten `IAntwoordBeschikbaarheid`, `IAntwoordWedstrijd`, `IAntwoordHerplanOpties`, `IAntwoordVenster`, `IAntwoordAfzender`, `IAntwoordSjabloon` en `IAntwoordInstellingen`, die de tier-DTO's zelf implementeren (JSON-vorm ongewijzigd). De sjabloonopslag (`EmailTemplateService`, database) blijft per tier; de generator krijgt alleen de inhoud van een al opgehaald sjabloon. Gevallen in `Planner.Shared.Tests/Email/BerichtAntwoordGenerator*Tests.cs`; mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice6.tsv scripts/ci/mutatiebewijs-1716.sh` |
 | `FunctionApp/Email/BerichtResponseGenerator.cs` | Tier-omhulsel van `BerichtAntwoordGenerator` (#1758): zelfde publieke API, kiest de instellingenbron (club-snapshot van de e-mailtester of `SystemUtilities.AppSettings`, #677) en de foutmelding van deze tier; getest in `BerichtResponseGeneratorOmhulselTests` (per tier) |
@@ -416,6 +417,13 @@ de gedeelde batchgevallen staan in `Planner.Endpoints.Tests/Email/EmailClassific
 de bestaande adaptergevallen blijven per tier getest. Mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice10.tsv scripts/ci/mutatiebewijs-1716.sh`.
 De filterkern en beide tieromhulsels hebben aparte unit-/karakterisatietests; mutatiebewijs:
 `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice11.tsv scripts/ci/mutatiebewijs-1716.sh`.
+Sinds slice 14 staan `MessageId`, `Afzender`, `AfzenderNaam`, `Onderwerp`, `OntvangstDatum` en `InternetHeaders`
+eenmalig in `InkomendBerichtBasis`. De tierklassen bewaren alleen `ConversationId` en `Body` en hun eigen
+nullability/defaults; SQL Server blijft niet sealed, Postgres sealed. Expliciete propertyvolgorde voor beide
+serializers voorkomt dat overerving de JSON-volgorde verandert. De oorspronkelijke en nieuwe concrete modellen
+slagen voor dezelfde goldens (standaard, gevuld, ontbrekende velden en expliciete nullwaarden), inclusief
+naamruimte, interfaces, setters en read/write-nullability. Tests: `InkomendBerichtContractTests` op beide tiers;
+mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice14.tsv scripts/ci/mutatiebewijs-1716.sh`.
 
 ---
 
