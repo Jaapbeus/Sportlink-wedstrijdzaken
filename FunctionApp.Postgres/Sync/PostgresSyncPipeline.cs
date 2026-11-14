@@ -58,6 +58,40 @@ internal static partial class PostgresSyncPipeline
         var budget = new HerhaalBudget();
         var orchestrator = new PostgresMergeOrchestrator(connectionString);
 
+        var (teamsFailed, matchesFailed) = await FetchAndMergeAsync(orchestrator, connectionString,
+            sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, toWeekOffset, budget, log, syncLog, uitkomst);
+
+        // Reconciliatie (#1193): "Sportlink is de waarheid altijd" — his-rijen die niet meer in de
+        // zojuist geladen stg-snapshot voorkomen worden gemarkeerd als verwijderd (mta_deleted),
+        // nooit hard verwijderd. BEST-EFFORT, met opzet, om dezelfde reden als de
+        // teamcanonicalisatie hieronder: his.* is op dit punt al gemerged, dus een fout hier mag de
+        // al geslaagde ETL-run niet alsnog laten falen. Draait vóór de plannerview/canonicalisatie
+        // zodat die stroomafwaartse stappen al met de opgeschoonde data werken.
+        await SyncLogReporting.BeginPhaseAsync(syncLog, "reconciliatie");
+        var reconciliationFailed = await ReconcileVerdwenenAsync(orchestrator, clubCode, teamsFailed, matchesFailed,
+            reconciliatieOndergrens ?? EersteTeReconcilierenDatum(VandaagInNederland()), log);
+        var reconciliationSkipped = teamsFailed || matchesFailed;
+        var allReconciliationSkipped = teamsFailed && matchesFailed;
+        await SyncLogReporting.CompletePhaseAsync(syncLog, "reconciliatie",
+            SyncLogReporting.ReconciliationStatus(allReconciliationSkipped, reconciliationSkipped, reconciliationFailed),
+            reasonCode: SyncLogReporting.ReconciliationReason(reconciliationSkipped, reconciliationFailed));
+
+        await RondAfNaMergeAsync(connectionString, clubCode, log, syncLog);
+
+        if (!uitkomst.GedeeltelijkMislukt)
+            await SaveLastSyncTimestampAsync(connectionString, clubCode, log);
+        else
+            log.LogWarning("Sync gedeeltelijk mislukt — lastsynctimestamp NIET bijgewerkt");
+
+        return uitkomst;
+    }
+
+    private static async Task<(bool TeamsFailed, bool MatchesFailed)> FetchAndMergeAsync(
+        PostgresMergeOrchestrator orchestrator, string connectionString,
+        string sportlinkApiUrl, string sportlinkClientId, string clubCode,
+        int fromWeekOffset, int toWeekOffset, HerhaalBudget budget, ILogger log,
+        SyncLogWriter? syncLog, SyncUitkomst uitkomst)
+    {
         await orchestrator.RecreateStgTableAsync(KnownEntities.Teams);
         await SyncLogReporting.BeginPhaseAsync(syncLog, "teams");
         int? teamsFetched = null;
@@ -110,29 +144,7 @@ internal static partial class PostgresSyncPipeline
             added: merges.MatchDetails.Added, updated: merges.MatchDetails.Updated,
             reasonCode: SyncLogReporting.ReasonForFailure(matchdetailsFailed, "partial_failure"));
 
-        // Reconciliatie (#1193): "Sportlink is de waarheid altijd" — his-rijen die niet meer in de
-        // zojuist geladen stg-snapshot voorkomen worden gemarkeerd als verwijderd (mta_deleted),
-        // nooit hard verwijderd. BEST-EFFORT, met opzet, om dezelfde reden als de
-        // teamcanonicalisatie hieronder: his.* is op dit punt al gemerged, dus een fout hier mag de
-        // al geslaagde ETL-run niet alsnog laten falen. Draait vóór de plannerview/canonicalisatie
-        // zodat die stroomafwaartse stappen al met de opgeschoonde data werken.
-        await SyncLogReporting.BeginPhaseAsync(syncLog, "reconciliatie");
-        var reconciliationFailed = await ReconcileVerdwenenAsync(orchestrator, clubCode, teamsFailed, matchesFailed,
-            reconciliatieOndergrens ?? EersteTeReconcilierenDatum(VandaagInNederland()), log);
-        var reconciliationSkipped = teamsFailed || matchesFailed;
-        var allReconciliationSkipped = teamsFailed && matchesFailed;
-        await SyncLogReporting.CompletePhaseAsync(syncLog, "reconciliatie",
-            SyncLogReporting.ReconciliationStatus(allReconciliationSkipped, reconciliationSkipped, reconciliationFailed),
-            reasonCode: SyncLogReporting.ReconciliationReason(reconciliationSkipped, reconciliationFailed));
-
-        await RondAfNaMergeAsync(connectionString, clubCode, log, syncLog);
-
-        if (!uitkomst.GedeeltelijkMislukt)
-            await SaveLastSyncTimestampAsync(connectionString, clubCode, log);
-        else
-            log.LogWarning("Sync gedeeltelijk mislukt — lastsynctimestamp NIET bijgewerkt");
-
-        return uitkomst;
+        return (teamsFailed, matchesFailed);
     }
 
     private static async Task<bool> FetchTeamsPhaseAsync(

@@ -18,27 +18,19 @@ internal static partial class SyncJobsRepository
             gate.Parameters.AddWithValue("club", clubCode);
             await gate.ExecuteNonQueryAsync();
         }
-        var active = await ReadActiveAsync(connection, transaction, clubCode);
-        if (active is not null)
+        return await SyncJobStartCore.GetOrCreateAsync(
+            () => ReadActiveAsync(connection, transaction, clubCode), async () =>
         {
-            await transaction.CommitAsync();
-            return new(active, false);
-        }
-        await using var insert = new NpgsqlCommand(
-            "INSERT INTO public.syncjobs(id,clubcode,status,weekoffsetfrom,weekoffsetto) " +
-            "VALUES (@id,@club,'pending',@from,@to) RETURNING " + JobColumns, connection, transaction);
-        insert.Parameters.AddWithValue("id", id);
-        insert.Parameters.AddWithValue("club", clubCode);
-        insert.Parameters.AddWithValue("from", from);
-        insert.Parameters.AddWithValue("to", to);
-        SyncJobStatus job;
-        await using (var reader = await insert.ExecuteReaderAsync())
-        {
-            await reader.ReadAsync();
-            job = SyncJobStatus.FromReader(reader);
-        }
-        await transaction.CommitAsync();
-        return new(job, true);
+            await using var insert = new NpgsqlCommand(
+                "INSERT INTO public.syncjobs(id,clubcode,status,weekoffsetfrom,weekoffsetto) " +
+                "VALUES (@id,@club,'pending',@from,@to) RETURNING " + JobColumns, connection, transaction);
+            insert.Parameters.AddWithValue("id", id);
+            insert.Parameters.AddWithValue("club", clubCode);
+            insert.Parameters.AddWithValue("from", from);
+            insert.Parameters.AddWithValue("to", to);
+            await using var reader = await insert.ExecuteReaderAsync();
+            return await SyncJobStatus.ReadRequiredAsync(reader);
+        }, () => transaction.CommitAsync());
     }
 
     internal static async Task<SyncJobStatus?> GetActiveAsync(string connectionString, string clubCode)
@@ -56,7 +48,7 @@ internal static partial class SyncJobsRepository
         command.Parameters.AddWithValue("club", clubCode);
         command.Parameters.AddWithValue("cutoff", SyncJobRecoveryPolicy.StaleCutoff(DateTime.UtcNow));
         await using var reader = await command.ExecuteReaderAsync();
-        return await reader.ReadAsync() ? SyncJobStatus.FromReader(reader) : null;
+        return await SyncJobStatus.ReadOptionalAsync(reader);
     }
 
     internal static async Task<IReadOnlyList<SyncJobStatus>> GetRecentAsync(string connectionString, string clubCode, Guid? jobId)
@@ -71,10 +63,8 @@ internal static partial class SyncJobsRepository
         command.Parameters.AddWithValue("club", clubCode);
         command.Parameters.AddWithValue("cutoff", SyncJobRecoveryPolicy.StaleCutoff(DateTime.UtcNow));
         command.Parameters.AddWithValue("id", NpgsqlTypes.NpgsqlDbType.Uuid, (object?)jobId ?? DBNull.Value);
-        var jobs = new List<SyncJobStatus>();
         await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync()) jobs.Add(SyncJobStatus.FromReader(reader));
-        return jobs;
+        return await SyncJobStatus.ReadAllAsync(reader);
     }
 
     internal static async Task MarkEnqueueFailedAsync(string connectionString, Guid id, string clubCode)

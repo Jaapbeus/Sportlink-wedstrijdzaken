@@ -66,25 +66,23 @@ internal static class SyncLogRepository
     internal static async Task<IReadOnlyList<SyncLogEntry>> GetForJobsAsync(
         string connectionString, string clubCode, IReadOnlyCollection<Guid> jobIds)
     {
-        SyncLogPersistenceValues.ValidateQuery(clubCode, jobIds);
-        if (jobIds.Count == 0)
-            return Array.Empty<SyncLogEntry>();
+        return await SyncLogPersistenceValues.QueryJobsAsync(clubCode, jobIds, async ids =>
+        {
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync();
+            var parameters = ids.Select((_, index) => "@JobId" + index).ToArray();
+            using var command = new SqlCommand(
+                "SELECT [JobId], [Attempt], [Phase], [StartedAt], [CompletedAt], [Status], [Fetched], [Added], [Updated], [Failed], [Progress], [Total], [ReasonCode] " +
+                "FROM [dbo].[SyncJobPhaseLog] WHERE [ClubCode] = @ClubCode AND [JobId] IN (" + string.Join(", ", parameters) + ") " +
+                "ORDER BY [StartedAt], [Phase], [Attempt]",
+                connection);
+            command.Parameters.AddWithValue("@ClubCode", clubCode);
+            for (var i = 0; i < ids.Length; i++)
+                command.Parameters.AddWithValue(parameters[i], ids[i]);
 
-        using var connection = new SqlConnection(connectionString);
-        await connection.OpenAsync();
-        var ids = jobIds.Distinct().ToArray();
-        var parameters = ids.Select((_, index) => "@JobId" + index).ToArray();
-        using var command = new SqlCommand(
-            "SELECT [JobId], [Attempt], [Phase], [StartedAt], [CompletedAt], [Status], [Fetched], [Added], [Updated], [Failed], [Progress], [Total], [ReasonCode] " +
-            "FROM [dbo].[SyncJobPhaseLog] WHERE [ClubCode] = @ClubCode AND [JobId] IN (" + string.Join(", ", parameters) + ") " +
-            "ORDER BY [StartedAt], [Phase], [Attempt]",
-            connection);
-        command.Parameters.AddWithValue("@ClubCode", clubCode);
-        for (var i = 0; i < ids.Length; i++)
-            command.Parameters.AddWithValue(parameters[i], ids[i]);
-
-        using var reader = await command.ExecuteReaderAsync();
-        return await SyncLogPersistenceValues.ReadAllAsync(reader, specifyUtc: true);
+            using var reader = await command.ExecuteReaderAsync();
+            return await SyncLogPersistenceValues.ReadAllAsync(reader, specifyUtc: true);
+        });
     }
 
     internal static async Task<int> CleanupAsync(string connectionString, string clubCode, DateTime utcNow)

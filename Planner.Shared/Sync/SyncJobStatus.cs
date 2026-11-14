@@ -37,4 +37,21 @@ public sealed record SyncJobStatus(
             ErrorMessage: reader.IsDBNull(7) ? null : reader.GetString(7))
         { Attempt = reader.FieldCount > 8 ? reader.GetInt32(8) : 0 };
     }
+
+    public static async Task<SyncJobStatus> ReadRequiredAsync(DbDataReader reader)
+    {
+        if (!await reader.ReadAsync())
+            throw new InvalidOperationException("Nieuwe sync-job ontbreekt na invoegen.");
+        return FromReader(reader);
+    }
+
+    public static async Task<SyncJobStatus?> ReadOptionalAsync(DbDataReader reader) =>
+        await reader.ReadAsync() ? FromReader(reader) : null;
+
+    public static async Task<IReadOnlyList<SyncJobStatus>> ReadAllAsync(DbDataReader reader)
+    {
+        var jobs = new List<SyncJobStatus>();
+        while (await reader.ReadAsync()) jobs.Add(FromReader(reader));
+        return jobs;
+    }
 }

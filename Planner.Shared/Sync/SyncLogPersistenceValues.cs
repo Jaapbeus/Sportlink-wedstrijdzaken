@@ -19,6 +19,15 @@ public static class SyncLogPersistenceValues
             throw new ArgumentOutOfRangeException(nameof(jobIds), "Maximaal 100 sync-jobs per logboekvraag.");
     }
 
+    public static Task<IReadOnlyList<SyncLogEntry>> QueryJobsAsync(string clubCode,
+        IReadOnlyCollection<Guid> jobIds, Func<Guid[], Task<IReadOnlyList<SyncLogEntry>>> query)
+    {
+        ValidateQuery(clubCode, jobIds);
+        return jobIds.Count == 0
+            ? Task.FromResult<IReadOnlyList<SyncLogEntry>>(Array.Empty<SyncLogEntry>())
+            : query(jobIds.Distinct().ToArray());
+    }
+
     public static DateTime RetentionCutoff(string clubCode, DateTime utcNow)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(clubCode);

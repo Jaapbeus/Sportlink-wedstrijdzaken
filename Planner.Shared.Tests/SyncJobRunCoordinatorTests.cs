@@ -19,7 +19,7 @@ public sealed class SyncJobRunCoordinatorTests
         var result = await SyncJobRunCoordinator.RegisterClaimAndRunAsync(
             () => Task.FromResult(Creation(id, created: true)),
             _ => Task.FromResult<int?>(1),
-            _ => throw new InvalidOperationException("log write failure"),
+            new SyncJobRunServices(_ => throw new InvalidOperationException("log write failure"),
             () => throw new InvalidOperationException("cleanup failure"),
             (_, value, _, _) => { completedOutcome = value; return Task.CompletedTask; },
             (_, _, _, _) => { completionCalls++; return Task.CompletedTask; },
@@ -28,7 +28,7 @@ public sealed class SyncJobRunCoordinatorTests
                 await writer.BeginPhaseAsync(SyncLogPolicy.PhaseTeams, DateTime.UtcNow);
                 return outcome;
             },
-            _ => "safe failure");
+            _ => "safe failure"));
 
         Assert.Same(outcome, result);
         Assert.Same(outcome, completedOutcome);
@@ -44,7 +44,7 @@ public sealed class SyncJobRunCoordinatorTests
         var act = () => SyncJobRunCoordinator.RegisterClaimAndRunAsync(
             () => Task.FromResult(Creation(Guid.NewGuid(), created: true)),
             _ => Task.FromResult<int?>(2),
-            entry => { terminalPhase = entry.CompletedAt is null ? terminalPhase : entry; return Task.CompletedTask; },
+            new SyncJobRunServices(entry => { terminalPhase = entry.CompletedAt is null ? terminalPhase : entry; return Task.CompletedTask; },
             () => Task.CompletedTask,
             (_, _, _, _) => Task.CompletedTask,
             (id, succeeded, message, attempt) => { failure = (id, succeeded, message, attempt); return Task.CompletedTask; },
@@ -53,7 +53,7 @@ public sealed class SyncJobRunCoordinatorTests
                 await writer.BeginPhaseAsync(SyncLogPolicy.PhaseTeams, DateTime.UtcNow);
                 throw new InvalidOperationException("private exception text");
             },
-            _ => "fixed safe failure");
+            _ => "fixed safe failure"));
 
         await Assert.ThrowsAsync<InvalidOperationException>(act);
         Assert.NotNull(terminalPhase);
@@ -74,7 +74,7 @@ public sealed class SyncJobRunCoordinatorTests
         await SyncJobRunCoordinator.RegisterClaimAndRunAsync(
             () => Task.FromResult(Creation(Guid.NewGuid(), created: true)),
             _ => Task.FromResult<int?>(1),
-            _ => Task.CompletedTask,
+            new SyncJobRunServices(_ => Task.CompletedTask,
             () => Task.CompletedTask,
             (_, _, _, hasIncompletePhases) => { incomplete = hasIncompletePhases; return Task.CompletedTask; },
             (_, _, _, _) => Task.CompletedTask,
@@ -85,7 +85,7 @@ public sealed class SyncJobRunCoordinatorTests
                     SyncLogPolicy.StatusPartial, failed: 1, reasonCode: SyncLogPolicy.ReasonPartialFailure);
                 return outcome;
             },
-            _ => "safe failure");
+            _ => "safe failure"));
 
         Assert.True(incomplete);
     }
@@ -99,12 +99,12 @@ public sealed class SyncJobRunCoordinatorTests
         var act = () => SyncJobRunCoordinator.RegisterClaimAndRunAsync(
             () => Task.FromResult(Creation(Guid.NewGuid(), created: false)),
             _ => { claimed = true; return Task.FromResult<int?>(1); },
-            _ => Task.CompletedTask,
+            new SyncJobRunServices(_ => Task.CompletedTask,
             () => Task.CompletedTask,
             (_, _, _, _) => Task.CompletedTask,
             (_, _, _, _) => Task.CompletedTask,
             _ => { executed = true; return Task.FromResult(new SyncUitkomst()); },
-            _ => "safe failure");
+            _ => "safe failure"));
 
         await Assert.ThrowsAsync<SyncAlreadyRunningException>(act);
         Assert.False(claimed);

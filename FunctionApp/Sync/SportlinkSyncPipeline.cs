@@ -51,6 +51,45 @@ internal static class SportlinkSyncPipeline
             clubCode, bepaalVandaag?.Invoke() ?? SqlServerSeasonRollover.VandaagInNederland, log);
         var (fromWeekOffset, toWeekOffset) = await buildWindow();
 
+        var (teamsFailed, matchesFailed) = await FetchAndMergeAsync(fromWeekOffset, toWeekOffset,
+            sportlinkApiUrl, sportlinkClientId, clubCode, budget, log, syncLog, uitkomst);
+
+        // Reconciliatie (#1558, pariteit met #1193): verdwenen teams/wedstrijden zacht verwijderen.
+        // Best-effort; draait vóór de canonicalisatie zodat die met opgeschoonde data werkt.
+        await SyncLogReporting.BeginPhaseAsync(syncLog, "reconciliatie");
+        var reconciliationFailed = false;
+        await SqlServerReconciliation.ReconcileVerdwenenAsync(
+            clubCode, teamsFailed, matchesFailed, global::Planner.Shared.Sync.ReconciliatieOndergrens.Nu(), log,
+            () => reconciliationFailed = true);
+        var reconciliationSkipped = teamsFailed || matchesFailed;
+        var allReconciliationSkipped = teamsFailed && matchesFailed;
+        await SyncLogReporting.CompletePhaseAsync(syncLog, "reconciliatie",
+            SyncLogReporting.ReconciliationStatus(allReconciliationSkipped, reconciliationSkipped, reconciliationFailed),
+            reasonCode: SyncLogReporting.ReconciliationReason(reconciliationSkipped, reconciliationFailed));
+
+        await SyncLogReporting.BeginPhaseAsync(syncLog, "canonicalisatie");
+        var canonicalisatieFailed = !await RefreshTeamCanonicalisatieAsync(clubCode, log);
+        await SyncLogReporting.CompletePhaseAsync(syncLog, "canonicalisatie", SyncLogReporting.StatusForPartialFailure(canonicalisatieFailed),
+            reasonCode: SyncLogReporting.ReasonForFailure(canonicalisatieFailed, "operation_failed"));
+
+        await SyncLogReporting.BeginPhaseAsync(syncLog, "planner-view");
+        await SyncLogReporting.CompletePhaseAsync(syncLog, "planner-view", "skipped", reasonCode: "not_applicable");
+        // This SQL Server tier has no sync-time planner-view generation step. The regular
+        // expired-plan cleanup remains an independent required operation, with its original failure semantics.
+        await Planner.PlannerDataAccess.MarkeerVervallenGeplandeWedstrijdenAsync(log);
+
+        if (!uitkomst.GedeeltelijkMislukt)
+            await AppSettings.SaveLastSyncTimestampAsync(log);
+        else
+            log.LogWarning("Sync gedeeltelijk mislukt — LastSyncTimestamp NIET bijgewerkt");
+
+        return uitkomst;
+    }
+
+    private static async Task<(bool TeamsFailed, bool MatchesFailed)> FetchAndMergeAsync(
+        int fromWeekOffset, int toWeekOffset, string sportlinkApiUrl, string sportlinkClientId,
+        string clubCode, HerhaalBudget budget, ILogger log, SyncLogWriter? syncLog, SyncUitkomst uitkomst)
+    {
         await SyncLogReporting.BeginPhaseAsync(syncLog, "teams");
         int? teamsFetched = null;
         var teamsFailed = uitkomst.Registreer(SyncUitkomst.FaseTeams,
@@ -99,36 +138,7 @@ internal static class SportlinkSyncPipeline
             added: merges.MatchDetails.Added, updated: merges.MatchDetails.Updated,
             reasonCode: SyncLogReporting.ReasonForFailure(matchdetailsFailed, "partial_failure"));
 
-        // Reconciliatie (#1558, pariteit met #1193): verdwenen teams/wedstrijden zacht verwijderen.
-        // Best-effort; draait vóór de canonicalisatie zodat die met opgeschoonde data werkt.
-        await SyncLogReporting.BeginPhaseAsync(syncLog, "reconciliatie");
-        var reconciliationFailed = false;
-        await SqlServerReconciliation.ReconcileVerdwenenAsync(
-            clubCode, teamsFailed, matchesFailed, global::Planner.Shared.Sync.ReconciliatieOndergrens.Nu(), log,
-            () => reconciliationFailed = true);
-        var reconciliationSkipped = teamsFailed || matchesFailed;
-        var allReconciliationSkipped = teamsFailed && matchesFailed;
-        await SyncLogReporting.CompletePhaseAsync(syncLog, "reconciliatie",
-            SyncLogReporting.ReconciliationStatus(allReconciliationSkipped, reconciliationSkipped, reconciliationFailed),
-            reasonCode: SyncLogReporting.ReconciliationReason(reconciliationSkipped, reconciliationFailed));
-
-        await SyncLogReporting.BeginPhaseAsync(syncLog, "canonicalisatie");
-        var canonicalisatieFailed = !await RefreshTeamCanonicalisatieAsync(clubCode, log);
-        await SyncLogReporting.CompletePhaseAsync(syncLog, "canonicalisatie", SyncLogReporting.StatusForPartialFailure(canonicalisatieFailed),
-            reasonCode: SyncLogReporting.ReasonForFailure(canonicalisatieFailed, "operation_failed"));
-
-        await SyncLogReporting.BeginPhaseAsync(syncLog, "planner-view");
-        await SyncLogReporting.CompletePhaseAsync(syncLog, "planner-view", "skipped", reasonCode: "not_applicable");
-        // This SQL Server tier has no sync-time planner-view generation step. The regular
-        // expired-plan cleanup remains an independent required operation, with its original failure semantics.
-        await Planner.PlannerDataAccess.MarkeerVervallenGeplandeWedstrijdenAsync(log);
-
-        if (!uitkomst.GedeeltelijkMislukt)
-            await AppSettings.SaveLastSyncTimestampAsync(log);
-        else
-            log.LogWarning("Sync gedeeltelijk mislukt — LastSyncTimestamp NIET bijgewerkt");
-
-        return uitkomst;
+        return (teamsFailed, matchesFailed);
     }
 
     private static async Task<bool> FetchTeamsPhaseAsync(string sportlinkApiUrl, string sportlinkClientId, string clubCode, HerhaalBudget budget, ILogger log, SyncLogWriter? syncLog, Action<int> setFetched)

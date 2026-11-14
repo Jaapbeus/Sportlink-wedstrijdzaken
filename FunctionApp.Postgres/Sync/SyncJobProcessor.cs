@@ -1,6 +1,6 @@
-using Planner.Endpoints.Admin;
+using Planner.Endpoints.Sync;
+using Planner.Shared.Sync;
 using FunctionApp.Postgres.Infrastructure;
-using System.Text.Json;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
@@ -19,78 +19,35 @@ namespace FunctionApp.Postgres.Sync;
 public static class SyncJobProcessor
 {
     [Function("SyncJobProcessor")]
-    public static async Task Run(
+    public static Task Run(
         [QueueTrigger(SyncJobsQueue.QueueName, Connection = "AzureWebJobsStorage")] string message,
         FunctionContext context)
     {
         var log = context.GetLogger("SyncJobProcessor");
-        SyncJobMessage? job;
-        try
-        {
-            job = JsonSerializer.Deserialize<SyncJobMessage>(message);
-        }
-        catch (JsonException ex)
-        {
-            log.LogError(ex, "SyncJobProcessor: bericht kon niet worden gelezen, overgeslagen: {Message}", message);
-            return;
-        }
-
-        if (job is null || job.JobId == Guid.Empty)
-        {
-            log.LogError("SyncJobProcessor: leeg of ongeldig bericht overgeslagen: {Message}", message);
-            return;
-        }
-
-        using var traceScope = log.BeginScope(new Dictionary<string, object> { ["SyncJobId"] = job.JobId });
-        if (!await global::Planner.Shared.Sync.SyncJobClaimCore.ExecuteIfClaimedAsync(
-                () => SyncJobsRepository.TryClaimAttemptAsync(PostgresDatabaseConfig.ConnectionString, job.JobId), attempt => ProcessClaimedPostgresJobAsync(job, attempt, log)))
-        {
-            log.LogInformation("SyncJobProcessor: Postgres-job {JobId} is not pending and will be skipped", job.JobId);
-        }
+        return SyncQueuedJobCore.RunAsync(message, log,
+            id => SyncJobsRepository.TryClaimAttemptAsync(PostgresDatabaseConfig.ConnectionString, id),
+            (job, attempt) => ProcessClaimedPostgresJobAsync(job, attempt, log));
     }
 
     private static async Task ProcessClaimedPostgresJobAsync(SyncJobMessage job, int attempt, ILogger log)
     {
-        log.LogInformation("SyncJobProcessor: Postgres job {JobId} claimed (poging {Attempt}), range {From} .. {To}", job.JobId, attempt, job.WeekOffsetFrom, job.WeekOffsetTo);
-        var lifecycleHandedOff = false;
-        try
-        {
-            // #1676: na het claimen wordt een bericht buiten productie niet uitgevoerd en
-            // als mislukt vastgelegd; een duplicaat kan die status niet overschrijven.
-            if (await OverslaanZonderUitgaandVerkeerAsync(job.JobId, log,
-                    EgressGuard.ExternalIntegrationsAllowed, (id, ok, msg) => SyncJobsRepository.MarkCompletedAsync(id, ok, msg, attempt)))
-                return;
+        if (await OverslaanZonderUitgaandVerkeerAsync(job.JobId, log,
+                EgressGuard.ExternalIntegrationsAllowed, (id, ok, msg) => SyncJobsRepository.MarkCompletedAsync(id, ok, msg, attempt)))
+            return;
 
-            await PostgresAppSettings.LoadSettingsAsync(log);
-            var clubCode = PostgresAppSettings.GetSetting("clubCode")
-                ?? throw new InvalidOperationException("Vereiste instelling 'clubcode' ontbreekt in public.appsettings.");
-            lifecycleHandedOff = true;
-            var uitkomst = await global::Planner.Shared.Sync.SyncJobRunCoordinator.RunClaimedAndCompleteAsync(
-                job.JobId, attempt,
-                entry => SyncLogRepository.UpsertAsync(clubCode, entry),
-                async () => { await SyncLogRepository.CleanupAllAsync(DateTime.UtcNow); },
-                (id, outcome, claimedAttempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, claimedAttempt, incomplete),
-                (id, succeeded, error, claimedAttempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, claimedAttempt),
-                writer => SyncFunction.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log, writer),
-                FoutmeldingVoorStatus);
-            if (uitkomst.GedeeltelijkMislukt)
+        await SyncQueuedJobCore.RunClaimedAsync(job, attempt, log,
+            async () =>
             {
-                log.LogWarning("SyncJobProcessor: job {JobId} gedeeltelijk mislukt", job.JobId);
-            }
-            else
-                log.LogInformation("SyncJobProcessor: job {JobId} voltooid", job.JobId);
-        }
-        catch (Exception ex)
-        {
-            log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
-            if (!lifecycleHandedOff)
-                await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: FoutmeldingVoorStatus(ex), attempt);
-        }
+                await PostgresAppSettings.LoadSettingsAsync(log);
+                return PostgresAppSettings.GetSetting("clubCode")
+                    ?? throw new InvalidOperationException("Vereiste instelling 'clubcode' ontbreekt in public.appsettings.");
+            },
+            (clubCode, entry) => SyncLogRepository.UpsertAsync(clubCode, entry),
+            () => SyncLogRepository.CleanupAllAsync(DateTime.UtcNow),
+            (id, outcome, claimedAttempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, claimedAttempt, incomplete),
+            (id, succeeded, error, claimedAttempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, claimedAttempt),
+            (queued, writer) => SyncFunction.RunConfiguredSyncAsync(queued.WeekOffsetFrom, queued.WeekOffsetTo, log, writer));
     }
-
-    internal static string FoutmeldingVoorStatus(Exception exception) =>
-        $"Sync mislukt ({exception.GetType().Name}); raadpleeg het functielog voor details.";
 
     /// <summary>
     /// Geeft <c>true</c> als de job buiten productie niet mag draaien; de job staat dan als mislukt
@@ -98,16 +55,8 @@ public static class SyncJobProcessor
     /// door de pending-to-running-overgang geclaimd. Poort en opslag als parameters, zodat een
     /// unit-test dit zonder database bewijst (#1676).
     /// </summary>
-    internal static async Task<bool> OverslaanZonderUitgaandVerkeerAsync(
+    internal static Task<bool> OverslaanZonderUitgaandVerkeerAsync(
         Guid jobId, ILogger log, Func<bool> uitgaandVerkeerToegestaan,
-        Func<Guid, bool, string?, Task> vastleggen)
-    {
-        var geblokkeerd = UitgaandVerkeerCore.Blokkeer(uitgaandVerkeerToegestaan) is not null;
-        if (geblokkeerd)
-        {
-            log.LogInformation("EgressGuard: uitgaande integraties geblokkeerd buiten productie — job {JobId} overgeslagen in syncjobs (#857).", jobId);
-            await vastleggen(jobId, false, "Uitgaande integraties zijn buiten productie uitgeschakeld.");
-        }
-        return geblokkeerd;
-    }
+        Func<Guid, bool, string?, Task> vastleggen) =>
+        SyncQueuedJobCore.SkipOutsideProductionAsync(jobId, uitgaandVerkeerToegestaan, vastleggen);
 }

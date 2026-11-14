@@ -42,16 +42,7 @@ namespace SportlinkFunction
                 await SqlServerSeasonRollover.EnsureAsync(clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
                 var toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
                 log.LogInformation("Sync range: weekOffset -1 to {ToWeekOffset} (end of season)", toWeekOffset);
-                var connectionString = DatabaseConfig.ConnectionString;
-                var uitkomst = await SyncJobRunCoordinator.RegisterClaimAndRunAsync(
-                    () => SyncJobsRepository.GetOrCreateActiveAsync(connectionString, Guid.NewGuid(), clubCode, -1, toWeekOffset),
-                    id => SyncJobsRepository.TryClaimAttemptAsync(connectionString, id),
-                    entry => SyncLogRepository.UpsertAsync(clubCode, entry),
-                    async () => { await SyncLogRepository.CleanupAllAsync(DateTime.UtcNow); },
-                    (id, outcome, attempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, attempt, incomplete),
-                    (id, succeeded, error, attempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, attempt),
-                    writer => RunConfiguredSyncAsync(-1, toWeekOffset, log, writer),
-                    SyncJobProcessor.FoutmeldingVoorStatus);
+                var uitkomst = await RunTrackedSyncAsync(() => Task.FromResult((-1, toWeekOffset)), log, clubCode, seasonEnsured: true);
                 // #1779 (pariteit met de Postgres-tier, #1081): een run met mislukte fases (ook een
                 // ongeldige sportlinkApiUrl) mag niet als Success eindigen en meldt zich als
                 // getypeerde fout met faseoverzicht.
@@ -173,23 +164,26 @@ namespace SportlinkFunction
         }
 
         private static async Task<SyncUitkomst> RunTrackedSyncAsync(
-            Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow, ILogger log)
+            Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow, ILogger log,
+            string? loadedClubCode = null, bool seasonEnsured = false)
         {
-            await AppSettings.LoadSettingsAsync(log);
-            var clubCode = AppSettings.GetSetting("clubCode")
+            if (loadedClubCode is null)
+                await AppSettings.LoadSettingsAsync(log);
+            var clubCode = loadedClubCode ?? AppSettings.GetSetting("clubCode")
                 ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings.");
-            await SqlServerSeasonRollover.EnsureAsync(clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
+            if (!seasonEnsured)
+                await SqlServerSeasonRollover.EnsureAsync(clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
             var (from, to) = await buildWindow();
             var connectionString = DatabaseConfig.ConnectionString;
             return await SyncJobRunCoordinator.RegisterClaimAndRunAsync(
                 () => SyncJobsRepository.GetOrCreateActiveAsync(connectionString, Guid.NewGuid(), clubCode, from, to),
                 id => SyncJobsRepository.TryClaimAttemptAsync(connectionString, id),
-                entry => SyncLogRepository.UpsertAsync(clubCode, entry),
+                new SyncJobRunServices(entry => SyncLogRepository.UpsertAsync(clubCode, entry),
                 async () => { await SyncLogRepository.CleanupAllAsync(DateTime.UtcNow); },
                 (id, outcome, attempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, attempt, incomplete),
                 (id, succeeded, error, attempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, attempt),
                 writer => RunConfiguredSyncAsync(from, to, log, writer),
-                SyncJobProcessor.FoutmeldingVoorStatus);
+                global::Planner.Endpoints.Sync.SyncQueuedJobCore.SafeFailureMessage));
         }
 
         /// <summary>Opgeslagen venster van een job (#1138): zelfde pad, vaste offsets.</summary>

@@ -56,21 +56,20 @@ internal static class SyncLogRepository
     internal static async Task<IReadOnlyList<SyncLogEntry>> GetForJobsAsync(
         string connectionString, string clubCode, IReadOnlyCollection<Guid> jobIds)
     {
-        SyncLogPersistenceValues.ValidateQuery(clubCode, jobIds);
-        if (jobIds.Count == 0)
-            return Array.Empty<SyncLogEntry>();
-
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(
-            "SELECT jobid, attempt, phase, startedat, completedat, status, fetched, added, updated, failed, progress, total, reasoncode " +
-            "FROM public.syncjobphaselog WHERE clubcode = @clubcode AND jobid = ANY(@jobids) " +
-            "ORDER BY startedat, phase, attempt",
-            connection);
-        command.Parameters.AddWithValue("clubcode", clubCode);
-        command.Parameters.AddWithValue("jobids", jobIds.Distinct().ToArray());
-        await using var reader = await command.ExecuteReaderAsync();
-        return await SyncLogPersistenceValues.ReadAllAsync(reader, specifyUtc: false);
+        return await SyncLogPersistenceValues.QueryJobsAsync(clubCode, jobIds, async ids =>
+        {
+            await using var connection = new NpgsqlConnection(connectionString);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand(
+                "SELECT jobid, attempt, phase, startedat, completedat, status, fetched, added, updated, failed, progress, total, reasoncode " +
+                "FROM public.syncjobphaselog WHERE clubcode = @clubcode AND jobid = ANY(@jobids) " +
+                "ORDER BY startedat, phase, attempt",
+                connection);
+            command.Parameters.AddWithValue("clubcode", clubCode);
+            command.Parameters.AddWithValue("jobids", ids);
+            await using var reader = await command.ExecuteReaderAsync();
+            return await SyncLogPersistenceValues.ReadAllAsync(reader, specifyUtc: false);
+        });
     }
 
     internal static async Task<int> CleanupAsync(string connectionString, string clubCode, DateTime utcNow)
