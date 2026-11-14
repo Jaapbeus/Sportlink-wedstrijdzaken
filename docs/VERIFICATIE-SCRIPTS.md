@@ -187,7 +187,7 @@ heeft, worden die blokken netjes overgeslagen; de volgende deploy maakt ze aan.
 
 `node .github/scripts/issue-status.test.js` test de helper `.github/scripts/issue-status.js` achter de
 drie lifecycle-workflows (`label-issue-status.yml`, `label-awaiting-release.yml`,
-`close-released-issues.yml`) en draait bij elke PR in de CI-job *Build FunctionApp + BlazorAdmin*. Dat
+`close-released-issues.yml`) en draait bij elke PR in de CI-job *Repo-guards (zonder .NET)* van `build.yml`, onderdeel van de verplichte check *Build FunctionApp + BlazorAdmin* (#1942). Dat
 is nodig omdat de workflows zelf alleen op hun eigen trigger draaien: zonder deze test zou een fout pas
 bij een echte merge of release blijken. Om dezelfde reden draaien daar ook
 `node .github/scripts/claude-issue-turn-gate.test.js` (poort van `claude-issue-turn.yml`),
@@ -473,7 +473,7 @@ losse vertaling ergens anders (#816/#865).
 `scripts/ci/Test-TierMappingConsistency.ps1` bewijst dat die twee lezers voor elke tier in de
 tabel, plus een bewust onbekende naam, exact dezelfde uitkomst geven (gevonden/niet-gevonden,
 gebouwd/nog-niet-gebouwd, hetzelfde csproj-pad). Draait zonder database en zonder secrets, en zit
-als stap in `.github/workflows/build.yml` (job "Build FunctionApp + BlazorAdmin").
+als stap in `.github/workflows/build.yml` (job "Repo-guards (zonder .NET)", onderdeel van de verplichte check "Build FunctionApp + BlazorAdmin").
 
 **Lokaal op Windows, als `bash` naar WSL wijst:** het script detecteert dit automatisch (`bash`
 resolvend naar `System32\bash.exe` i.p.v. Git Bash) en compenseert twee WSL-eigenaardigheden die
@@ -556,7 +556,7 @@ kan overschrijven).
 dotnet test BlazorAdmin.Tests/BlazorAdmin.Tests.csproj --configuration Release
 ```
 
-Draait ook als stap in `.github/workflows/build.yml` (job "Build FunctionApp + BlazorAdmin"),
+Draait ook als stap in `.github/workflows/build.yml` (job "Compileren en testen (.NET)", onderdeel van de verplichte check "Build FunctionApp + BlazorAdmin"),
 direct na de BlazorAdmin-build. Een component-level test (bUnit) is bewust niet gekozen voor dit
 issue — de logica die de race daadwerkelijk voorkomt zit in een pure klasse, en die is zonder
 component-rendering volledig te bewijzen.

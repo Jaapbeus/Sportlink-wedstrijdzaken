@@ -1,6 +1,6 @@
 // Unit-tests voor claude-issue-turn-ledger.js — zonder GitHub, zonder token, zonder netwerk.
 // Uitvoeren: node .github/scripts/claude-issue-turn-ledger.test.js   (exit 0 = alles groen)
-// Draait bij elke PR in de job 'Build FunctionApp + BlazorAdmin' (build.yml). De ledger draait in fase 1 alleen
+// Draait bij elke PR in de job 'Repo-guards (zonder .NET)' (build.yml). De ledger draait in fase 1 alleen
 // in de testmodus van de issue-router; zonder deze test blijkt een fout pas bij een echte proef (#1721).
 
 const L = require('./claude-issue-turn-ledger.js');
