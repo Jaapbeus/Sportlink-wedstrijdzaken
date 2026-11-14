@@ -28,6 +28,7 @@ public static class SyncLogPolicy
     public const string ReasonProgrammeTruncated = "programme_truncated";
     public const string ReasonReconciliationSkipped = "reconciliation_skipped";
     public const string ReasonSourceFailed = "source_failed";
+    public const string ReasonNotApplicable = "not_applicable";
 
     private static readonly HashSet<string> Phases = new(StringComparer.Ordinal)
     {
@@ -43,7 +44,7 @@ public static class SyncLogPolicy
     private static readonly HashSet<string> ReasonCodes = new(StringComparer.Ordinal)
     {
         ReasonOperationFailed, ReasonPartialFailure, ReasonConfigurationMissing, ReasonEgressBlocked,
-        ReasonProgrammeTruncated, ReasonReconciliationSkipped, ReasonSourceFailed
+        ReasonProgrammeTruncated, ReasonReconciliationSkipped, ReasonSourceFailed, ReasonNotApplicable
     };
 
     public static bool IsPhase(string value) => Phases.Contains(value);
@@ -80,7 +81,7 @@ public static class SyncLogPolicy
             throw new ArgumentException("Sync-logvoortgang kan niet groter zijn dan het totaal.", nameof(entry));
     }
 
-    internal static void RequireUtc(DateTime value, string parameterName)
+    public static void RequireUtc(DateTime value, string parameterName)
     {
         if (value.Kind != DateTimeKind.Utc)
             throw new ArgumentException("Sync-logboekdatums moeten UTC zijn.", parameterName);

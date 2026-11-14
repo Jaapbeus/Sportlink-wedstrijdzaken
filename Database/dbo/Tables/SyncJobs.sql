@@ -14,3 +14,5 @@ CREATE TABLE [dbo].[SyncJobs] (
 GO
 CREATE NONCLUSTERED INDEX [IX_SyncJobs_ClubCode_CreatedAt] ON [dbo].[SyncJobs] ([ClubCode], [CreatedAt] DESC);
 GO
+CREATE UNIQUE NONCLUSTERED INDEX [UX_SyncJobs_Id_ClubCode] ON [dbo].[SyncJobs] ([Id], [ClubCode]);
+GO

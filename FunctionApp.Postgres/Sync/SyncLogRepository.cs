@@ -46,8 +46,7 @@ internal static class SyncLogRepository
             "startedat = EXCLUDED.startedat, completedat = EXCLUDED.completedat, status = EXCLUDED.status, " +
             "fetched = EXCLUDED.fetched, added = EXCLUDED.added, updated = EXCLUDED.updated, failed = EXCLUDED.failed, " +
             "progress = EXCLUDED.progress, total = EXCLUDED.total, reasoncode = EXCLUDED.reasoncode " +
-            "WHERE public.syncjobphaselog.completedat IS NULL OR " +
-            "(EXCLUDED.completedat IS NOT NULL AND EXCLUDED.completedat >= public.syncjobphaselog.completedat)",
+            "WHERE public.syncjobphaselog.completedat IS NULL",
             connection, transaction);
         AddParameters(command, clubCode, entry);
         await command.ExecuteNonQueryAsync();

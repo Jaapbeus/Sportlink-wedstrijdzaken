@@ -43,7 +43,7 @@ internal static class SyncLogRepository
                    "UPDATE [dbo].[SyncJobPhaseLog] SET [StartedAt] = @StartedAt, [CompletedAt] = @CompletedAt, [Status] = @Status, " +
                    "[Fetched] = @Fetched, [Added] = @Added, [Updated] = @Updated, [Failed] = @Failed, [Progress] = @Progress, [Total] = @Total, [ReasonCode] = @ReasonCode " +
                    "WHERE [JobId] = @JobId AND [Attempt] = @Attempt AND [Phase] = @Phase " +
-                   "AND ([CompletedAt] IS NULL OR (@CompletedAt IS NOT NULL AND @CompletedAt >= [CompletedAt]))",
+                   "AND [CompletedAt] IS NULL",
                    connection, transaction))
         {
             AddParameters(update, clubCode, entry);
@@ -74,14 +74,14 @@ internal static class SyncLogRepository
 
         using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
-        var parameters = jobIds.Select((_, index) => "@JobId" + index).ToArray();
+        var ids = jobIds.Distinct().ToArray();
+        var parameters = ids.Select((_, index) => "@JobId" + index).ToArray();
         using var command = new SqlCommand(
             "SELECT [JobId], [Attempt], [Phase], [StartedAt], [CompletedAt], [Status], [Fetched], [Added], [Updated], [Failed], [Progress], [Total], [ReasonCode] " +
             "FROM [dbo].[SyncJobPhaseLog] WHERE [ClubCode] = @ClubCode AND [JobId] IN (" + string.Join(", ", parameters) + ") " +
             "ORDER BY [StartedAt], [Phase], [Attempt]",
             connection);
         command.Parameters.AddWithValue("@ClubCode", clubCode);
-        var ids = jobIds.Distinct().ToArray();
         for (var i = 0; i < ids.Length; i++)
             command.Parameters.AddWithValue(parameters[i], ids[i]);
 

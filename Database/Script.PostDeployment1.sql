@@ -3718,6 +3718,9 @@ UPDATE [dbo].[SyncJobs] SET [Attempt] = 1 WHERE [Status] = 'running' AND [Attemp
 GO
 
 -- #1912: privacyveilige fasevoortgang van sync-jobs, met 30 dagen bewaartermijn.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.SyncJobs') AND name = 'UX_SyncJobs_Id_ClubCode')
+    CREATE UNIQUE NONCLUSTERED INDEX [UX_SyncJobs_Id_ClubCode] ON [dbo].[SyncJobs] ([Id], [ClubCode]);
+GO
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.SyncJobPhaseLog'))
 BEGIN
     CREATE TABLE [dbo].[SyncJobPhaseLog] (
@@ -3736,11 +3739,11 @@ BEGIN
         [Total]       INT              NULL,
         [ReasonCode]  NVARCHAR(40)     NULL,
         CONSTRAINT [PK_SyncJobPhaseLog] PRIMARY KEY CLUSTERED ([JobId], [Attempt], [Phase]),
-        CONSTRAINT [FK_SyncJobPhaseLog_SyncJobs] FOREIGN KEY ([JobId]) REFERENCES [dbo].[SyncJobs] ([Id]) ON DELETE CASCADE,
+        CONSTRAINT [FK_SyncJobPhaseLog_SyncJobs] FOREIGN KEY ([JobId], [ClubCode]) REFERENCES [dbo].[SyncJobs] ([Id], [ClubCode]) ON DELETE CASCADE,
         CONSTRAINT [CK_SyncJobPhaseLog_Attempt] CHECK ([Attempt] > 0),
         CONSTRAINT [CK_SyncJobPhaseLog_Phase] CHECK ([Phase] IN ('teams', 'programma', 'uitslagen', 'matchdetails', 'planner-view', 'canonicalisatie', 'reconciliatie', 'configuratie')),
         CONSTRAINT [CK_SyncJobPhaseLog_Status] CHECK ([Status] IN ('pending', 'running', 'succeeded', 'partial', 'failed', 'skipped')),
-        CONSTRAINT [CK_SyncJobPhaseLog_ReasonCode] CHECK ([ReasonCode] IS NULL OR [ReasonCode] IN ('operation_failed', 'partial_failure', 'configuration_missing', 'egress_blocked', 'programme_truncated', 'reconciliation_skipped', 'source_failed')),
+        CONSTRAINT [CK_SyncJobPhaseLog_ReasonCode] CHECK ([ReasonCode] IS NULL OR [ReasonCode] IN ('operation_failed', 'partial_failure', 'configuration_missing', 'egress_blocked', 'programme_truncated', 'reconciliation_skipped', 'source_failed', 'not_applicable')),
         CONSTRAINT [CK_SyncJobPhaseLog_Dates] CHECK ([CompletedAt] IS NULL OR [CompletedAt] >= [StartedAt]),
         CONSTRAINT [CK_SyncJobPhaseLog_Counts] CHECK (([Fetched] IS NULL OR [Fetched] >= 0) AND ([Added] IS NULL OR [Added] >= 0) AND ([Updated] IS NULL OR [Updated] >= 0) AND ([Failed] IS NULL OR [Failed] >= 0) AND ([Progress] IS NULL OR [Progress] >= 0) AND ([Total] IS NULL OR [Total] >= 0) AND ([Progress] IS NULL OR [Total] IS NULL OR [Progress] <= [Total]))
     );

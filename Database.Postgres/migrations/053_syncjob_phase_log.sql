@@ -1,5 +1,6 @@
 -- #1912: privacyveilige fasevoortgang van sync-jobs, met 30 dagen bewaartermijn.
 -- SQL Server-tegenhanger: dbo.SyncJobPhaseLog.sql en Script.PostDeployment1.sql.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_syncjobs_id_clubcode ON public.syncjobs (id, clubcode);
 CREATE TABLE IF NOT EXISTS public.syncjobphaselog (
     jobid       UUID         NOT NULL,
     clubcode    VARCHAR(20)  NOT NULL,
@@ -19,9 +20,9 @@ CREATE TABLE IF NOT EXISTS public.syncjobphaselog (
     total       INT          NULL CHECK (total IS NULL OR total >= 0),
     reasoncode  VARCHAR(40)  NULL CHECK (reasoncode IS NULL OR reasoncode IN (
                     'operation_failed', 'partial_failure', 'configuration_missing', 'egress_blocked',
-                    'programme_truncated', 'reconciliation_skipped', 'source_failed')),
+                    'programme_truncated', 'reconciliation_skipped', 'source_failed', 'not_applicable')),
     CONSTRAINT pk_syncjobphaselog PRIMARY KEY (jobid, attempt, phase),
-    CONSTRAINT fk_syncjobphaselog_job FOREIGN KEY (jobid) REFERENCES public.syncjobs (id) ON DELETE CASCADE,
+    CONSTRAINT fk_syncjobphaselog_job FOREIGN KEY (jobid, clubcode) REFERENCES public.syncjobs (id, clubcode) ON DELETE CASCADE,
     CONSTRAINT ck_syncjobphaselog_dates CHECK (completedat IS NULL OR completedat >= startedat),
     CONSTRAINT ck_syncjobphaselog_progress CHECK (progress IS NULL OR total IS NULL OR progress <= total)
 );

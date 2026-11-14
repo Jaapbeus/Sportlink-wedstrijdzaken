@@ -30,20 +30,27 @@ public sealed class SyncLogWriter
 
     public async Task BeginPhaseAsync(string phase, DateTime startedAtUtc)
     {
-        ValidatePhase(phase);
-        SyncLogPolicy.RequireUtc(startedAtUtc, nameof(startedAtUtc));
-        await _gate.WaitAsync();
         try
         {
-            if (_phases.ContainsKey(phase))
-                throw new InvalidOperationException("Sync-logfase is al gestart.");
-            var state = new PhaseState(startedAtUtc, _timeProvider.GetUtcNow().UtcDateTime);
-            _phases.Add(phase, state);
-            await TryUpsertAsync(Entry(phase, state, null, SyncLogPolicy.StatusRunning, null));
+            ValidatePhase(phase);
+            SyncLogPolicy.RequireUtc(startedAtUtc, nameof(startedAtUtc));
+            await _gate.WaitAsync();
+            try
+            {
+                if (_phases.ContainsKey(phase))
+                    return;
+                var state = new PhaseState(startedAtUtc, _timeProvider.GetUtcNow().UtcDateTime);
+                _phases.Add(phase, state);
+                await TryUpsertAsync(Entry(phase, state, null, SyncLogPolicy.StatusRunning, null));
+            }
+            finally
+            {
+                _gate.Release();
+            }
         }
-        finally
+        catch
         {
-            _gate.Release();
+            // Aanvullende logging mag de sync-uitkomst nooit veranderen.
         }
     }
 
@@ -56,28 +63,38 @@ public sealed class SyncLogWriter
         int? progress = null,
         int? total = null)
     {
-        ValidatePhase(phase);
-        ValidateCounts(fetched, added, updated, failed, progress, total);
-        await _gate.WaitAsync();
         try
         {
-            if (!_phases.TryGetValue(phase, out var state) || state.CompletedAt is not null)
-                throw new InvalidOperationException("Sync-logvoortgang vereist een actieve fase.");
-            state.ProgressCalls++;
-            var now = _timeProvider.GetUtcNow().UtcDateTime;
-            if (state.ProgressCalls % ProgressWriteEvery != 0 && now - state.LastWrittenAt < ProgressWriteInterval)
+            ValidatePhase(phase);
+            ValidateCounts(fetched, added, updated, failed, progress, total);
+            await _gate.WaitAsync();
+            try
             {
-                state.Last = new Counters(fetched, added, updated, failed, progress, total);
-                return;
-            }
+                if (!_phases.TryGetValue(phase, out var state) || state.CompletedAt is not null)
+                    return;
+                var previous = state.Last;
+                var merged = new Counters(
+                    fetched ?? previous?.Fetched, added ?? previous?.Added,
+                    updated ?? previous?.Updated, failed ?? previous?.Failed,
+                    progress ?? previous?.Progress, total ?? previous?.Total);
+                ValidateCounts(merged.Fetched, merged.Added, merged.Updated, merged.Failed, merged.Progress, merged.Total);
+                state.Last = merged;
+                state.ProgressCalls++;
+                var now = _timeProvider.GetUtcNow().UtcDateTime;
+                if (state.ProgressCalls % ProgressWriteEvery != 0 && now - state.LastWrittenAt < ProgressWriteInterval)
+                    return;
 
-            state.Last = new Counters(fetched, added, updated, failed, progress, total);
-            state.LastWrittenAt = now;
-            await TryUpsertAsync(Entry(phase, state, null, SyncLogPolicy.StatusRunning, null));
+                state.LastWrittenAt = now;
+                await TryUpsertAsync(Entry(phase, state, null, SyncLogPolicy.StatusRunning, null));
+            }
+            finally
+            {
+                _gate.Release();
+            }
         }
-        finally
+        catch
         {
-            _gate.Release();
+            // Een ongeldige of te late voortgangsmelding is best-effort.
         }
     }
 
@@ -91,29 +108,37 @@ public sealed class SyncLogWriter
         int? failed = null,
         string? reasonCode = null)
     {
-        ValidatePhase(phase);
-        if (!SyncLogPolicy.IsStatus(status) || status is SyncLogPolicy.StatusPending or SyncLogPolicy.StatusRunning)
-            throw new ArgumentException("Sync-logfase vereist een terminale status.", nameof(status));
-        if (!SyncLogPolicy.IsReasonCode(reasonCode))
-            throw new ArgumentException("Onbekende sync-logreden.", nameof(reasonCode));
-        SyncLogPolicy.RequireUtc(completedAtUtc, nameof(completedAtUtc));
-        ValidateCounts(fetched, added, updated, failed, null, null);
-        await _gate.WaitAsync();
         try
         {
-            if (!_phases.TryGetValue(phase, out var state) || state.CompletedAt is not null)
-                throw new InvalidOperationException("Sync-logvoltooiing vereist een actieve fase.");
-            if (completedAtUtc < state.StartedAt)
-                throw new ArgumentException("Sync-logvoltooiing valt vóór de start.", nameof(completedAtUtc));
-            state.CompletedAt = completedAtUtc;
-            var counters = new Counters(fetched, added, updated, failed, state.Last?.Progress, state.Last?.Total);
-            state.Last = counters;
-            state.LastWrittenAt = _timeProvider.GetUtcNow().UtcDateTime;
-            await TryUpsertAsync(Entry(phase, state, completedAtUtc, status, reasonCode));
+            ValidatePhase(phase);
+            if (!SyncLogPolicy.IsStatus(status) || status is SyncLogPolicy.StatusPending or SyncLogPolicy.StatusRunning)
+                return;
+            if (!SyncLogPolicy.IsReasonCode(reasonCode))
+                return;
+            SyncLogPolicy.RequireUtc(completedAtUtc, nameof(completedAtUtc));
+            ValidateCounts(fetched, added, updated, failed, null, null);
+            await _gate.WaitAsync();
+            try
+            {
+                if (!_phases.TryGetValue(phase, out var state) || state.CompletedAt is not null || completedAtUtc < state.StartedAt)
+                    return;
+                var previous = state.Last;
+                state.Last = new Counters(
+                    fetched ?? previous?.Fetched, added ?? previous?.Added,
+                    updated ?? previous?.Updated, failed ?? previous?.Failed,
+                    previous?.Progress, previous?.Total);
+                state.CompletedAt = completedAtUtc;
+                state.LastWrittenAt = _timeProvider.GetUtcNow().UtcDateTime;
+                await TryUpsertAsync(Entry(phase, state, completedAtUtc, status, reasonCode));
+            }
+            finally
+            {
+                _gate.Release();
+            }
         }
-        finally
+        catch
         {
-            _gate.Release();
+            // Ook een herhaalde voltooiing mag de hoofd-sync niet beïnvloeden.
         }
     }
 
