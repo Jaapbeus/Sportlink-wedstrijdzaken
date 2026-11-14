@@ -21,6 +21,8 @@ internal interface IEmailBerichtPoort<TBericht>
         TBericht bericht, string origineelType, string? origineleSamenvatting);
     Task BewaarCorrectieAsync(int origineelId, int verwerkingId, string origineelType,
         string? juistType, string? origineleSamenvatting, string? samenvatting);
+    Task<bool> HandelBuitenScopeAsync(int verwerkingId, TBericht bericht,
+        BerichtClassificatie classificatie, string classificatieJson, ILogger log);
     Task<bool> HandelAntwoordLimietAsync(int verwerkingId, TBericht bericht,
         BerichtClassificatie classificatie, string classificatieJson, ILogger log);
     Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? classificatieJson);

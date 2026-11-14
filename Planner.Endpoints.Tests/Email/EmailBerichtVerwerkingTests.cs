@@ -8,7 +8,7 @@ using Xunit;
 
 namespace Planner.Endpoints.Tests.Email;
 
-public sealed class EmailBerichtVerwerkingTests
+public sealed partial class EmailBerichtVerwerkingTests
 {
     private static readonly IReadOnlySet<string> GeenAdressen = new HashSet<string>();
 
@@ -224,6 +224,13 @@ public sealed class EmailBerichtVerwerkingTests
         public bool TraceFout { get; init; }
         public bool NotificationFout { get; init; }
         public Exception? PlannerFout { get; init; }
+        public string? OrigineelType { get; init; } = "origineel";
+        public (string Bericht, string Type, string? Samenvatting)? AiInvoer { get; private set; }
+        public (int OrigineelId, int Id, string Type, string? JuistType, string? Oud, string? Nieuw)? Correctie { get; private set; }
+        public BeslissingsTrace? Trace { get; private set; }
+        public bool KorteTraceFout { get; init; }
+        public string? FoutBij { get; init; }
+        public bool TemplateOpvragen { get; init; }
         public bool TemplateGemaakt { get; private set; }
         public IReplyGraph GraphValue { get; set; } = DefaultGraph();
         public IReplyPersistentie PersistentieValue { get; set; } = new Mock<IReplyPersistentie>().Object;
@@ -240,33 +247,54 @@ public sealed class EmailBerichtVerwerkingTests
         {
             Gebeurtenissen.Add("bepaal-reply");
             if (ReplyLookupFout) throw new InvalidOperationException("lookup");
-            return Task.FromResult((IsReply, OrigineelId, (string?)"origineel", (string?)"samenvatting"));
+            return Task.FromResult((IsReply, OrigineelId, OrigineelType, (string?)"samenvatting"));
         }
         public Task UpdateReplyStatusAsync(int verwerkingId, int origineelId) { Gebeurtenissen.Add("status-reply"); if (ReplyStatusFout) throw new InvalidOperationException("reply status"); return Task.CompletedTask; }
         public Task<(bool IsCorrectie, string? JuistType, string? Samenvatting)> DetecteerCorrectieAsync(string bericht, string origineelType, string? origineleSamenvatting)
         {
+            AiInvoer = (bericht, origineelType, origineleSamenvatting);
             Gebeurtenissen.Add("ai-correctie");
             if (AiFout) throw new InvalidOperationException("ai");
             return Task.FromResult((IsCorrectie, (string?)"juist", (string?)"correctie"));
         }
         public Task BewaarCorrectieAsync(int origineelId, int verwerkingId, string origineelType, string? juistType, string? origineleSamenvatting, string? samenvatting)
-        { Gebeurtenissen.Add("correctie-opslag"); if (InsertFout) throw new InvalidOperationException("insert"); return Task.CompletedTask; }
+        { Correctie = (origineelId, verwerkingId, origineelType, juistType, origineleSamenvatting, samenvatting); Gebeurtenissen.Add("correctie-opslag"); if (InsertFout) throw new InvalidOperationException("insert"); return Task.CompletedTask; }
+        public Task<bool> HandelBuitenScopeAsync(int verwerkingId, string bericht, BerichtClassificatie classificatie,
+            string classificatieJson, Microsoft.Extensions.Logging.ILogger log)
+            => EmailVerwerkingsAfhandeling.HandelBuitenScopeAsync(verwerkingId, bericht,
+                classificatie.Type == VerzoekType.BuitenScope,
+                () => UpdateStatusAsync(verwerkingId, EmailStatus.BuitenScope, classificatieJson),
+                new Mailbox(this), log);
+        private sealed class Mailbox(Poort poort) : IEmailMailboxActies
+        {
+            public Task MarkeerGelezenAsync(string id) => poort.Graph.MarkAsReadAsync(id);
+            public async Task LabelGeenAiAntwoordAsync(string id)
+            {
+                await poort.Graph.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
+                await poort.Graph.SetCategoriesAsync(id, EmailCategorieLabels.GeenAiAntwoord);
+            }
+        }
         public Task<bool> HandelAntwoordLimietAsync(int verwerkingId, string bericht, BerichtClassificatie classificatie, string classificatieJson, Microsoft.Extensions.Logging.ILogger log)
         { Gebeurtenissen.Add("antwoordlimiet"); return Task.FromResult(AntwoordLimiet); }
         public Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? classificatieJson)
         { Gebeurtenissen.Add(status switch { EmailStatus.Geclassificeerd => "status-geclassificeerd", EmailStatus.BuitenScope => "status-buiten-scope", _ => "status-verwerkt" }); return Task.CompletedTask; }
         public Task<string> VerwerkMetPlannerAsync(string bericht, BerichtClassificatie classificatie, TraceBuilder trace, Microsoft.Extensions.Logging.ILogger log)
         { Gebeurtenissen.Add("planner"); if (PlannerFout is not null) throw PlannerFout; return Task.FromResult("{}"); }
-        public Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson) { Gebeurtenissen.Add("planner-response"); return Task.CompletedTask; }
-        public Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(int verwerkingId, string bericht, BerichtClassificatie classificatie, string plannerResponseJson, bool reviewMode, string? reviewRecipient, Func<Task<(string onderwerp, string body)>> bouwTemplateAsync, Func<string, string> sanitizeFoutMelding, Microsoft.Extensions.Logging.ILogger log, TraceBuilder trace, bool zekerheidspoortActief)
-        { Gebeurtenissen.Add("reply"); return Task.FromResult(Uitkomst); }
-        public Task<bool> ZekerheidspoortActiefAsync(Microsoft.Extensions.Logging.ILogger log) { Gebeurtenissen.Add("certainty"); return Task.FromResult(true); }
+        public Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson) { Gebeurtenissen.Add("planner-response"); GooiBij("planner-response"); return Task.CompletedTask; }
+        public async Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(int verwerkingId, string bericht, BerichtClassificatie classificatie, string plannerResponseJson, bool reviewMode, string? reviewRecipient, Func<Task<(string onderwerp, string body)>> bouwTemplateAsync, Func<string, string> sanitizeFoutMelding, Microsoft.Extensions.Logging.ILogger log, TraceBuilder trace, bool zekerheidspoortActief)
+        { Gebeurtenissen.Add("reply"); GooiBij("reply"); if (TemplateOpvragen) await bouwTemplateAsync(); return Uitkomst; }
+        public Task<bool> ZekerheidspoortActiefAsync(Microsoft.Extensions.Logging.ILogger log) { Gebeurtenissen.Add("certainty"); GooiBij("certainty"); return Task.FromResult(true); }
         public Task<(string onderwerp, string body)> BouwTemplateAntwoordAsync(string bericht, BerichtClassificatie classificatie, string plannerResponseJson, Microsoft.Extensions.Logging.ILogger log, TraceBuilder trace)
         { TemplateGemaakt = true; Gebeurtenissen.Add("template"); return Task.FromResult(("onderwerp", "body")); }
-        public Task BewaarKorteTraceAsync(int verwerkingId, string verzoekType, BeslissingsTrace trace, Microsoft.Extensions.Logging.ILogger log) { Gebeurtenissen.Add("korte-trace"); return Task.CompletedTask; }
-        public Task BewaarTraceAsync(int verwerkingId, string verzoekType, BeslissingsTrace trace) { Gebeurtenissen.Add("trace"); if (TraceFout) throw new InvalidOperationException("trace"); return Task.CompletedTask; }
+        public Task BewaarKorteTraceAsync(int verwerkingId, string verzoekType, BeslissingsTrace trace, Microsoft.Extensions.Logging.ILogger log) { Gebeurtenissen.Add("korte-trace"); if (KorteTraceFout) throw new InvalidOperationException("trace"); return Task.CompletedTask; }
+        public Task BewaarTraceAsync(int verwerkingId, string verzoekType, BeslissingsTrace trace) { Trace = trace; Gebeurtenissen.Add("trace"); if (TraceFout) throw new InvalidOperationException("trace"); return Task.CompletedTask; }
         public Task BewaarOnbekendeTeamtekstenAsync(BeslissingsTrace trace, int verwerkingId, Microsoft.Extensions.Logging.ILogger log) { Gebeurtenissen.Add("onbekende-teams"); return Task.CompletedTask; }
         public Task StuurTeamleiderNotificatieAsync(BerichtClassificatie classificatie, Microsoft.Extensions.Logging.ILogger log) { Gebeurtenissen.Add("notificatie"); if (NotificationFout) throw new InvalidOperationException("notification"); return Task.CompletedTask; }
+
+        private void GooiBij(string stap)
+        {
+            if (FoutBij == stap) throw new InvalidOperationException(stap);
+        }
 
         private static IReplyGraph DefaultGraph()
         {

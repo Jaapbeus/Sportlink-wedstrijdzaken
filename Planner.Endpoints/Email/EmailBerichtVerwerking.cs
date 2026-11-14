@@ -51,21 +51,9 @@ internal static class EmailBerichtVerwerking
         TBericht bericht, int verwerkingId, BerichtClassificatie classificatie, string classificatieJson,
         ILogger log, IEmailBerichtPoort<TBericht> poort)
     {
-        if (classificatie.Type != VerzoekType.BuitenScope)
+        if (!await poort.HandelBuitenScopeAsync(verwerkingId, bericht, classificatie, classificatieJson, log))
             return false;
 
-        await poort.UpdateStatusAsync(verwerkingId, EmailStatus.BuitenScope, classificatieJson);
-        log.LogInformation("Email {Id} buiten scope na herclassificatie — geen antwoord verstuurd", verwerkingId);
-        try
-        {
-            await poort.Graph.EnsureMasterCategoryAsync(EmailCategorieLabels.GeenAiAntwoord, EmailCategorieLabels.GeenAiAntwoordKleur);
-            await poort.Graph.SetCategoriesAsync(poort.MessageId(bericht), EmailCategorieLabels.GeenAiAntwoord);
-            await poort.MarkeerGelezenAsync(poort.MessageId(bericht));
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Outlook-labeling buiten scope mislukt voor {MessageId} — status is wel vastgelegd", poort.MessageId(bericht));
-        }
         var korteTrace = EmailTraceOpslag.BouwKorteTrace(classificatie.Type.ToString(), classificatie.TeamNaam,
             classificatie.Tegenstander, classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd,
             EmailTraceOpslag.BuitenScopeReden);

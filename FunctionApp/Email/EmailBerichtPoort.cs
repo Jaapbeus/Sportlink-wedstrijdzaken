@@ -32,6 +32,10 @@ internal sealed class EmailBerichtPoort(
     public Task BewaarCorrectieAsync(int origineelId, int verwerkingId, string origineelType, string? juistType,
         string? origineleSamenvatting, string? samenvatting)
         => persistence.InsertClassificatieCorrectieAsync(origineelId, verwerkingId, origineelType, juistType, origineleSamenvatting, samenvatting);
+    public Task<bool> HandelBuitenScopeAsync(int verwerkingId, InkomendBericht bericht,
+        BerichtClassificatie classificatie, string classificatieJson, ILogger logger)
+        => EmailVerwerkingKoppeling.HandelBuitenScopeAsync(verwerkingId, bericht.MessageId,
+            classificatie.Type == VerzoekType.BuitenScope, classificatieJson, graph, persistence, logger);
     public Task<bool> HandelAntwoordLimietAsync(int verwerkingId, InkomendBericht bericht, BerichtClassificatie classificatie, string classificatieJson, ILogger logger)
         => EmailVerwerkingKoppeling.HandelAntwoordLimietAsync(verwerkingId, bericht, classificatie, classificatieJson, graph, persistence, logger);
     public Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? classificatieJson)
