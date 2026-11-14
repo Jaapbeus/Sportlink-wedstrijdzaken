@@ -60,4 +60,16 @@ public class PostgresUpsertGeneratorTests
         sql.Should().Contain("\"mta_deleted\" = NULL");
         sql.Should().Contain(" OR his.\"matches\".\"mta_deleted\" IS NOT NULL;");
     }
+
+    [Fact]
+    public void GenerateCountedUpsertFromStgToHis_BehoudtChangeDetectionEnGeeftActiesAlsAantallenTerug()
+    {
+        var sql = PostgresUpsertGenerator.GenerateCountedUpsertFromStgToHis(TestEntities.SingleKeyNoClub);
+
+        sql.Should().StartWith("WITH upserted AS (");
+        sql.Should().Contain("WHERE his.\"matches\".\"matchcode\" IS DISTINCT FROM EXCLUDED.\"matchcode\"");
+        sql.Should().Contain("RETURNING (xmax = 0) AS was_inserted");
+        sql.Should().Contain("COUNT(*) FILTER (WHERE was_inserted)::int AS added");
+        sql.Should().Contain("COUNT(*) FILTER (WHERE NOT was_inserted)::int AS updated");
+    }
 }

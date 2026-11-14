@@ -48,7 +48,7 @@ internal static class SqlServerReconciliation
 
     /// <summary>Best-effort per entiteit: his.* is al gemerged, een fout hier laat de sync niet falen.</summary>
     internal static async Task ReconcileVerdwenenAsync(
-        string clubCode, bool teamsFailed, bool matchesFailed, DateOnly ondergrens, ILogger log)
+        string clubCode, bool teamsFailed, bool matchesFailed, DateOnly ondergrens, ILogger log, Action? onFailure = null)
     {
         if (!teamsFailed)
         {
@@ -60,6 +60,7 @@ internal static class SqlServerReconciliation
             }
             catch (Exception ex)
             {
+                onFailure?.Invoke();
                 log.LogError(ex, "RECONCILIATIE - his.teams mislukt voor {ClubCode}", clubCode);
             }
         }
@@ -74,6 +75,7 @@ internal static class SqlServerReconciliation
             }
             catch (Exception ex)
             {
+                onFailure?.Invoke();
                 log.LogError(ex, "RECONCILIATIE - his.matches mislukt voor {ClubCode}", clubCode);
             }
         }

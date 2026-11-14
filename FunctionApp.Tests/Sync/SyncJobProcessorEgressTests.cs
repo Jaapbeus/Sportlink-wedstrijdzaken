@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using SportlinkFunction;
+using Planner.Shared.Sync;
 using Xunit;
 
 namespace FunctionApp.Tests.Sync;
@@ -16,7 +17,7 @@ public class SyncJobProcessorEgressTests
     [Fact]
     public void FoutmeldingVoorStatus_BewaartGeenExceptionDetails()
     {
-        var message = SyncJobProcessor.FoutmeldingVoorStatus(
+        var message = global::Planner.Endpoints.Sync.SyncQueuedJobCore.SafeFailureMessage(
             new InvalidOperationException("https://provider.invalid/path?token=secret"));
 
         message.Should().Contain(nameof(InvalidOperationException));

@@ -14,6 +14,41 @@ public sealed class SqlServerSyncSeasonRolloverIntegrationTests
     private static string ConnectionString => Environment.GetEnvironmentVariable(SqlServerFactAttribute.EnvVar)!;
 
     [SqlServerFact]
+    public async Task TrackedStart_LeaseCollision_DoesNotRollSeasonBuildWindowOrCreateFailedJob()
+    {
+        var clubCode = TestClubCode();
+        var today = SqlServerSeasonRollover.VandaagInNederland;
+        await using var connection = await OpenAsync();
+        await MaakClubAsync(connection, clubCode, startMaand: 1);
+        await VoegSeizoenToeAsync(connection, clubCode, today.Year - 2, 1);
+        await VoegSeizoenToeAsync(connection, clubCode, today.Year - 1, 1);
+        var seasonsBefore = await SeizoennamenAsync(connection, clubCode);
+        var windowBuilt = false;
+        try
+        {
+            await using (var lease = await SqlServerSyncStagingLease.TryAcquireAsync())
+            {
+                lease.Should().NotBeNull();
+                var run = () => FetchAndStoreApiData.RunTrackedSyncAsync(
+                    () => { windowBuilt = true; return Task.FromResult((0, 0)); },
+                    NullLogger.Instance, clubCode);
+                await run.Should().ThrowAsync<SyncAlreadyRunningException>();
+            }
+            windowBuilt.Should().BeFalse();
+            (await SeizoennamenAsync(connection, clubCode)).Should().Equal(seasonsBefore);
+            (await CountJobsAsync(connection, clubCode)).Should().Be(0);
+        }
+        finally
+        {
+            await using var deleteJobs = new SqlCommand(
+                "DELETE FROM [dbo].[SyncJobs] WHERE [ClubCode] = @ClubCode", connection);
+            deleteJobs.Parameters.AddWithValue("@ClubCode", clubCode);
+            await deleteJobs.ExecuteNonQueryAsync();
+            await VerwijderClubAsync(connection, clubCode);
+        }
+    }
+
+    [SqlServerFact]
     public async Task EnsureAsync_Doorrolgrens_IsPerClub_Idempotent_EnBehoudtHistorie()
     {
         var clubCode = TestClubCode();
@@ -280,6 +315,14 @@ public sealed class SqlServerSyncSeasonRolloverIntegrationTests
         command.Parameters.AddWithValue("@ClubCode", clubCode);
         var value = await command.ExecuteScalarAsync();
         return value is null or DBNull ? null : (DateTime)value;
+    }
+
+    private static async Task<int> CountJobsAsync(SqlConnection connection, string clubCode)
+    {
+        await using var command = new SqlCommand(
+            "SELECT COUNT(*) FROM [dbo].[SyncJobs] WHERE [ClubCode] = @ClubCode", connection);
+        command.Parameters.AddWithValue("@ClubCode", clubCode);
+        return (int)(await command.ExecuteScalarAsync())!;
     }
 
     private static async Task VerwijderClubAsync(SqlConnection connection, string clubCode)
