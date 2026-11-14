@@ -2550,6 +2550,7 @@ BEGIN
     1.0     | 12-01-2025 | Jaap van Beusekom | Initial setup
     1.1     | 25-01-2025 | Jaap van Beusekom | NULL handling for non-string columns using CAST AS NVARCHAR(MAX)
     1.2     | 2025       | Jaap van Beusekom | Multi-column business key support using CONCAT
+    1.3     | 2026-10    | #1558             | Herstel mta_deleted bij terugkeer in stg (reconciliatie)
     */
     SET NOCOUNT ON;
     -- Create the target table from source structure if it does not yet exist
@@ -2561,7 +2562,8 @@ BEGIN
     DECLARE @SqlStringTmp   NVARCHAR(MAX) = '';
 
     SET @SqlString +=
-'MERGE [' + @TargetSchema + '].[' + @TargetName + '] AS target
+'DECLARE @Actions TABLE ([Action] nvarchar(10));
+MERGE [' + @TargetSchema + '].[' + @TargetName + '] AS target
 USING [' + @SourceSchema + '].[' + @SourceName + '] AS source
 ';
     -- Retrieve primary key columns and target key definition from metadata
@@ -2695,13 +2697,18 @@ WHEN NOT MATCHED BY TARGET THEN ';
     -- Preserve single-column keys; separate composite components like the PostgreSQL tier.
     SET @SqlString += '
 INSERT (' + @TargetPk + @SqlStringTargets + ', mta_inserted, mta_modified)
-VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE());';
+VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE())
+OUTPUT $action INTO @Actions;
+SELECT COUNT(CASE WHEN [Action] = ''INSERT'' THEN 1 END) AS Added,
+       COUNT(CASE WHEN [Action] = ''UPDATE'' THEN 1 END) AS Updated
+FROM @Actions;';
 
     EXEC sp_executesql @SqlString;
 
     PRINT 'Merged ' + @SourceName + ' into ' + @TargetName;
 END;
 GO
+
 
 -- Bron: Database/pub/Views/DateTable.sql
 -- #734: alleen aanmaken als de onderliggende tabellen bestaan. Op een verse clubinstallatie
