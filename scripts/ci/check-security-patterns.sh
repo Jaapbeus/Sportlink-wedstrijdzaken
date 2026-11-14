@@ -254,7 +254,7 @@ if SECURITY_PATTERNS="$PATTERN_LIST" PLACEHOLDER_PATTERN="$PLACEHOLDER_PATTERN" 
       next if $path =~ /\.(?:png|jpg|jpeg|gif|ico|woff|ttf|eot|svg|pdf|zip|dll|exe|pdb|nupkg)$/;
       next if $scope eq "infra" && $path =~ /sensitive-patterns\.template\.txt$/;
       next if $scope eq "docs" && !($path =~ m{(?:^|/)docs/[\s\S]+\.md$} ||
-        $path =~ m{^(?:CHANGELOG|README|SETUP|CONTRIBUTING)\.md$});
+        $path =~ m{^(?:CHANGELOG|README|SETUP|CONTRIBUTING)\.md$} || $path =~ m{^changelog\.d/});
       if ($scope eq "csharp") {
         next unless $path =~ /\.cs$/;
         next if $path =~ /(?:^|\/)[^\/]*Tests\//;

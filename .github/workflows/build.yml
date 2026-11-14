@@ -279,6 +279,19 @@ jobs:
         run: node .github/scripts/claude-issue-turn-eindlabel.test.js
 
       # #1727: publicatie van een Claude-review op een Codex-PR (hercontrole, SHA-binding, scan).
+      - name: Samenwerkingsroute en lokaal register testen
+        run: |
+          node .github/scripts/samenwerking-poort.test.js
+          python3 scripts/dev/test_collaboration_tools.py
+          python3 -m unittest discover -s scripts/samenwerking -p 'test*.py'
+
+      - name: Changelogfragmenten en versieverwerking testen
+        run: |
+          python3 -m venv "$RUNNER_TEMP/samenwerking-python"
+          "$RUNNER_TEMP/samenwerking-python/bin/python" -m pip install 'PyYAML==6.0.3'
+          "$RUNNER_TEMP/samenwerking-python/bin/python" -m unittest discover -s scripts/release -p 'test*.py'
+          "$RUNNER_TEMP/samenwerking-python/bin/python" scripts/release/changelog.py validate --repo .
+
       - name: Claude issue-beurt reviewpublicatie testen
         run: node .github/scripts/claude-issue-turn-review.test.js
 

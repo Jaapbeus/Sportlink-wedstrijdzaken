@@ -18,6 +18,10 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Changed
+- Samenwerking tussen ontwikkelagents krijgt een expliciete reviewroute, blijvend bevindingenregister en gecontroleerde voorbereiding van releasebeschrijvingen; invoering begint in schaduwmodus (#1940).
+
+
 - Nooit gestarte sync-jobs krijgen na de hersteltermijn op beide databasetiers de eindstatus `failed` met een vaste melding en UTC-eindtijd. Ze worden niet opnieuw ingepland; late queueberichten kunnen niets uitvoeren of overschrijven (#1912).
 
 - De timeouttest van de Azure Management-client faalde soms in CI door de volgorde van annuleringscallbacks. De test is nu op beide tiers deterministisch; het productiegedrag is ongewijzigd (#1941).
