@@ -6,6 +6,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using SportlinkFunction.Admin;
 using SportlinkFunction.Infrastructure;
+using SportlinkFunction.Sync;
 using static SportlinkFunction.SystemUtilities;
 
 namespace SportlinkFunction
@@ -36,13 +37,14 @@ namespace SportlinkFunction
                 await WaitForDatabaseAsync(log);
                 await SyncJobsRepository.HerstelOnderbrokenAsync(log); // #1839: herstel onderbroken jobs; loopt mee, geen eigen timer
                 await AppSettings.LoadSettingsAsync(log);
-
-                var uitkomst = await RunConfiguredSyncAsync(async () =>
+                var clubCode = AppSettings.GetSetting("clubCode")
+                    ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings.");
+                var uitkomst = await RunTrackedSyncAsync(async () =>
                 {
-                    int toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                    var toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
                     log.LogInformation("Sync range: weekOffset -1 to {ToWeekOffset} (end of season)", toWeekOffset);
                     return (-1, toWeekOffset);
-                }, log);
+                }, log, clubCode);
                 // #1779 (pariteit met de Postgres-tier, #1081): een run met mislukte fases (ook een
                 // ongeldige sportlinkApiUrl) mag niet als Success eindigen en meldt zich als
                 // getypeerde fout met faseoverzicht.
@@ -144,21 +146,53 @@ namespace SportlinkFunction
         /// Internal (#1676): elke aanroeper controleert EgressGuard vooraf. Verwacht geladen AppSettings.
         /// </summary>
         internal static async Task<SyncUitkomst> RunConfiguredSyncAsync(
-            Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow, ILogger log)
+            Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow, ILogger log,
+            SyncLogWriter? syncLog = null, SqlServerSyncStagingLease? acquiredLease = null)
         {
+            if (syncLog is null)
+                return await RunTrackedSyncAsync(buildWindow, log);
+
+            await SyncLogReporting.BeginPhaseAsync(syncLog, "configuratie");
             if (!SportlinkDataserviceBasisUrl.TryGetCanonical(
                     AppSettings.GetSetting("sportlinkApiUrl"), out var sportlinkApiUrl))
             {
                 log.LogError("Sportlink data-service base URL is invalid.");
+                await SyncLogReporting.CompletePhaseAsync(syncLog, "configuratie", "failed", reasonCode: "configuration_missing");
                 return SyncUitkomst.Configuratie();
             }
 
             string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
-            return await SportlinkSyncPipeline.RunSyncWithSeasonWindowAsync(buildWindow, sportlinkApiUrl, sportlinkClientId, log);
+            await SyncLogReporting.CompletePhaseAsync(syncLog, "configuratie", "succeeded");
+            return await SportlinkSyncPipeline.RunSyncWithSeasonWindowAsync(buildWindow, sportlinkApiUrl,
+                sportlinkClientId, log, syncLog: syncLog, acquiredLease: acquiredLease);
+        }
+
+        internal static async Task<SyncUitkomst> RunTrackedSyncAsync(
+            Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow, ILogger log,
+            string? loadedClubCode = null)
+        {
+            if (loadedClubCode is null)
+                await AppSettings.LoadSettingsAsync(log);
+            var clubCode = loadedClubCode ?? AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings.");
+            await using var stagingLease = await SqlServerSyncStagingLease.TryAcquireAsync()
+                ?? throw new SyncAlreadyRunningException();
+            await SqlServerSeasonRollover.EnsureAsync(clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
+            var (from, to) = await buildWindow();
+            var connectionString = DatabaseConfig.ConnectionString;
+            return await SyncJobRunCoordinator.RegisterClaimAndRunAsync(
+                () => SyncJobsRepository.GetOrCreateActiveAsync(connectionString, Guid.NewGuid(), clubCode, from, to),
+                id => SyncJobsRepository.TryClaimAttemptAsync(connectionString, id),
+                new SyncJobRunServices(entry => SyncLogRepository.UpsertAsync(clubCode, entry),
+                async () => { await SyncLogRepository.CleanupAllAsync(DateTime.UtcNow); },
+                (id, outcome, attempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, attempt, incomplete),
+                (id, succeeded, error, attempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, attempt),
+                writer => RunConfiguredSyncAsync(() => Task.FromResult((from, to)), log, writer, stagingLease),
+                global::Planner.Endpoints.Sync.SyncQueuedJobCore.SafeFailureMessage));
         }
 
         /// <summary>Opgeslagen venster van een job (#1138): zelfde pad, vaste offsets.</summary>
-        internal static Task<SyncUitkomst> RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log)
-            => RunConfiguredSyncAsync(() => Task.FromResult((fromWeekOffset, toWeekOffset)), log);
+        internal static Task<SyncUitkomst> RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log, SyncLogWriter? syncLog = null)
+            => RunConfiguredSyncAsync(() => Task.FromResult((fromWeekOffset, toWeekOffset)), log, syncLog);
     }
 }

@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.17.2.0
+  version: 3.17.4.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1629,8 +1629,25 @@ components:
             - $ref: '#/components/schemas/SyncJob'
           nullable: true
           description: >-
-            Status van de meest recente sync-job, of van de job opgegeven via de query-param
+            Status van de actieve job, anders de laatste afgeronde job, of van de job opgegeven via de query-param
             `jobId` (#1138). `null` zolang er nog nooit een sync is getriggerd.
+
+        activeJob:
+          allOf:
+            - $ref: '#/components/schemas/SyncJob'
+          nullable: true
+        lastCompletedJob:
+          allOf:
+            - $ref: '#/components/schemas/SyncJob'
+          nullable: true
+        jobs:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/SyncJob'
+        logAvailable:
+          type: boolean
+          description: False wanneer de faseopslag tijdelijk niet beschikbaar is; jobstatus blijft beschikbaar.
 
     SyncJob:
       type: object
@@ -1640,7 +1657,7 @@ components:
           format: uuid
         status:
           type: string
-          enum: [pending, running, succeeded, failed]
+          enum: [pending, running, succeeded, partial, failed]
         weekOffsetFrom:
           type: integer
         weekOffsetTo:
@@ -1659,6 +1676,59 @@ components:
         errorMessage:
           type: string
           nullable: true
+
+        attempt:
+          type: integer
+          minimum: 0
+        phases:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncLogEntry'
+
+    SyncLogEntry:
+      type: object
+      description: Alleen vaste codes, UTC-tijden en aantallen. Een onbekend aantal is null, niet nul. Bewaartermijn 30 dagen.
+      properties:
+        jobId:
+          type: string
+          format: uuid
+        attempt:
+          type: integer
+        phase:
+          type: string
+          enum: [teams, programma, uitslagen, matchdetails, planner-view, canonicalisatie, reconciliatie, configuratie]
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [pending, running, succeeded, partial, failed, skipped]
+        fetched:
+          type: integer
+          nullable: true
+        added:
+          type: integer
+          nullable: true
+        updated:
+          type: integer
+          nullable: true
+        failed:
+          type: integer
+          nullable: true
+        progress:
+          type: integer
+          nullable: true
+        total:
+          type: integer
+          nullable: true
+        reasonCode:
+          type: string
+          nullable: true
+          enum: [operation_failed, partial_failure, configuration_missing, egress_blocked, programme_truncated, reconciliation_skipped, source_failed, not_applicable]
 
     SyncTriggerResponse:
       type: object
@@ -1679,6 +1749,19 @@ components:
         tijdstip:
           type: string
           format: date-time
+
+        alreadyRunning:
+          type: boolean
+          description: True betekent koppelen aan de bestaande actieve job, zonder een tweede queuebericht.
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        phase:
+          type: string
+          nullable: true
+        melding:
+          type: string
 
     # ── Beheer — Templates ────────────────────────────────────────────────────
 
@@ -5711,7 +5794,7 @@ paths:
       summary: Synchronisatie starten (fire-and-forget)
       description: |
         Start een Sportlink-synchronisatie op de achtergrond (~5 minuten). Retourneert direct 202.
-        Prik op `GET /beheer/sync/status` om de voortgang te bewaken via `lastSyncTimestamp`.
+        Gebruik `GET /beheer/sync/status` voor actieve job en fasen; een tweede klik koppelt aan de bestaande job.
         Met `reset: true` en `season` wordt het volledige seizoen opnieuw opgehaald vanaf de
         seizoensstart (#1352). Zonder `reset` wordt `season` genegeerd.
       security:
@@ -5751,7 +5834,15 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
         '503':
-          $ref: '#/components/responses/ExternalIntegrationsDisabled'
+          description: >-
+            Synchronisatie kan niet worden gestart: uitgaande integraties zijn geblokkeerd
+            (EgressGuard), het queuebericht kon niet worden geplaatst, of de jobstatus is
+            onzeker nadat ook het vastleggen van een mislukte queueplaatsing faalde.
+            De respons bevat uitsluitend een vaste, veilige foutmelding.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

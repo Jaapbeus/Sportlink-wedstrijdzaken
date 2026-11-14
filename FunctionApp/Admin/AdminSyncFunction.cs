@@ -1,9 +1,8 @@
+using Planner.Shared.Sync;
 using Planner.Endpoints.Http;
 
 using SportlinkFunction.Infrastructure;
 using Planner.Endpoints.Admin;
-using System.Text.Json;
-using Azure.Storage.Queues;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -55,25 +54,10 @@ public static class AdminSyncFunction
 
                 Guid? jobId = Guid.TryParse(req.Query["jobId"], out var parsedJobId) ? parsedJobId : null;
                 await SyncJobsRepository.HerstelOnderbrokenAsync(context.GetLogger("AdminSyncStatus"));
-                var job = await SyncJobsRepository.GetLatestOrByIdAsync(clubCode, jobId);
-
-                return new OkObjectResult(new
-                {
-                    lastSyncTimestamp = lastSync,
-                    fetchSchedule,
-                    status = lastSync.HasValue ? "ok" : "geen-sync-uitgevoerd",
-                    job = job is null ? null : new
-                    {
-                        id = job.Id,
-                        status = job.Status,
-                        weekOffsetFrom = job.WeekOffsetFrom,
-                        weekOffsetTo = job.WeekOffsetTo,
-                        createdAt = job.CreatedAt,
-                        startedAt = job.StartedAt,
-                        completedAt = job.CompletedAt,
-                        errorMessage = job.ErrorMessage
-                    }
-                });
+                var jobs = await SyncJobsRepository.GetRecentAsync(SystemUtilities.DatabaseConfig.ConnectionString, clubCode, jobId);
+                return await SyncLogEndpointCore.ReadAsync(lastSync, fetchSchedule, jobs, jobId,
+                    () => SyncLogRepository.CleanupAsync(SystemUtilities.DatabaseConfig.ConnectionString, clubCode, DateTime.UtcNow),
+                    () => SyncLogRepository.GetForJobsAsync(SystemUtilities.DatabaseConfig.ConnectionString, clubCode, jobs.Select(j => j.Id).ToArray()));
             });
 
     [Function("AdminSyncTrigger")]
@@ -91,7 +75,7 @@ public static class AdminSyncFunction
                 // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
                 return await BoundedRequestBodyReader.ExecuteUtf8Async(req, async bodyText =>
                 {
-                    var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
+                    return await SyncLogEndpointCore.StartAsync(
                         bodyText, DateTime.UtcNow.Year,
                         async () =>
                         {
@@ -101,37 +85,14 @@ public static class AdminSyncFunction
                                 clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
                             return await SystemUtilities.SeasonHelper.GetSeasonEndWeekOffsetAsync(log, clubCode);
                         },
-                        jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar, clubCode));
-                    if (venster.Fout is not null) return venster.Fout;
-                    int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
-                    var jobId = Guid.NewGuid();
-
-                    await SyncJobsRepository.HerstelOnderbrokenAsync(log);
-                    await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);
-
-                    var queueClient = SyncJobsQueue.CreateClient();
-                    await queueClient.CreateIfNotExistsAsync();
-                    var message = new SyncJobMessage
-                    {
-                        JobId = jobId,
-                        ClubCode = clubCode,
-                        WeekOffsetFrom = fromWeekOffset,
-                        WeekOffsetTo = toWeekOffset
-                    };
-                    await queueClient.SendMessageAsync(JsonSerializer.Serialize(message));
-
-                    log.LogInformation("AdminSyncTrigger: job {JobId}, range {From} .. {To} (reset: {Reset}) — op de queue gezet", jobId, fromWeekOffset, toWeekOffset, venster.IsReset);
-
-                    return new ObjectResult(new
-                    {
-                        status = "gestart",
-                        jobId,
-                        weekOffsetFrom = fromWeekOffset,
-                        weekOffsetTo = toWeekOffset,
-                        tijdstip = DateTime.UtcNow,
-                        melding = "Sync gestart op achtergrond. Controleer de voortgang via /beheer/sync/status?jobId=" + jobId + "."
-                    }) { StatusCode = 202 };
+                        jaar => SystemUtilities.SeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar, clubCode),
+                        () => SyncJobsRepository.HerstelOnderbrokenAsync(log),
+                        (from, to) => SyncJobsRepository.GetOrCreateActiveAsync(SystemUtilities.DatabaseConfig.ConnectionString, Guid.NewGuid(), clubCode, from, to),
+                        job => SyncLogEndpointCore.EnqueueAsync(SyncJobsQueue.CreateClient(), job, clubCode),
+                        id => SyncJobsRepository.MarkEnqueueFailedAsync(SystemUtilities.DatabaseConfig.ConnectionString, id, clubCode),
+                        id => SyncLogRepository.GetForJobsAsync(SystemUtilities.DatabaseConfig.ConnectionString, clubCode, new[] { id }));
                 });
             });
     }
+
 }

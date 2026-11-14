@@ -22,7 +22,8 @@ BEGIN
     DECLARE @SqlStringTmp   NVARCHAR(MAX) = '';
 
     SET @SqlString +=
-'MERGE [' + @TargetSchema + '].[' + @TargetName + '] AS target
+'DECLARE @Actions TABLE ([Action] nvarchar(10));
+MERGE [' + @TargetSchema + '].[' + @TargetName + '] AS target
 USING [' + @SourceSchema + '].[' + @SourceName + '] AS source
 ';
     -- Retrieve primary key columns and target key definition from metadata
@@ -156,7 +157,11 @@ WHEN NOT MATCHED BY TARGET THEN ';
     -- Preserve single-column keys; separate composite components like the PostgreSQL tier.
     SET @SqlString += '
 INSERT (' + @TargetPk + @SqlStringTargets + ', mta_inserted, mta_modified)
-VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE());';
+VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE())
+OUTPUT $action INTO @Actions;
+SELECT COUNT(CASE WHEN [Action] = ''INSERT'' THEN 1 END) AS Added,
+       COUNT(CASE WHEN [Action] = ''UPDATE'' THEN 1 END) AS Updated
+FROM @Actions;';
 
     EXEC sp_executesql @SqlString;
 

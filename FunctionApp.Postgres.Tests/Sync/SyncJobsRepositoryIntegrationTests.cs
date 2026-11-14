@@ -221,6 +221,51 @@ public class SyncJobsRepositoryIntegrationTests
         (await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, jobId: null)).Should().BeNull();
     }
 
+    [PostgresFact]
+    public async Task Herstel_NooitGestart_OudWordtFailed_VersBlijftPending_LaatBerichtDoetNiets()
+    {
+        var id = Guid.NewGuid();
+        await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
+        try
+        {
+            var fresh = (await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id))!;
+            (await HerstelAsync()).Retry.Select(r => r.JobId).Should().NotContain(id);
+            (await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id))!.Should().BeEquivalentTo(fresh);
+            var now = DateTime.UtcNow;
+            await using (var connection = new NpgsqlConnection(ConnectionString))
+            {
+                await connection.OpenAsync();
+                await using var command = new NpgsqlCommand("UPDATE public.syncjobs SET createdat = @created WHERE id = @id", connection);
+                command.Parameters.AddWithValue("created", now.AddMinutes(-31));
+                command.Parameters.AddWithValue("id", id);
+                await command.ExecuteNonQueryAsync();
+            }
+            (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id)).Should().BeNull();
+            var batches = await Task.WhenAll(HerstelAsync(), HerstelAsync());
+            batches.SelectMany(b => b.Retry).Should().NotContain(r => r.JobId == id);
+            var terminal = (await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id))!;
+            terminal.Status.Should().Be("failed");
+            terminal.ErrorMessage.Should().Be(SyncJobRecoveryPolicy.NeverStartedMessage);
+            terminal.StartedAt.Should().BeNull();
+            terminal.CompletedAt.Should().NotBeNull();
+            terminal.CompletedAt!.Value.Should().BeOnOrAfter(now.AddSeconds(-1));
+            terminal.CompletedAt.Value.Should().BeOnOrBefore(DateTime.UtcNow.AddSeconds(1));
+            (await AttemptAsync(id)).Should().Be(0);
+            var executions = 0;
+            (await SyncJobClaimCore.ExecuteIfClaimedAsync(
+                () => SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id),
+                _ => { executions++; return Task.CompletedTask; })).Should().BeFalse();
+            executions.Should().Be(0);
+            await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, true, null, attempt: 1);
+            await HerstelAsync();
+            (await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id))!.Should().BeEquivalentTo(terminal);
+        }
+        finally
+        {
+            await SchoonAsync();
+        }
+    }
+
     // ── #1839: begrensd herstel van onderbroken jobs ────────────────────────────────────────────
 
     [PostgresFact]

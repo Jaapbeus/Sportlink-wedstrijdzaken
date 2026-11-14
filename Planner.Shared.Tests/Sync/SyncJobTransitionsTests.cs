@@ -13,6 +13,17 @@ public class SyncJobTransitionsTests
         => SyncJobTransitions.CompletionStatus(succeeded).Should().Be(expected);
 
     [Fact]
+    public void PipelineOutcome_DistinguishesSuccessPartialAndConfigurationFailure()
+    {
+        var outcome = new SyncUitkomst();
+        SyncJobTransitions.CompletionStatus(outcome).Should().Be("succeeded");
+        SyncJobTransitions.CompletionStatus(outcome, incompletePhases: true).Should().Be("partial");
+        outcome.Registreer(SyncUitkomst.FaseTeams, true);
+        SyncJobTransitions.CompletionStatus(outcome).Should().Be("partial");
+        SyncJobTransitions.CompletionStatus(SyncUitkomst.Configuratie()).Should().Be("failed");
+    }
+
+    [Fact]
     public void TruncateError_NullStaysNull_ShortStaysUntouched_LongIsCut()
     {
         SyncJobTransitions.TruncateError(null).Should().BeNull();

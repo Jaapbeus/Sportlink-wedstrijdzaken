@@ -44,16 +44,16 @@
                             <small class="text-muted ms-1">(<code>@_status.FetchSchedule</code>)</small>
                         </p>
                         <p>
-                            <strong>Status:</strong>
+                            <strong>Systeemgezondheid:</strong>
                             <span class="badge @(_status.Status == "ok" ? "bg-success" : "bg-warning")">
                                 @_status.Status
                             </span>
                         </p>
                     }
-                    <button class="btn btn-primary btn-sm" @onclick="TriggerSyncAsync" disabled="@(_syncing)">
+                    <button class="btn btn-primary btn-sm" @onclick="TriggerSyncAsync" disabled="@(_syncing || _syncLoading)">
                         @(_syncing ? "Synchroniseren..." : "Nu synchroniseren")
                     </button>
-                    <button class="btn btn-outline-secondary btn-sm ms-2" id="sync-reset-open" @onclick="ToonResetBevestiging" disabled="@(_syncing)">
+                    <button class="btn btn-outline-secondary btn-sm ms-2" id="sync-reset-open" @onclick="ToonResetBevestiging" disabled="@(_syncing || _syncLoading)">
                         Volledig seizoen opnieuw opbouwen…
                     </button>
                     @if (_toonResetBevestiging)
@@ -77,8 +77,9 @@
                     }
                     @if (!string.IsNullOrEmpty(_syncResult))
                     {
-                        <div class="alert alert-info mt-3">@_syncResult</div>
+                        <div class="alert @(_syncStatusUnavailable || _status?.LastCompletedJob?.Status is "failed" or "partial" ? "alert-warning" : "alert-info") mt-3" id="sync-result" role="status">@_syncResult</div>
                     }
+                    <SyncLogboek Status="_status" StatusOnzeker="_syncStatusUnavailable" />
                 </div>
             </div>
         </div>

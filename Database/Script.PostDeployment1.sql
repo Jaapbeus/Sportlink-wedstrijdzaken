@@ -2550,6 +2550,7 @@ BEGIN
     1.0     | 12-01-2025 | Jaap van Beusekom | Initial setup
     1.1     | 25-01-2025 | Jaap van Beusekom | NULL handling for non-string columns using CAST AS NVARCHAR(MAX)
     1.2     | 2025       | Jaap van Beusekom | Multi-column business key support using CONCAT
+    1.3     | 2026-10    | #1558             | Herstel mta_deleted bij terugkeer in stg (reconciliatie)
     */
     SET NOCOUNT ON;
     -- Create the target table from source structure if it does not yet exist
@@ -2561,7 +2562,8 @@ BEGIN
     DECLARE @SqlStringTmp   NVARCHAR(MAX) = '';
 
     SET @SqlString +=
-'MERGE [' + @TargetSchema + '].[' + @TargetName + '] AS target
+'DECLARE @Actions TABLE ([Action] nvarchar(10));
+MERGE [' + @TargetSchema + '].[' + @TargetName + '] AS target
 USING [' + @SourceSchema + '].[' + @SourceName + '] AS source
 ';
     -- Retrieve primary key columns and target key definition from metadata
@@ -2695,13 +2697,18 @@ WHEN NOT MATCHED BY TARGET THEN ';
     -- Preserve single-column keys; separate composite components like the PostgreSQL tier.
     SET @SqlString += '
 INSERT (' + @TargetPk + @SqlStringTargets + ', mta_inserted, mta_modified)
-VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE());';
+VALUES (CONCAT('''', ' + @SourcePkColumns + ')' + @SqlStringValues + ', GETUTCDATE(), GETUTCDATE())
+OUTPUT $action INTO @Actions;
+SELECT COUNT(CASE WHEN [Action] = ''INSERT'' THEN 1 END) AS Added,
+       COUNT(CASE WHEN [Action] = ''UPDATE'' THEN 1 END) AS Updated
+FROM @Actions;';
 
     EXEC sp_executesql @SqlString;
 
     PRINT 'Merged ' + @SourceName + ' into ' + @TargetName;
 END;
 GO
+
 
 -- Bron: Database/pub/Views/DateTable.sql
 -- #734: alleen aanmaken als de onderliggende tabellen bestaan. Op een verse clubinstallatie
@@ -3715,6 +3722,45 @@ GO
 -- Een bestaande running-job is al één keer gestart en telt als poging 1 (anders krijgt hij bij herstel een
 -- extra poging boven de limiet); pending-jobs blijven 0. Idempotent: raakt alleen running met teller 0.
 UPDATE [dbo].[SyncJobs] SET [Attempt] = 1 WHERE [Status] = 'running' AND [Attempt] = 0;
+GO
+
+-- #1912: privacyveilige fasevoortgang van sync-jobs, met 30 dagen bewaartermijn.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.SyncJobs') AND name = 'UX_SyncJobs_Id_ClubCode')
+    CREATE UNIQUE NONCLUSTERED INDEX [UX_SyncJobs_Id_ClubCode] ON [dbo].[SyncJobs] ([Id], [ClubCode]);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.SyncJobPhaseLog'))
+BEGIN
+    CREATE TABLE [dbo].[SyncJobPhaseLog] (
+        [JobId]       UNIQUEIDENTIFIER NOT NULL,
+        [ClubCode]    NVARCHAR(20)     NOT NULL,
+        [Attempt]     INT              NOT NULL,
+        [Phase]       NVARCHAR(30)     NOT NULL,
+        [StartedAt]   DATETIME2        NOT NULL,
+        [CompletedAt] DATETIME2        NULL,
+        [Status]      NVARCHAR(20)     NOT NULL,
+        [Fetched]     INT              NULL,
+        [Added]       INT              NULL,
+        [Updated]     INT              NULL,
+        [Failed]      INT              NULL,
+        [Progress]    INT              NULL,
+        [Total]       INT              NULL,
+        [ReasonCode]  NVARCHAR(40)     NULL,
+        CONSTRAINT [PK_SyncJobPhaseLog] PRIMARY KEY CLUSTERED ([JobId], [Attempt], [Phase]),
+        CONSTRAINT [FK_SyncJobPhaseLog_SyncJobs] FOREIGN KEY ([JobId], [ClubCode]) REFERENCES [dbo].[SyncJobs] ([Id], [ClubCode]) ON DELETE CASCADE,
+        CONSTRAINT [CK_SyncJobPhaseLog_Attempt] CHECK ([Attempt] > 0),
+        CONSTRAINT [CK_SyncJobPhaseLog_Phase] CHECK ([Phase] IN ('teams', 'programma', 'uitslagen', 'matchdetails', 'planner-view', 'canonicalisatie', 'reconciliatie', 'configuratie')),
+        CONSTRAINT [CK_SyncJobPhaseLog_Status] CHECK ([Status] IN ('pending', 'running', 'succeeded', 'partial', 'failed', 'skipped')),
+        CONSTRAINT [CK_SyncJobPhaseLog_ReasonCode] CHECK ([ReasonCode] IS NULL OR [ReasonCode] IN ('operation_failed', 'partial_failure', 'configuration_missing', 'egress_blocked', 'programme_truncated', 'reconciliation_skipped', 'source_failed', 'not_applicable')),
+        CONSTRAINT [CK_SyncJobPhaseLog_Dates] CHECK ([CompletedAt] IS NULL OR [CompletedAt] >= [StartedAt]),
+        CONSTRAINT [CK_SyncJobPhaseLog_Counts] CHECK (([Fetched] IS NULL OR [Fetched] >= 0) AND ([Added] IS NULL OR [Added] >= 0) AND ([Updated] IS NULL OR [Updated] >= 0) AND ([Failed] IS NULL OR [Failed] >= 0) AND ([Progress] IS NULL OR [Progress] >= 0) AND ([Total] IS NULL OR [Total] >= 0) AND ([Progress] IS NULL OR [Total] IS NULL OR [Progress] <= [Total]))
+    );
+END
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.SyncJobPhaseLog') AND name = 'IX_SyncJobPhaseLog_ClubCode_StartedAt')
+    CREATE NONCLUSTERED INDEX [IX_SyncJobPhaseLog_ClubCode_StartedAt] ON [dbo].[SyncJobPhaseLog] ([ClubCode], [StartedAt] DESC);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.SyncJobPhaseLog') AND name = 'IX_SyncJobPhaseLog_StartedAt')
+    CREATE NONCLUSTERED INDEX [IX_SyncJobPhaseLog_StartedAt] ON [dbo].[SyncJobPhaseLog] ([StartedAt]);
 GO
 
 -- #1320: testnotitie gekoppeld aan een Sportlink-mutatiepoging — eigenaar-gestuurde
