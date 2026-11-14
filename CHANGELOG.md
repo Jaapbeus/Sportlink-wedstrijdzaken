@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.18.0.0] — 2026-11-14
+
 - Samenwerking tussen ontwikkelagents krijgt een expliciete reviewroute, vooraf verplichte verificatie en een blijvend bevindingenregister dat ook latere rondes blokkeert bij open punten. Releasevoorbereiding is herstelbaar en herhaalbaar; invoering begint in schaduwmodus met behoud van bestaande waarborgen (#1940).
 
 - De kop van de veldbezetting op Planning toont het aantal wedstrijden. De lijst sorteert op aanvangstijd en daarna op basisveld en subpositie (#1952).
@@ -41,6 +43,23 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **E-mailclassificatiebatch gedeeld** (#1925): batchafhandeling staat eenmalig in `Planner.Endpoints`; SQL Server en Postgres behouden hun eigen body- en datumvalidatie-adapter.
 - CI: de Build-job toont de duur van guard, fixturetests en mutatietests van de agentinstructies afzonderlijk, net als die van de EgressGuard-guard en zijn zelftest. Commando's en volgorde zijn gelijk gebleven (#1930).
 - CI: de mutatietest van de agentinstructieguard stopt per mutant bij de eerste rode test, zodat hij lokaal ruim de helft sneller klaar is; de basislijn draait nog volledig en elke mutant moet nog steeds rood worden (#1931).
+
+## [3.17.1.1] — 2026-11-13
+
+- **Planning: de eerste keer dat een datum wordt geopend duurde ±15 seconden** (zie issue #1917). Sinds 3.17.1.0 vraagt de Planning het bondswedstrijdnummer van elk nieuw veldplanner-blok eenmalig bij Sportlink op (±40 opvragen, 6 tegelijk); de tweede keer duurde het openen 2,8 seconden. Een nieuwe timer (`SportlinkVeldplannerVoorbereiding`, twee keer per dag om 06:30 en 18:30 UTC, beide databasetiers) legt de blokken en wedstrijdnummers vooraf vast voor de komende 28 dagen, zodat de Planning ze al in de tabel vindt. Daarnaast lopen nu 10 opvragen tegelijk in plaats van 6, voor een datum die de timer nog niet kende. De timer doet niets voor de democlub of bij een uitgeschakelde extensie, stopt na drie opeenvolgende mislukte datums, en schrijft alleen het verschil. Geschat verbruik: circa 3% van het gratis maandtegoed aan GB-seconden (zie `docs/MONITORING.md`). Na de Codex-review: de SQL Server-datumquery van de timer sluit nu ook zacht-verwijderde wedstrijden uit (net als Postgres), en de Sportlink-keten (veldplanner-opvraag, wedstrijdnummer-opvraag, tokenbeheer en de opslag-stap) logt alleen het uitzonderingstype en nooit het uitzonderingsobject, omdat dat een host of querystring met de publieke `clientId` kan dragen.
+
+## [3.17.1.0] — 2026-11-13
+
+- **Wedstrijden verdwenen uit de Planning en uit `his.matches` op drukke speeldagen** (zie issue #1915). Sportlinks `/programma` geeft per aanroep maximaal 100 rijen terug en laat de rest zonder foutmelding weg; zonder `aantaldagen` is het venster 28 dagen terwijl `weekoffset` maar 7 dagen opschuift, dus de vensters overlapten en elk kapte af. De reconciliatie las dat als "deze wedstrijden bestaan niet meer" en markeerde ze als verwijderd, waarna Sportlink ze nooit meer teruggaf. De sync vraagt nu aansluitende vensters van 8 dagen op en splitst een venster dat het plafond raakt in thuis en uit, en zo nodig per team. Blijft een venster toch afgekapt, dan telt de sync als onvolledig en reconcilieert hij niet. Beide databasetiers. De eerstvolgende sync na deze release zet ten onrechte verwijderde wedstrijden terug.
+- **Planning: geen dubbele regels meer door verschillende clubnamen** (issue #1915). De Planning koppelde een eigen wedstrijd aan het veldplanner-blok van Sportlink op teamnaam. Sportlink noemt een club in de dataservice anders dan in de veldplanner, dus dezelfde wedstrijd stond dubbel (*Niet in Sportlink* naast *Alleen in Sportlink*). De koppeling loopt nu uitsluitend via ID's die Sportlink zelf uitgeeft (`PublicMatchId`, en het bondswedstrijdnummer). Nieuwe tabel `sportlinkveldplannerblok` (Postgres-migratie 050, SQL Server `dbo.SportlinkVeldplannerBlok`): een afgeleide kopie van de veldplanner met per wedstrijd een hash, zodat een planningsaanvraag alleen het verschil wegschrijft. Het bondswedstrijdnummer wordt eenmalig per wedstrijd bij Sportlink opgevraagd en bewaard. Een wedstrijd waarvan het nummer (nog) niet bekend is, blijft zichtbaar als afwijking.
+
+## [3.17.0.2] — 2026-11-12
+
+- De pagina Planning gaf bij Veldbezetting "Interne fout" op productie. Oorzaak: sinds 3.17.0.0 las de gedeelde speeltijden-lookup de kolom `standaardvoorkeurtijd` met een harde cast naar `TimeSpan`, terwijl Npgsql 10 voor een `time`-kolom een `TimeOnly` levert; elke rij met een voorkeurstijd gaf daardoor een `InvalidCastException`. De lookup herkent nu beide typen (Postgres en SQL Server). Nieuw: een test tegen de echte Postgres-driver, een unit-test per drivertype, en een leesproef in `/api/health` (`readPathsOk`, beide databasetiers) waarop de deploy-smoke-test faalt, zodat zo'n fout bij een volgende uitrol de deployment onderschept (#1911). De zichtbaarheid van sync-runs voor beheerders staat in issue #1912.
+
+## [3.17.0.1] — 2026-11-12
+
+- De Admin GUI werd bij de uitrol van 3.17.0.0 niet vernieuwd: de deploy-pipeline sloeg de Blazor-uitrol ten onrechte over, waardoor alleen de API en de database waren bijgewerkt. Dat is hersteld, en de pipeline meldt een overgeslagen GUI-uitrol voortaan als fout (#1908).
 
 ## [3.17.0.0] — 2026-11-12
 
