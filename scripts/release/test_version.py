@@ -149,6 +149,17 @@ class VersionTests(unittest.TestCase):
                 version.prepare(self.repo, APP_VERSION, API_VERSION, target, apply)
             self.assertEqual(snapshot(self.repo), before)
 
+    def test_completed_cli_retry_reports_no_op_without_writes(self) -> None:
+        version.prepare(self.repo, APP_VERSION, API_VERSION, "3.18.0.0", True)
+        before = snapshot(self.repo)
+        result = subprocess.run([sys.executable, version.__file__, "--repo", str(self.repo),
+                                 "--expected-current", APP_VERSION, "--expected-api-version", API_VERSION,
+                                 "--version", "3.18.0.0", "--apply"],
+                                capture_output=True, text=True, check=True)
+        self.assertIn("Al op doelversie 3.18.0.0; geen schrijfactie uitgevoerd.", result.stdout)
+        self.assertNotIn("Versie bijgewerkt", result.stdout)
+        self.assertEqual(snapshot(self.repo), before)
+
 
 if __name__ == "__main__":
     unittest.main()

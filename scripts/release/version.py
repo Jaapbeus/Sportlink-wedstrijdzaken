@@ -115,6 +115,12 @@ def prepare(repo: Path, expected: str, expected_api: str, target: str, apply: bo
     return updates
 
 
+def _contents(repo: Path) -> dict[str, bytes | None]:
+    paths = (*CSPROJS, YAML, JSON_PATH, JOURNAL)
+    return {relative: (repo / relative).read_bytes() if (repo / relative).exists() else None
+            for relative in paths}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
@@ -125,8 +131,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         repo = args.repo.resolve(strict=True)
+        before = _contents(repo) if args.apply else None
         updates = prepare(repo, args.expected_current, args.expected_api_version, args.version, args.apply)
-        if not updates:
+        if not updates or (args.apply and before == _contents(repo)):
             print(f"Al op doelversie {args.version}; geen schrijfactie uitgevoerd.")
         elif args.apply:
             print(f"Versie bijgewerkt naar {args.version} in {len(updates)} bestanden.")
