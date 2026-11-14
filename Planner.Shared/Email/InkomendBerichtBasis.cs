@@ -26,6 +26,7 @@ public abstract class InkomendBerichtBasis : IInkomendBericht
     [JsonPropertyOrder(5)]
     public DateTime OntvangstDatum { get; set; }
 
+    /// <summary>Internetheaders (naam, waarde), gevuld door de Graph-adapter voor herkenning van automatische afzenders.</summary>
     [JsonProperty(Order = 7)]
     [JsonPropertyOrder(7)]
     public IReadOnlyList<KeyValuePair<string, string>> InternetHeaders { get; set; } = [];

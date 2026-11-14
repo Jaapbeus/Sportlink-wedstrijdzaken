@@ -7,12 +7,12 @@ namespace FunctionApp.Postgres.Email;
 /// <summary>
 /// Postgres-tier-lokaal inkomend-berichtmodel en de unieke-sleutelexceptie (#889).
 /// <c>EmailStatus</c>, <c>VerzoekType</c>, <c>NamensWie</c> en <c>BerichtClassificatie</c> staan sinds #1716
-/// slice 5 eenmalig in <c>Planner.Shared/Email/</c>; ook de zes gemeenschappelijke berichtvelden,
-/// <c>ClubAppSettingsSnapshot</c>,
-/// <c>EmailTemplate</c> en <c>EmailVerwerkingStand</c> staan sinds slice 13 daar. <c>InkomendBericht</c> blijft hier:
-/// <c>ConversationId</c>
-/// en <c>Body</c> zijn op deze tier nullable, op de SQL Server-tier niet-nullable met standaard <c>""</c>;
-/// Het concrete type en de twee velden blijven tierlokaal om die defaults en nullability te behouden.
+/// slice 5 eenmalig in <c>Planner.Shared/Email/</c>. <c>ClubAppSettingsSnapshot</c>, <c>EmailTemplate</c>
+/// en <c>EmailVerwerkingStand</c> staan sinds slice 13 daar; de zes gemeenschappelijke berichtvelden
+/// staan sinds slice 14 in <c>InkomendBerichtBasis</c>. <c>InkomendBericht</c> blijft hier:
+/// <c>ConversationId</c> en <c>Body</c> zijn op deze tier nullable, op de SQL Server-tier niet-nullable
+/// met standaard <c>""</c>. Het concrete type en de twee velden blijven tierlokaal om die defaults
+/// en nullability te behouden.
 /// </summary>
 public sealed class InkomendBericht : InkomendBerichtBasis
 {

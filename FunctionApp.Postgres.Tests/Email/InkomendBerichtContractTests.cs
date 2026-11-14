@@ -52,6 +52,8 @@ public sealed class InkomendBerichtContractTests
     public void ConcreteContract_HasOriginalSealednessNullabilityAndPublicSetters()
     {
         typeof(InkomendBericht).IsSealed.Should().BeTrue();
+        typeof(InkomendBericht).FullName.Should().Be("FunctionApp.Postgres.Email.InkomendBericht");
+        typeof(global::Planner.Shared.Email.IInkomendBericht).IsAssignableFrom(typeof(InkomendBericht)).Should().BeTrue();
         var nullability = new NullabilityInfoContext();
         var expected = new Dictionary<string, (Type Type, NullabilityState State)>
         {
@@ -72,6 +74,7 @@ public sealed class InkomendBerichtContractTests
             property.SetMethod.Should().NotBeNull();
             property.SetMethod!.IsPublic.Should().BeTrue();
             nullability.Create(property).WriteState.Should().Be(state);
+            nullability.Create(property).ReadState.Should().Be(state);
         }
     }
 
