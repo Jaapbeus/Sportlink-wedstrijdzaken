@@ -55,20 +55,32 @@ public static class SyncJobRecoveryCore
     }
 
     /// <summary>
-    /// Zelfde als <see cref="RunAsync(DateTime, Func{DateTime, Task{SyncJobRecoveryBatch}}, Func{SyncJobRecoveryItem, Task}, ILogger)"/>,
-    /// met de enqueue op de bestaande sync-jobs-queue. Het bericht heeft dezelfde vorm als het
-    /// bericht van <c>AdminSyncFunction.Trigger</c> (<c>JobId</c>, <c>ClubCode</c>,
-    /// <c>WeekOffsetFrom</c>, <c>WeekOffsetTo</c>), zodat <c>SyncJobProcessor</c> het ongewijzigd leest.
+    /// Herstel dat meeloopt met bestaande activiteit (een sync starten, de status opvragen, de
+    /// geplande sync; eigenaarsbesluit #1839: geen eigen timer, dus geen extra database-wake-ups):
+    /// zelfde als <see cref="RunAsync(DateTime, Func{DateTime, Task{SyncJobRecoveryBatch}}, Func{SyncJobRecoveryItem, Task}, ILogger)"/>
+    /// met de enqueue op de bestaande sync-jobs-queue. Het bericht heeft dezelfde vorm als dat van
+    /// <c>AdminSyncFunction.Trigger</c> (<c>JobId</c>, <c>ClubCode</c>, <c>WeekOffsetFrom</c>,
+    /// <c>WeekOffsetTo</c>). Een fout hier mag de aanroepende activiteit nooit breken: ze wordt
+    /// alleen gelogd (zonder uitzonderingsobject) en de volgende activiteit probeert het opnieuw.
     /// </summary>
-    public static async Task RunAsync(
+    public static async Task TryRunAsync(
         Func<DateTime, Task<SyncJobRecoveryBatch>> recoverAsync,
-        QueueClient queueClient,
+        Func<QueueClient> createQueueClient,
         ILogger log)
     {
-        ArgumentNullException.ThrowIfNull(queueClient);
-        await queueClient.CreateIfNotExistsAsync();
-        await RunAsync(DateTime.UtcNow, recoverAsync,
-            item => queueClient.SendMessageAsync(JsonSerializer.Serialize(item)), log);
+        ArgumentNullException.ThrowIfNull(createQueueClient);
+        ArgumentNullException.ThrowIfNull(log);
+        try
+        {
+            var queueClient = createQueueClient();
+            await queueClient.CreateIfNotExistsAsync();
+            await RunAsync(DateTime.UtcNow, recoverAsync,
+                item => queueClient.SendMessageAsync(JsonSerializer.Serialize(item)), log);
+        }
+        catch (Exception ex)
+        {
+            log.LogError("SyncJobRecovery: herstel overgeslagen ({ExceptionType}); de volgende activiteit probeert opnieuw", ex.GetType().Name);
+        }
     }
 
     /// <summary>

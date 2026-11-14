@@ -35,6 +35,7 @@ public static class SyncFunction
         try
         {
             await PostgresSystemUtilities.WaitForDatabaseAsync(log);
+            await SyncJobsRepository.HerstelOnderbrokenAsync(log); // #1839: herstel onderbroken jobs; loopt mee, geen eigen timer
             // #861: rol public.clubseason zo nodig door vóór het venster gelezen wordt.
             await PostgresSeasonHelper.EnsureSeasonsAsync(log);
             var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);

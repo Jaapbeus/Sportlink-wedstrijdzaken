@@ -12,7 +12,7 @@ namespace FunctionApp.Postgres.Sync;
 /// (fout of gedeeltelijk mislukt) wordt vastgelegd als <c>failed</c> en niet door de queue herhaald
 /// (geen rethrow): een tweede queue-retry zou een gedeeltelijk geslaagde merge riskeren te herhalen.
 /// Alleen een onderbroken job (30 minuten op <c>running</c>, bv. een gecrashte host) wordt door
-/// <see cref="SyncJobRecoveryFunction"/> begrensd opnieuw aangeboden (#1839, hoogstens 2 keer); elke
+/// <see cref="SyncJobsRepository.HerstelOnderbrokenAsync"/> begrensd opnieuw aangeboden (#1839, hoogstens 2 keer; het herstel loopt mee met een sync-start, een statusaanvraag en de geplande sync); elke
 /// afronding is aan het pogingnummer van de claim gebonden zodat een verouderde poging een
 /// herstarte niet overschrijft.
 /// </summary>

@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 using Planner.Shared.Sync;
 
 namespace SportlinkFunction;
@@ -91,6 +92,13 @@ internal static class SyncJobsRepository
         await using var reader = await command.ExecuteReaderAsync();
         return await SyncJobRecoveryCore.ReadBatchAsync(reader);
     }
+
+    /// <summary>
+    /// Herstelt onderbroken jobs als onderdeel van bestaande activiteit (#1839); breekt die nooit.
+    /// </summary>
+    internal static Task HerstelOnderbrokenAsync(ILogger log)
+        => SyncJobRecoveryCore.TryRunAsync(
+            cutoff => RecoverInterruptedAsync(SystemUtilities.DatabaseConfig.ConnectionString, cutoff), SyncJobsQueue.CreateClient, log);
 
     /// <summary>
     /// Meest recente job voor <paramref name="clubCode"/>, of de job met <paramref name="jobId"/>

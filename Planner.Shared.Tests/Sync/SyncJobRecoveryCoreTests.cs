@@ -63,4 +63,18 @@ public class SyncJobRecoveryCoreTests
 
         resultaat.Should().Be((Requeued: 0, EnqueueFailed: 0, GaveUp: 0));
     }
+
+    [Fact]
+    public async Task TryRunAsync_FoutInHetHerstel_BreektDeAanroependeActiviteitNooit()
+    {
+        var fabriekAangeroepen = false;
+
+        var act = () => SyncJobRecoveryCore.TryRunAsync(
+            _ => Task.FromResult(new SyncJobRecoveryBatch([], GaveUp: 0)),
+            () => { fabriekAangeroepen = true; throw new InvalidOperationException("queue niet beschikbaar"); },
+            NullLogger.Instance);
+
+        await act.Should().NotThrowAsync();
+        fabriekAangeroepen.Should().BeTrue();
+    }
 }

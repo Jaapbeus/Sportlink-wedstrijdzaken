@@ -237,13 +237,13 @@ queue-trigger `SyncJobProcessor` haalt berichten van de gedeelde queue `sync-job
 app. Microsoft classificeert een gedeelde storage-queue als *High* risico bij migratie.
 
 Gemeten uit de `functions.metadata` van een `dotnet publish` van `FunctionApp.Postgres` op
-2026-10-02 (108 functies, waarvan 11 niet-HTTP; sindsdien is `SyncJobRecovery` (#1839) als timer toegevoegd):
+2026-10-02 (108 functies, waarvan 11 niet-HTTP):
 
 ```bash
 for F in PostgresFetchAndStoreApiData ProcessIncomingEmails SyncJobProcessor \
          SportlinkTokenKeepAlive SportlinkPublicMatchIdWarmup SportlinkContractCheck \
          DatabaseUitvalMonitor CleanupEmailVerwerking CleanupTeambegeleiding \
-         CleanupAppSettingsAudit CleanupSportlinkMutationAudit SyncJobRecovery; do
+         CleanupAppSettingsAudit CleanupSportlinkMutationAudit; do
   az functionapp config appsettings set -g "$RG" -n "$APP" \
     --settings "AzureWebJobs.${F}.Disabled=true" -o none
 done

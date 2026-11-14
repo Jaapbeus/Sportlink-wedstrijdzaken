@@ -323,6 +323,88 @@ public class SyncJobsRepositoryIntegrationTests
         gelezen.WeekOffsetTo.Should().Be(3);
     }
 
+    [PostgresFact]
+    public async Task Upgrade_BestaandeRunningJob_TeltAlsPoging1_EnKrijgtHoogstensTweeHerhalingen()
+    {
+        await SchoonAsync();
+        var running = Guid.NewGuid();
+        var pending = Guid.NewGuid();
+        await SyncJobsRepository.CreateAsync(ConnectionString, running, Club, 0, 1);
+        await SyncJobsRepository.CreateAsync(ConnectionString, pending, Club, 0, 1);
+        // Toestand van vóór de upgrade: een job die al liep, zonder pogingteller.
+        await ZetLegacyRunningAsync(running);
+
+        await PasMigratieToeAsync();
+        await PasMigratieToeAsync(); // idempotent
+
+        (await AttemptAsync(running)).Should().Be(1, "een bestaande running-job is al één keer gestart");
+        (await AttemptAsync(pending)).Should().Be(0, "een pending-job is nog nooit geclaimd");
+
+        await MaakStartOuderAsync(running, minuten: 31);
+        (await HerstelAsync()).Retry.Select(r => r.JobId).Should().Contain(running);
+        (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, running)).Should().Be(2);
+        await MaakStartOuderAsync(running, minuten: 31);
+        (await HerstelAsync()).Retry.Select(r => r.JobId).Should().Contain(running);
+        (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, running)).Should().Be(3);
+        await MaakStartOuderAsync(running, minuten: 31);
+        var laatste = await HerstelAsync();
+
+        laatste.Retry.Select(r => r.JobId).Should().NotContain(running, "na de upgrade zijn er precies 2 herhalingen, geen 3");
+        (await StatusAsync(running)).Should().Be("failed");
+        (await StatusAsync(pending)).Should().Be("pending");
+    }
+
+    [PostgresFact]
+    public async Task Herstel_EnqueueMislukt_JobBlijftPendingEnWordtNaDeTermijnOpnieuwAangeboden_ZonderExtraPoging()
+    {
+        await SchoonAsync();
+        var id = Guid.NewGuid();
+        await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
+        await ZetLegacyRunningAsync(id);
+        await PasMigratieToeAsync();
+        await MaakStartOuderAsync(id, minuten: 31);
+
+        (await HerstelAsync()).Retry.Select(r => r.JobId).Should().Contain(id);
+        // Hier mislukt de enqueue: er komt geen bericht, de job staat op pending met poging 1.
+        (await StatusAsync(id)).Should().Be("pending");
+        (await HerstelAsync()).Retry.Select(r => r.JobId).Should().NotContain(id, "binnen de termijn niet opnieuw");
+
+        await MaakStartOuderAsync(id, minuten: 31);
+        (await HerstelAsync()).Retry.Select(r => r.JobId).Should().Contain(id, "na de termijn wordt hij opnieuw aangeboden");
+        (await AttemptAsync(id)).Should().Be(1, "opnieuw aanbieden verbruikt geen poging; alleen de claim telt");
+    }
+
+    private static async Task ZetLegacyRunningAsync(Guid id)
+    {
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "UPDATE public.syncjobs SET status = 'running', startedat = now(), attempt = 0 WHERE id = @id", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static async Task PasMigratieToeAsync()
+    {
+        var dir = Path.GetDirectoryName(typeof(SyncJobsRepositoryIntegrationTests).Assembly.Location)!;
+        while (!Directory.Exists(Path.Combine(dir, "Database.Postgres", "migrations")))
+            dir = Path.GetDirectoryName(dir) ?? throw new InvalidOperationException("repositorywortel niet gevonden");
+        var sql = await File.ReadAllTextAsync(Path.Combine(dir, "Database.Postgres", "migrations", "052_syncjobs_attempt.sql"));
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<int> AttemptAsync(Guid id)
+    {
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand("SELECT attempt FROM public.syncjobs WHERE id = @id", conn);
+        cmd.Parameters.AddWithValue("id", id);
+        return (int)(await cmd.ExecuteScalarAsync())!;
+    }
+
     private static Task<SyncJobRecoveryBatch> HerstelAsync()
         => SyncJobsRepository.RecoverInterruptedAsync(ConnectionString, SyncJobRecoveryPolicy.StaleCutoff(DateTime.UtcNow));
 
