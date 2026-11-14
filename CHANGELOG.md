@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- CI: de mutatietest van de agentinstructieguard stopt per mutant bij de eerste rode test, zodat hij lokaal ruim de helft sneller klaar is; de basislijn draait nog volledig en elke mutant moet nog steeds rood worden (#1931).
+
 ## [3.17.0.0] — 2026-11-12
 
 - De auditregistratie van een aangemaakte clubwedstrijd legt nu het echte `PublicMatchId` van Sportlink vast in plaats van de tijdelijke waarde, op beide databasetiers. Daardoor is een latere wijziging of verwijdering aan de aanmaak te koppelen. Alleen bij een geslaagde, echte aanmaak; een fout bij het bijwerken breekt de aanmaak niet af (#1879).
