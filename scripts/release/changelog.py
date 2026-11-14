@@ -6,13 +6,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import re
 import sys
-import tempfile
 from datetime import date as calendar_date
 from pathlib import Path
 from typing import Any
+
+import transaction
+from transaction import write_atomic as _write_atomic
 
 
 VERSION_RE = re.compile(r"\A\d+\.\d+\.\d+\.\d+\Z")
@@ -24,7 +25,7 @@ CATEGORIES = {"Added", "Changed", "Fixed", "Security", "Removed"}
 IMPACTS = {"user_facing", "internal"}
 CHANGELOG = "CHANGELOG.md"
 MANIFEST = "changelog.d/release-manifest.json"
-JOURNAL = "changelog.d/.prepare-journal.json"
+JOURNAL = "artifacts/release/changelog-state.json"
 
 
 class ChangelogError(Exception):
@@ -111,7 +112,7 @@ def _load_manifest(repo: Path) -> dict[str, Any]:
     if type(manifest["schema_version"]) is not int or manifest["schema_version"] != 1 or not isinstance(manifest["releases"], list) or not isinstance(manifest["changes"], dict):
         raise ChangelogError("Ongeldig releasemanifest")
     for release in manifest["releases"]:
-        if not isinstance(release, dict) or set(release) != {"version", "date", "change_ids"}:
+        if not isinstance(release, dict) or set(release) not in ({"version", "date", "change_ids"}, {"version", "date", "change_ids", "proof"}):
             raise ChangelogError("Ongeldige releasevermelding in manifest")
         if not isinstance(release["version"], str) or not VERSION_RE.fullmatch(release["version"]):
             raise ChangelogError("Ongeldig versienummer in manifest")
@@ -123,6 +124,8 @@ def _load_manifest(repo: Path) -> dict[str, Any]:
             raise ChangelogError("Ongeldige releasedatum in manifest")
         if not isinstance(release["change_ids"], list) or any(not isinstance(item, str) for item in release["change_ids"]) or len(release["change_ids"]) != len(set(release["change_ids"])):
             raise ChangelogError("Ongeldige change_ids in manifest")
+        if "proof" in release:
+            _validate_proof(release["proof"])
     for change_id, record in manifest["changes"].items():
         if not CHANGE_ID_RE.fullmatch(change_id) or not isinstance(record, dict) or set(record) != {"version", "fingerprint"}:
             raise ChangelogError("Ongeldige ID-registratie in manifest")
@@ -131,6 +134,42 @@ def _load_manifest(repo: Path) -> dict[str, Any]:
         if not isinstance(record["fingerprint"], str) or not re.fullmatch(r"[0-9a-f]{64}", record["fingerprint"]):
             raise ChangelogError("Ongeldige fingerprint in ID-registratie")
     return manifest
+
+
+def _validate_proof(proof: Any) -> None:
+    if not isinstance(proof, dict) or set(proof) != {"changelog_sha256", "manifest_sha256", "inputs"}:
+        raise ChangelogError("Ongeldig releasebewijs in manifest")
+    if not isinstance(proof["inputs"], dict):
+        raise ChangelogError("Ongeldige fragmentregistratie in releasebewijs")
+    hashes = [proof["changelog_sha256"], proof["manifest_sha256"], *proof["inputs"].values()]
+    if any(not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value) for value in hashes):
+        raise ChangelogError("Ongeldige SHA256 in releasebewijs")
+
+
+def _manifest_text(manifest: dict) -> str:
+    return json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+
+
+def _sha256(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _prepared(repo: Path, manifest: dict, version: str, date: str, inputs: dict) -> dict | None:
+    matches = [entry for entry in manifest["releases"] if entry["version"] == version]
+    if not matches:
+        return None
+    if len(matches) != 1 or matches[0]["date"] != date or "proof" not in matches[0]:
+        raise ChangelogError("Bestaande release mist exact herstelbewijs of heeft een andere datum")
+    proof = matches[0]["proof"]
+    source = (repo / CHANGELOG).read_bytes().decode("utf-8")
+    manifest_source = (repo / MANIFEST).read_bytes().decode("utf-8")
+    unsigned = json.loads(json.dumps(manifest))
+    next(entry for entry in unsigned["releases"] if entry["version"] == version).pop("proof")
+    if (proof["inputs"] != inputs or proof["changelog_sha256"] != _sha256(source)
+            or proof["manifest_sha256"] != _sha256(_manifest_text(unsigned))
+            or manifest_source != _manifest_text(manifest)):
+        raise ChangelogError("Bestaande release wijkt af van het vastgelegde exacte releasebewijs")
+    return {CHANGELOG: source, MANIFEST: manifest_source}
 
 
 def _fingerprint(fragment: dict[str, Any]) -> str:
@@ -180,40 +219,16 @@ def _split_unreleased(changelog: str) -> tuple[str, str, str]:
     return before, body.strip(), tail
 
 
-def _write_atomic(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(content)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+def _fragment_inputs(repo: Path) -> dict[str, str]:
+    return {
+        path.relative_to(repo).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted((repo / "changelog.d").glob("*.json"))
+        if path.name not in {Path(MANIFEST).name, "schema-v1.json"}
+    }
 
 
-def _recover(repo: Path, requested_version: str, requested_date: str) -> bool:
-    journal_path = repo / JOURNAL
-    if not journal_path.exists():
-        return False
-    journal = _json(journal_path)
-    expected = {"schema_version", "version", "date", "changelog_before", "manifest_before", "changelog_after", "manifest_after"}
-    if not isinstance(journal, dict):
-        raise ChangelogError("Ongeldig hersteljournaal")
-    _exact_keys(journal, expected, JOURNAL)
-    if journal["schema_version"] != 1 or journal["version"] != requested_version or journal["date"] != requested_date:
-        raise ChangelogError("Er staat een andere release klaar voor herstel; gebruik exact hetzelfde versienummer en dezelfde datum")
-    for relpath, before, after in ((CHANGELOG, "changelog_before", "changelog_after"), (MANIFEST, "manifest_before", "manifest_after")):
-        current_path = repo / relpath
-        current = current_path.read_text(encoding="utf-8") if current_path.exists() else ""
-        if current not in (journal[before], journal[after]):
-            raise ChangelogError(f"Bestand is sinds het hersteljournaal gewijzigd: {relpath}")
-    _write_atomic(repo / CHANGELOG, journal["changelog_after"].encode("utf-8"))
-    _write_atomic(repo / MANIFEST, journal["manifest_after"].encode("utf-8"))
-    journal_path.unlink()
-    return True
+def _preview_result(updates: dict[str, str]) -> str:
+    return updates[CHANGELOG] + "\n--- RELEASE MANIFEST ---\n" + updates[MANIFEST]
 
 
 def validate(repo: Path) -> list[dict[str, Any]]:
@@ -238,14 +253,21 @@ def prepare(repo: Path, version: str, date: str, apply: bool) -> str:
         raise ChangelogError("Datum moet YYYY-MM-DD zijn")
     if parsed_date.isoformat() != date:
         raise ChangelogError("Datum moet YYYY-MM-DD zijn")
-    if _recover(repo, version, date):
-        return "Hersteljournaal verwerkt; CHANGELOG en manifest zijn bijgewerkt."
+    identity = {"version": version, "date": date}
+    inputs = _fragment_inputs(repo)
+    restored = transaction.resume(repo, JOURNAL, identity, (CHANGELOG, MANIFEST), inputs, apply, _write_atomic)
+    if restored is not None:
+        return "Hersteljournaal verwerkt; exacte release-inhoud bevestigd." if apply else _preview_result(restored)
     fragments = validate(repo)
     manifest = _load_manifest(repo)
-    if any(entry["version"] == version for entry in manifest["releases"]):
-        raise ChangelogError(f"Versie staat al in manifest: {version}")
+    prepared = _prepared(repo, manifest, version, date, inputs)
+    if prepared is not None:
+        return _preview_result(prepared)
     generated, new_ids, registry = _render(fragments, manifest["changes"])
-    before, legacy, tail = _split_unreleased((repo / CHANGELOG).read_text(encoding="utf-8"))
+    source = (repo / CHANGELOG).read_text(encoding="utf-8")
+    if re.search(rf"(?m)^## \[{re.escape(version)}\]", source):
+        raise ChangelogError("Versiekop bestaat al zonder exact herstelbewijs; hersteljournaal ontbreekt")
+    before, legacy, tail = _split_unreleased(source)
     combined = "\n\n".join(part for part in (legacy, generated) if part)
     sections = []
     if combined:
@@ -258,19 +280,14 @@ def prepare(repo: Path, version: str, date: str, apply: bool) -> str:
     this_release_ids = sorted(change_id for change_id in new_ids if registry[change_id]["version"] == version)
     manifest["releases"].append({"version": version, "date": date, "change_ids": this_release_ids})
     manifest["releases"].sort(key=lambda item: (item["date"], item["version"]))
-    manifest_text = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
+    proof = {"changelog_sha256": _sha256(next_changelog),
+             "manifest_sha256": _sha256(_manifest_text(manifest)), "inputs": inputs}
+    next(entry for entry in manifest["releases"] if entry["version"] == version)["proof"] = proof
+    manifest_text = _manifest_text(manifest)
+    updates = {CHANGELOG: next_changelog, MANIFEST: manifest_text}
     if not apply:
-        return next_changelog + "\n--- RELEASE MANIFEST ---\n" + manifest_text
-    journal = {
-        "schema_version": 1, "version": version, "date": date,
-        "changelog_before": (repo / CHANGELOG).read_text(encoding="utf-8"),
-        "manifest_before": (repo / MANIFEST).read_text(encoding="utf-8") if (repo / MANIFEST).exists() else "",
-        "changelog_after": next_changelog, "manifest_after": manifest_text,
-    }
-    _write_atomic(repo / JOURNAL, (json.dumps(journal, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-    _write_atomic(repo / CHANGELOG, next_changelog.encode("utf-8"))
-    _write_atomic(repo / MANIFEST, manifest_text.encode("utf-8"))
-    (repo / JOURNAL).unlink()
+        return _preview_result(updates)
+    transaction.commit(repo, JOURNAL, identity, updates, inputs, _write_atomic)
     return f"Release {version} voorbereid; {len(new_ids)} change-ID's geregistreerd."
 
 
@@ -294,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise ChangelogError("prepare vereist --version en --date")
             print(prepare(repo, args.version, args.date, args.apply))
         return 0
-    except (ChangelogError, OSError) as exc:
+    except (ChangelogError, transaction.TransactionError, OSError) as exc:
         print(f"Fout: {exc}", file=sys.stderr)
         return 1
 

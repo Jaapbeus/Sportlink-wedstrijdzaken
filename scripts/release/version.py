@@ -12,6 +12,9 @@ from pathlib import Path
 
 import yaml
 
+import transaction
+from transaction import write_atomic as _write_atomic
+
 VERSION_RE = re.compile(r"\A\d+\.\d+\.\d+\.\d+\Z")
 CSPROJS = (
     "FunctionApp/fa-dev-sportlink-01.csproj",
@@ -20,6 +23,7 @@ CSPROJS = (
 )
 YAML = "docs/api-standaarden/openapi.yaml"
 JSON_PATH = "docs/api-standaarden/openapi.json"
+JOURNAL = "artifacts/release/version-state.json"
 
 
 class VersionError(Exception):
@@ -86,6 +90,18 @@ def build_updates(repo: Path, expected: str, expected_api: str, target: str) -> 
     return updates
 
 
+def prepare(repo: Path, expected: str, expected_api: str, target: str, apply: bool) -> dict[str, str]:
+    identity = {"expected": expected, "expected_api": expected_api, "target": target}
+    paths = (*CSPROJS, YAML, JSON_PATH)
+    restored = transaction.resume(repo, JOURNAL, identity, paths, {}, apply, _write_atomic)
+    if restored is not None:
+        return restored
+    updates = build_updates(repo, expected, expected_api, target)
+    if apply:
+        transaction.commit(repo, JOURNAL, identity, updates, {}, _write_atomic)
+    return updates
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path.cwd())
@@ -96,15 +112,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         repo = args.repo.resolve(strict=True)
-        updates = build_updates(repo, args.expected_current, args.expected_api_version, args.version)
+        updates = prepare(repo, args.expected_current, args.expected_api_version, args.version, args.apply)
         if args.apply:
-            for relative, content in updates.items():
-                (repo / relative).write_text(content, encoding="utf-8")
             print(f"Versie bijgewerkt naar {args.version} in {len(updates)} bestanden.")
         else:
             print(f"Preview: {len(updates)} bestanden krijgen versie {args.version}; gebruik --apply om te schrijven.")
         return 0
-    except (VersionError, OSError, ET.ParseError) as exc:
+    except (VersionError, transaction.TransactionError, OSError, ET.ParseError) as exc:
         print(f"Fout: {exc}", file=sys.stderr)
         return 1
 

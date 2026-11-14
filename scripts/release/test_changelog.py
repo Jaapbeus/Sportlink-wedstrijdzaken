@@ -7,6 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import changelog
+import transaction
+from test_support import exercise_failures, snapshot
 
 
 def fragment(change_id: str = "feature.test", *, impact: str = "user_facing", origin: str | None = None) -> dict:
@@ -84,8 +86,9 @@ class ChangelogTests(unittest.TestCase):
         self.assertIn("Legacy entry (#1900)", output)
         manifest = json.loads((self.repo / changelog.MANIFEST).read_text(encoding="utf-8"))
         self.assertEqual(manifest["releases"][0]["change_ids"], ["feature.test"])
-        with self.assertRaises(changelog.ChangelogError):
-            changelog.prepare(self.repo, "3.18.0.0", "2026-11-14", apply=True)
+        before_repeat = snapshot(self.repo)
+        changelog.prepare(self.repo, "3.18.0.0", "2026-11-14", apply=True)
+        self.assertEqual(before_repeat, snapshot(self.repo))
 
     def test_interrupted_prepare_recovers_from_journal(self) -> None:
         self.write_fragment(fragment())
@@ -102,7 +105,7 @@ class ChangelogTests(unittest.TestCase):
         self.assertTrue((self.repo / changelog.JOURNAL).exists())
         result = changelog.prepare(self.repo, "3.18.0.0", "2026-11-14", apply=True)
         self.assertIn("Hersteljournaal verwerkt", result)
-        self.assertFalse((self.repo / changelog.JOURNAL).exists())
+        self.assertEqual(json.loads((self.repo / changelog.JOURNAL).read_text())["status"], "completed")
         manifest = json.loads((self.repo / changelog.MANIFEST).read_text(encoding="utf-8"))
         self.assertEqual(manifest["releases"][0]["change_ids"], ["feature.test"])
 
@@ -129,6 +132,58 @@ class ChangelogTests(unittest.TestCase):
         self.write_fragment(changed)
         with self.assertRaises(changelog.ChangelogError):
             changelog.preview(self.repo)
+
+    def test_every_write_boundary_recovers_and_dry_run_never_writes(self) -> None:
+        self.write_fragment(fragment())
+        exercise_failures(self, self.repo, changelog, lambda repo, apply: changelog.prepare(
+            repo, "3.18.0.0", "2026-11-14", apply), 4)
+
+    def test_completed_retry_rejects_modified_content_or_inputs(self) -> None:
+        self.write_fragment(fragment())
+        changelog.prepare(self.repo, "3.18.0.0", "2026-11-14", True)
+        for relative in (changelog.CHANGELOG, changelog.MANIFEST, "changelog.d/feature.test.json"):
+            with self.subTest(relative=relative):
+                path = self.repo / relative
+                before = path.read_bytes()
+                path.write_bytes(before + b" ")
+                changed = snapshot(self.repo)
+                for apply in (False, True):
+                    with self.assertRaises(transaction.TransactionError):
+                        changelog.prepare(self.repo, "3.18.0.0", "2026-11-14", apply)
+                    self.assertEqual(changed, snapshot(self.repo))
+                path.write_bytes(before)
+
+    def test_fresh_worktree_retry_uses_committed_proof_without_writes(self) -> None:
+        self.write_fragment(fragment())
+        expected = changelog.prepare(self.repo, "3.18.0.0", "2026-11-14", False)
+        changelog.prepare(self.repo, "3.18.0.0", "2026-11-14", True)
+        (self.repo / changelog.JOURNAL).unlink()
+        before = snapshot(self.repo)
+        for apply in (False, True):
+            self.assertEqual(changelog.prepare(self.repo, "3.18.0.0", "2026-11-14", apply), expected)
+            self.assertEqual(before, snapshot(self.repo))
+        for relative in (changelog.CHANGELOG, changelog.MANIFEST, "changelog.d/feature.test.json"):
+            path = self.repo / relative
+            original = path.read_bytes()
+            path.write_bytes(original + b" ")
+            changed = snapshot(self.repo)
+            for apply in (False, True):
+                with self.assertRaises(changelog.ChangelogError):
+                    changelog.prepare(self.repo, "3.18.0.0", "2026-11-14", apply)
+                self.assertEqual(changed, snapshot(self.repo))
+            path.write_bytes(original)
+
+    def test_legacy_release_without_exact_proof_fails_closed(self) -> None:
+        changelog.prepare(self.repo, "3.18.0.0", "2026-11-14", True)
+        (self.repo / changelog.JOURNAL).unlink()
+        path = self.repo / changelog.MANIFEST
+        manifest = json.loads(path.read_text())
+        manifest["releases"][0].pop("proof")
+        path.write_text(json.dumps(manifest))
+        before = snapshot(self.repo)
+        with self.assertRaises(changelog.ChangelogError):
+            changelog.prepare(self.repo, "3.18.0.0", "2026-11-14", True)
+        self.assertEqual(before, snapshot(self.repo))
 
 
 if __name__ == "__main__":

@@ -8,6 +8,8 @@ import unittest
 from pathlib import Path
 
 import version
+import transaction
+from test_support import exercise_failures, snapshot
 
 
 APP_VERSION = "3.17.4.0"
@@ -63,6 +65,34 @@ class VersionTests(unittest.TestCase):
         for relative in version.CSPROJS:
             self.assertIn("<Version>3.18.0.0</Version>", (self.repo / relative).read_text(encoding="utf-8"))
         self.assertEqual(json.loads((self.repo / version.JSON_PATH).read_text(encoding="utf-8"))["info"]["version"], "3.18.0.0")
+
+    def test_every_write_boundary_recovers_and_dry_run_never_writes(self) -> None:
+        exercise_failures(self, self.repo, version, lambda repo, apply: version.prepare(
+            repo, APP_VERSION, API_VERSION, "3.18.0.0", apply), 7)
+
+    def test_retry_and_later_allocation_keep_only_latest_state(self) -> None:
+        version.prepare(self.repo, APP_VERSION, API_VERSION, "3.18.0.0", True)
+        before = snapshot(self.repo)
+        version.prepare(self.repo, APP_VERSION, API_VERSION, "3.18.0.0", True)
+        self.assertEqual(before, snapshot(self.repo))
+        version.prepare(self.repo, "3.18.0.0", "3.18.0.0", "3.19.0.0", True)
+        state = json.loads((self.repo / version.JOURNAL).read_text())
+        self.assertEqual(state["identity"]["target"], "3.19.0.0")
+        self.assertEqual(list((self.repo / "artifacts/release").iterdir()), [self.repo / version.JOURNAL])
+
+    def test_completed_retry_rejects_each_modified_target_before_writing(self) -> None:
+        version.prepare(self.repo, APP_VERSION, API_VERSION, "3.18.0.0", True)
+        for relative in (*version.CSPROJS, version.YAML, version.JSON_PATH):
+            with self.subTest(relative=relative):
+                path = self.repo / relative
+                before = path.read_bytes()
+                path.write_bytes(before + b" ")
+                changed = snapshot(self.repo)
+                for apply in (False, True):
+                    with self.assertRaises(transaction.TransactionError):
+                        version.prepare(self.repo, APP_VERSION, API_VERSION, "3.18.0.0", apply)
+                    self.assertEqual(changed, snapshot(self.repo))
+                path.write_bytes(before)
 
 
 if __name__ == "__main__":
