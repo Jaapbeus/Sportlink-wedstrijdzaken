@@ -51,6 +51,28 @@ public class SqlServerSyncJobsRepositoryIntegrationTests_Start
         finally { await DeleteAsync(club); }
     }
 
+    [SqlServerFact]
+    public async Task CompletedPipeline_PreservesPartialOutcome_AndAttemptOwnership()
+    {
+        const string club = "ALLSTARS-OUTCOME";
+        await DeleteAsync(club);
+        try
+        {
+            var job = await SyncJobsRepository.GetOrCreateActiveAsync(ConnectionString, Guid.NewGuid(), club, 0, 1);
+            var attempt = await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, job.Job.Id);
+            var outcome = new Planner.Shared.Sync.SyncUitkomst();
+            outcome.Registreer(Planner.Shared.Sync.SyncUitkomst.FaseTeams, true);
+            await SyncJobsRepository.MarkOutcomeAsync(ConnectionString, job.Job.Id, outcome, attempt!.Value + 1);
+            (await SyncJobsRepository.GetActiveAsync(ConnectionString, club))!.Status.Should().Be("running");
+            await SyncJobsRepository.MarkOutcomeAsync(ConnectionString, job.Job.Id, outcome, attempt.Value);
+            var history = await SyncJobsRepository.GetRecentAsync(ConnectionString, club, job.Job.Id);
+            history.Single(j => j.Id == job.Job.Id).Status.Should().Be("partial");
+            await SyncJobsRepository.MarkCompletedAsync(ConnectionString, job.Job.Id, false, "late failure", attempt);
+            (await SyncJobsRepository.GetRecentAsync(ConnectionString, club, job.Job.Id)).Single().Status.Should().Be("partial");
+        }
+        finally { await DeleteAsync(club); }
+    }
+
     private static async Task DeleteAsync(string club)
     {
         await using var connection = new SqlConnection(ConnectionString);

@@ -60,7 +60,17 @@ internal static partial class SyncJobsRepository
     internal static Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage, int attempt)
         => MarkCompletedAsync(PostgresDatabaseConfig.ConnectionString, id, succeeded, errorMessage, attempt);
 
-    internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage, int? attempt = null)
+    internal static Task MarkOutcomeAsync(Guid id, SyncUitkomst outcome, int attempt)
+        => MarkOutcomeAsync(PostgresDatabaseConfig.ConnectionString, id, outcome, attempt);
+
+    internal static Task MarkOutcomeAsync(string connectionString, Guid id, SyncUitkomst outcome, int attempt)
+        => MarkTerminalAsync(connectionString, id, SyncJobTransitions.CompletionStatus(outcome),
+            outcome.GedeeltelijkMislukt ? outcome.JobFoutmelding() : null, attempt);
+
+    internal static Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage, int? attempt = null)
+        => MarkTerminalAsync(connectionString, id, SyncJobTransitions.CompletionStatus(succeeded), errorMessage, attempt);
+
+    private static async Task MarkTerminalAsync(string connectionString, Guid id, string status, string? errorMessage, int? attempt)
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
@@ -70,7 +80,7 @@ internal static partial class SyncJobsRepository
             connection);
         command.Parameters.AddWithValue("id", id);
         command.Parameters.AddWithValue("attempt", (object?)attempt ?? DBNull.Value);
-        command.Parameters.AddWithValue("status", SyncJobTransitions.CompletionStatus(succeeded));
+        command.Parameters.AddWithValue("status", status);
         command.Parameters.AddWithValue("errormessage", (object?)SyncJobTransitions.TruncateError(errorMessage) ?? DBNull.Value);
         await command.ExecuteNonQueryAsync();
     }
