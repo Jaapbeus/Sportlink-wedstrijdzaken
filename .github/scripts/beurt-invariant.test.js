@@ -1,6 +1,6 @@
 // Unit-tests voor beurt-invariant.js (#1858) — zonder GitHub, token of netwerk.
 // Uitvoeren: node .github/scripts/beurt-invariant.test.js   (exit 0 = alles groen)
-// Wordt bij elke PR gedraaid door de job 'Build FunctionApp + BlazorAdmin' in build.yml.
+// Wordt bij elke PR gedraaid door de job 'Repo-guards (zonder .NET)' in build.yml.
 const {
   SIGNAAL_MARKER, parseOverdracht, verwachteBeurt, evalueerIssue, isOverdracht, signaalBody, run,
 } = require('./beurt-invariant.js');
