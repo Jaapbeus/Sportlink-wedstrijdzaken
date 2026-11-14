@@ -1386,11 +1386,12 @@ JSON → `400` met `{"error":"…"}` (NL-melding). Validatie staat tier-onafhank
 
 Zonder `?jobId=` geeft `/beheer/sync/status` de actieve job terug, anders de laatste afgeronde job. `job` is `null` zolang er
 nog nooit een sync is gestart. Mogelijke `job.status`-waarden: `pending`, `running`, `succeeded`,
-`failed` — bij `failed` bevat `errorMessage` de reden.
+`partial` en `failed`. Bij `failed` bevat `errorMessage` een veilige melding met alleen het exceptiontype;
+details staan uitsluitend in het functielog.
 
 ### Sync-logboek en voortgang (#1912)
 
-`GET /beheer/sync/status` levert aanvullend `activeJob`, `lastCompletedJob`, maximaal tien `jobs` en `logAvailable`. Elke job bevat `attempt` en `phases` voor de actuele poging. Elke fase bevat start/einde in UTC, een vaste status en reden, aantallen `fetched`, `added`, `updated`, `failed` en voortgang `progress`/`total`. Onbekende aantallen zijn `null`; de UI toont geen verzonnen nul. Historische foutteksten worden niet doorgegeven. `partial` maakt een onvolledige run zichtbaar.
+`GET /beheer/sync/status` levert aanvullend `activeJob`, `lastCompletedJob`, maximaal tien `jobs` en `logAvailable`. Elke job bevat `attempt` en `phases` voor de actuele poging. Elke fase bevat start/einde in UTC, een vaste status (`running`, `succeeded`, `partial`, `failed` of `skipped`) en een allowlisted `reasonCode`, aantallen `fetched`, `added`, `updated`, `failed` en voortgang `progress`/`total`. Onbekende aantallen zijn `null`; de UI toont geen verzonnen nul. Fasegegevens bevatten geen foutteksten of exception-details. `partial` maakt een onvolledige run zichtbaar.
 
 `POST /beheer/sync/trigger` kiest atomair per club een actieve job of maakt er één aan. Bij een bestaande job volgt HTTP 202 met `alreadyRunning: true`, dezelfde `jobId` en eventueel `startedAt`/`phase`; alleen de maker zet een bericht op de queue. Bij enqueue-falen volgt een vaste 503-melding. Een nooit geclaimde, oudere pending-rij blijft bewaard maar blokkeert na de bestaande hersteltermijn geen nieuwe handmatige start. Dit verwijdert of herstelt de historische rij niet.
 

@@ -47,6 +47,14 @@ public sealed class InstellingenSyncLogTests
         ];
         Assert.Equal("Fase 2 van 7: Programma · 1 fase afgerond.", Call<string>(log, "FaseVoortgang", job, true));
 
+        job.Phases =
+        [
+            new() { Phase = "configuratie", Status = "succeeded", StartedAt = tijd },
+            new() { Phase = "teams", Status = "succeeded", StartedAt = tijd.AddSeconds(1) },
+            new() { Phase = "programma", Status = "running", StartedAt = tijd.AddSeconds(2) }
+        ];
+        Assert.Equal("Fase 2 van 7: Programma · 2 fasen afgerond.", Call<string>(log, "FaseVoortgang", job, true));
+
         job.Phases.AddRange(
         [
             new() { Phase = "uitslagen", Status = "succeeded", StartedAt = tijd.AddSeconds(2) },
@@ -55,7 +63,7 @@ public sealed class InstellingenSyncLogTests
             new() { Phase = "canonicalisatie", Status = "succeeded", StartedAt = tijd.AddSeconds(5) },
             new() { Phase = "planner-view", Status = "skipped", StartedAt = tijd.AddSeconds(6) }
         ]);
-        Assert.Equal("Fase 7 van 7: Plannerweergave · 6 fasen afgerond.", Call<string>(log, "FaseVoortgang", job, true));
+        Assert.Equal("Fase 7 van 7: Plannerweergave · 7 fasen afgerond.", Call<string>(log, "FaseVoortgang", job, true));
 
         job.Phases =
         [
