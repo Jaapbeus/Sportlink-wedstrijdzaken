@@ -1,30 +1,28 @@
 using Planner.Shared.Email;
+using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace FunctionApp.Postgres.Email;
 
 /// <summary>
 /// Postgres-tier-lokaal inkomend-berichtmodel en de unieke-sleutelexceptie (#889).
 /// <c>EmailStatus</c>, <c>VerzoekType</c>, <c>NamensWie</c> en <c>BerichtClassificatie</c> staan sinds #1716
-/// slice 5 eenmalig in <c>Planner.Shared/Email/</c>; ook <c>ClubAppSettingsSnapshot</c>,
+/// slice 5 eenmalig in <c>Planner.Shared/Email/</c>; ook de zes gemeenschappelijke berichtvelden,
+/// <c>ClubAppSettingsSnapshot</c>,
 /// <c>EmailTemplate</c> en <c>EmailVerwerkingStand</c> staan sinds slice 13 daar. <c>InkomendBericht</c> blijft hier:
 /// <c>ConversationId</c>
 /// en <c>Body</c> zijn op deze tier nullable, op de SQL Server-tier niet-nullable met standaard <c>""</c>;
-/// samenvoegen zou een standaardwaarde en daarmee opgeslagen gegevens op één tier veranderen.
+/// Het concrete type en de twee velden blijven tierlokaal om die defaults en nullability te behouden.
 /// </summary>
-public sealed class InkomendBericht : IInkomendBericht
+public sealed class InkomendBericht : InkomendBerichtBasis
 {
-    public string MessageId { get; set; } = "";
+    [JsonProperty(Order = 1)]
+    [JsonPropertyOrder(1)]
     public string? ConversationId { get; set; }
-    public string Afzender { get; set; } = "";
-    // #889 vervolg (BerichtPipeline/EmailTestFunction): de SQL Server-tier se InkomendBericht
-    // heeft dit veld al sinds het begin — hier toegevoegd toen de eerste consument die het
-    // daadwerkelijk gebruikt (EmailTestFunction) werd vertaald.
-    public string AfzenderNaam { get; set; } = "";
-    public string Onderwerp { get; set; } = "";
-    public DateTime OntvangstDatum { get; set; }
+
+    [JsonProperty(Order = 6)]
+    [JsonPropertyOrder(6)]
     public string? Body { get; set; }
-    /// <summary>Internetheaders van het bericht (naam, waarde); alleen gevuld door de Graph-adapter, gebruikt om automatische afzenders te herkennen.</summary>
-    public IReadOnlyList<KeyValuePair<string, string>> InternetHeaders { get; set; } = [];
 }
 
 internal sealed class DubbeleMessageIdException(string messageId, Exception inner)
