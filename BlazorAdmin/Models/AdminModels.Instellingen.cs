@@ -91,6 +91,10 @@ public class SyncStatusDto
 
     /// <summary>Meest recente (of opgevraagde) sync-job — null zolang er nog nooit een job is gestart (#1138).</summary>
     public SyncJobDto? Job { get; set; }
+    public SyncJobDto? ActiveJob { get; set; }
+    public SyncJobDto? LastCompletedJob { get; set; }
+    public List<SyncJobDto> Jobs { get; set; } = new();
+    public bool LogAvailable { get; set; } = true;
 }
 
 /// <summary>Status van een sync-job op de "sync-jobs"-queue (#1138). Status: pending/running/succeeded/failed.</summary>
@@ -104,6 +108,25 @@ public class SyncJobDto
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public string? ErrorMessage { get; set; }
+    public int Attempt { get; set; }
+    public List<SyncLogEntryDto> Phases { get; set; } = new();
+}
+
+public class SyncLogEntryDto
+{
+    public Guid JobId { get; set; }
+    public int Attempt { get; set; }
+    public string? Phase { get; set; }
+    public DateTime StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public string? Status { get; set; }
+    public int? Fetched { get; set; }
+    public int? Added { get; set; }
+    public int? Updated { get; set; }
+    public int? Failed { get; set; }
+    public int? Progress { get; set; }
+    public int? Total { get; set; }
+    public string? ReasonCode { get; set; }
 }
 
 public class TriggerSyncResultDto
@@ -114,6 +137,9 @@ public class TriggerSyncResultDto
     public int WeekOffsetTo { get; set; }
     public DateTime Tijdstip { get; set; }
     public string? Melding { get; set; }
+    public bool AlreadyRunning { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public string? Phase { get; set; }
 }
 
 // Multi-club (#324)

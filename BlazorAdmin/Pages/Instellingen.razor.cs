@@ -40,6 +40,10 @@ public partial class Instellingen : ClubSelectorPageBase
     private bool _syncLoading = true;
     private bool _syncing;
     private string? _syncResult;
+    private CancellationTokenSource? _syncPollCancellation;
+    private int _syncPollGeneration;
+    private int _syncPollIntervalMilliseconds = 3000;
+    private Task? _syncPollTask;
     private bool _toonResetBevestiging;
     private int _resetSeizoen = HuidigSeizoenStartjaar();
     private bool _toonEmailLog;
@@ -59,6 +63,9 @@ public partial class Instellingen : ClubSelectorPageBase
 
     protected override async Task OnClubChangedAsync()
     {
+        StopSyncPolling();
+        _syncing = false;
+        _status = null;
         _verwijderAdresBevestiging.Annuleer();
         await LoadAsync();
     }
@@ -73,6 +80,7 @@ public partial class Instellingen : ClubSelectorPageBase
 
         if (_isTestmodus)
         {
+            StopSyncPolling();
             _status = null;
             _emailLog = null;
             _reviewLog = null;
@@ -107,7 +115,13 @@ public partial class Instellingen : ClubSelectorPageBase
         else errorMessage = r.ErrorMessage;
 
         var syncResult = await syncTask;
-        if (syncResult.Success) _status = syncResult.Data;
+        if (syncResult.Success)
+        {
+            _status = syncResult.Data;
+            _syncing = IsActieveSync(_status?.ActiveJob);
+            if (_syncing) StartSyncPolling(clubCode);
+            else FinishSync(_status?.LastCompletedJob ?? _status?.Job);
+        }
 
         var emailResult = await emailTask;
         if (emailResult.Success)
@@ -152,45 +166,179 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task StartSyncAsync(int? seizoenStartjaar)
     {
+        var clubCode = ClubSelector.SelectedClubCode;
+        StopSyncPolling();
         _syncing = true;
         _syncResult = null;
         var r = await InstellingenApi.TriggerSyncAsync(seizoenStartjaar);
+        if (IsClubGewisseld(clubCode)) return;
         if (!r.Success || r.Data?.JobId is not Guid jobId)
         {
-            _syncResult = $"Sync starten mislukt: {r.ErrorMessage}";
+            _syncResult = "Synchronisatie starten is niet gelukt. Probeer het later opnieuw.";
             _syncing = false;
             return;
         }
-        _syncResult = "Synchronisatie gestart, even geduld…";
-        StateHasChanged();
-        // #1138: pollt de job-status i.p.v. te gissen naar een wijziging in LastSyncTimestamp —
-        // zo is ook een mislukte job direct zichtbaar in plaats van na 10 minuten stilzwijgend te stoppen.
-        var deadline = DateTime.UtcNow.AddMinutes(10);
-        while (DateTime.UtcNow < deadline)
+        _syncResult = r.Data.AlreadyRunning
+            ? "Er loopt al een synchronisatie. De actuele voortgang wordt hieronder getoond."
+            : $"Synchronisatiejob aangemaakt om {NaarLokaleTijd(r.Data.Tijdstip):HH:mm}.";
+        var statusResult = await InstellingenApi.GetSyncStatusAsync(jobId);
+        if (IsClubGewisseld(clubCode)) return;
+        if (statusResult.Success && statusResult.Data != null)
         {
-            await Task.Delay(3000);
-            var statusResult = await InstellingenApi.GetSyncStatusAsync(jobId);
-            var job = statusResult.Success ? statusResult.Data?.Job : null;
-            if (job?.Status == "succeeded")
+            _status = statusResult.Data;
+            _syncing = IsActieveSync(_status.ActiveJob);
+            if (_syncing) StartSyncPolling(clubCode);
+            else FinishSync(_status.LastCompletedJob ?? _status.Job);
+        }
+        else
+        {
+            StartSyncPolling(clubCode);
+        }
+        StateHasChanged();
+    }
+
+    private void StartSyncPolling(string? clubCode)
+    {
+        StopSyncPolling();
+        var cancellation = new CancellationTokenSource();
+        _syncPollCancellation = cancellation;
+        var generation = _syncPollGeneration;
+        _syncPollTask = PollSyncStatusAsync(clubCode, generation, cancellation.Token);
+    }
+
+    private async Task PollSyncStatusAsync(string? clubCode, int generation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
             {
-                _status = statusResult!.Data;
-                _syncResult = "Synchronisatie voltooid.";
-                _syncing = false;
-                StateHasChanged();
-                return;
-            }
-            if (job?.Status == "failed")
-            {
-                _status = statusResult!.Data;
-                _syncResult = $"Synchronisatie mislukt: {job.ErrorMessage}";
-                _syncing = false;
-                StateHasChanged();
+                await Task.Delay(_syncPollIntervalMilliseconds, cancellationToken);
+                var result = await InstellingenApi.GetSyncStatusAsync(cancellationToken: cancellationToken);
+                if (cancellationToken.IsCancellationRequested || generation != _syncPollGeneration || IsClubGewisseld(clubCode)) return;
+                if (!result.Success || result.Data == null) continue;
+
+                _status = result.Data;
+                await InvokeAsync(StateHasChanged);
+                if (IsActieveSync(_status.ActiveJob)) continue;
+
+                FinishSync(_status.LastCompletedJob ?? _status.Job);
+                StopSyncPolling();
+                await InvokeAsync(StateHasChanged);
                 return;
             }
         }
-        _syncResult = "Synchronisatie loopt op de achtergrond. Herlaad de pagina later voor de actuele status.";
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Clubwissel of componentverwijdering beëindigt de polling zonder UI-fout.
+        }
+    }
+
+    private static bool IsActieveSync(SyncJobDto? job) => job?.Status is "pending" or "running";
+
+    private void FinishSync(SyncJobDto? job)
+    {
+        if (job == null) return;
         _syncing = false;
-        await LoadAsync();
+        _syncResult = job.Status switch
+        {
+            "succeeded" => "Synchronisatie voltooid.",
+            "partial" => "Synchronisatie gedeeltelijk voltooid. Controleer de fasen met fouten.",
+            "failed" => "Synchronisatie mislukt. Controleer de fasen hieronder.",
+            _ => _syncResult
+        };
+    }
+
+    private void StopSyncPolling()
+    {
+        _syncPollGeneration++;
+        var cancellation = _syncPollCancellation;
+        _syncPollCancellation = null;
+        if (cancellation == null) return;
+        cancellation.Cancel();
+        cancellation.Dispose();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) StopSyncPolling();
+        base.Dispose(disposing);
+    }
+
+    private static DateTime NaarLokaleTijd(DateTime tijdstip)
+    {
+        var utc = tijdstip.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(tijdstip, DateTimeKind.Utc)
+            : tijdstip.ToUniversalTime();
+        return utc.ToLocalTime();
+    }
+
+    private static string? ToonDuur(DateTime gestart, DateTime? afgerond)
+    {
+        if (afgerond == null) return null;
+        var duur = afgerond.Value - gestart;
+        return duur.TotalMinutes >= 1 ? $"{(int)duur.TotalMinutes} min {duur.Seconds} sec" : $"{Math.Max(0, duur.Seconds)} sec";
+    }
+
+    private static string SyncStatusTekst(string? status) => status switch
+    {
+        "pending" => "Wacht",
+        "running" => "Bezig",
+        "succeeded" => "Gelukt",
+        "partial" => "Deels mislukt",
+        "failed" => "Mislukt",
+        "skipped" => "Overgeslagen",
+        _ => "Onbekend"
+    };
+
+    private static string SyncStatusKleur(string? status) => status switch
+    {
+        "succeeded" => "bg-success",
+        "running" => "bg-primary",
+        "pending" => "bg-secondary",
+        "partial" => "bg-warning text-dark",
+        "failed" => "bg-danger",
+        "skipped" => "bg-light text-dark",
+        _ => "bg-secondary"
+    };
+
+    private static string SyncFaseTekst(string? fase) => fase switch
+    {
+        "teams" => "Teams",
+        "programma" => "Programma",
+        "uitslagen" => "Uitslagen",
+        "matchdetails" => "Wedstrijddetails",
+        "planner-view" => "Plannerweergave",
+        "canonicalisatie" => "Teamcanonicalisatie",
+        "reconciliatie" => "Reconciliatie",
+        "configuratie" => "Configuratie",
+        _ => "Synchronisatiefase"
+    };
+
+    private static string? SyncRedenTekst(string? reden) => reden switch
+    {
+        "operation_failed" => "De fase kon niet worden uitgevoerd.",
+        "partial_failure" => "Een deel van de gegevens kon niet worden verwerkt.",
+        "configuration_missing" => "Vereiste configuratie ontbreekt.",
+        "egress_blocked" => "Externe verbinding is geblokkeerd.",
+        "programme_truncated" => "Het programma is niet volledig opgehaald.",
+        "reconciliation_skipped" => "Reconciliatie is overgeslagen.",
+        "source_failed" => "De brongegevens konden niet worden opgehaald.",
+        "not_applicable" => "Deze fase is voor deze databasetier niet van toepassing.",
+        _ => null
+    };
+
+    private static string SyncFaseResultaat(SyncLogEntryDto phase)
+    {
+        var aantallen = new List<string>();
+        if (phase.Fetched.HasValue) aantallen.Add($"opgehaald {phase.Fetched}");
+        if (phase.Added.HasValue) aantallen.Add($"toegevoegd {phase.Added}");
+        if (phase.Updated.HasValue) aantallen.Add($"bijgewerkt {phase.Updated}");
+        if (phase.Failed.HasValue) aantallen.Add($"mislukt {phase.Failed}");
+
+        var resultaat = string.Join(" · ", aantallen);
+        var reden = SyncRedenTekst(phase.ReasonCode);
+        if (string.IsNullOrWhiteSpace(resultaat)) return reden ?? "—";
+        return reden == null ? resultaat : $"{resultaat} · {reden}";
     }
 
     private static string CronNaarNederlands(string? cron)
