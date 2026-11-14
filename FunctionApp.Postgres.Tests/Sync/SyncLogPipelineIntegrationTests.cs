@@ -36,7 +36,7 @@ public class SyncLogPipelineIntegrationTests
             server.Requests.Should().Contain(r => r.StartsWith("/teams"));
             server.Requests.Should().Contain(r => r.StartsWith("/wedstrijd-informatie"));
 
-            var repeated = await RunAsync(server);
+            var repeated = await RunAsync(server, callerOwnsLease: true);
             foreach (var phase in new[] { "teams", "programma", "matchdetails" })
             {
                 repeated[phase].Added.Should().Be(0);
@@ -60,7 +60,7 @@ public class SyncLogPipelineIntegrationTests
         }
     }
 
-    private static async Task<Dictionary<string, SyncLogEntry>> RunAsync(SportlinkFixtureServer server, bool expectedPartial = false)
+    private static async Task<Dictionary<string, SyncLogEntry>> RunAsync(SportlinkFixtureServer server, bool expectedPartial = false, bool callerOwnsLease = false)
     {
         var entries = new Dictionary<string, SyncLogEntry>();
         var writer = new SyncLogWriter(Guid.NewGuid(), 1, entry =>
@@ -68,7 +68,14 @@ public class SyncLogPipelineIntegrationTests
             entries[entry.Phase] = entry;
             return Task.CompletedTask;
         });
-        var outcome = await PostgresSyncPipeline.RunSyncAsync(0, 0, server.BaseUrl, "clientId=fixture-test", Club, Cs, NullLogger.Instance, syncLog: writer);
+        await using var heldLease = callerOwnsLease ? await PostgresSyncStagingLease.TryAcquireAsync(Cs) : null;
+        if (callerOwnsLease) heldLease.Should().NotBeNull();
+        var outcome = await PostgresSyncPipeline.RunSyncAsync(0, 0, server.BaseUrl, "clientId=fixture-test", Club, Cs, NullLogger.Instance, syncLog: writer, acquiredLease: heldLease);
+        if (callerOwnsLease)
+        {
+            await using var competingLease = await PostgresSyncStagingLease.TryAcquireAsync(Cs);
+            competingLease.Should().BeNull("the pipeline must not dispose its caller's lease");
+        }
         outcome.GedeeltelijkMislukt.Should().Be(expectedPartial);
         if (expectedPartial) writer.HasIncompletePhases.Should().BeTrue();
         return entries;
