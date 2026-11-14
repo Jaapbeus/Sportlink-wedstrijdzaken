@@ -39,10 +39,12 @@ namespace SportlinkFunction
                 await AppSettings.LoadSettingsAsync(log);
                 var clubCode = AppSettings.GetSetting("clubCode")
                     ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings.");
-                await SqlServerSeasonRollover.EnsureAsync(clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
-                var toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-                log.LogInformation("Sync range: weekOffset -1 to {ToWeekOffset} (end of season)", toWeekOffset);
-                var uitkomst = await RunTrackedSyncAsync(() => Task.FromResult((-1, toWeekOffset)), log, clubCode, seasonEnsured: true);
+                var uitkomst = await RunTrackedSyncAsync(async () =>
+                {
+                    var toWeekOffset = await SeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                    log.LogInformation("Sync range: weekOffset -1 to {ToWeekOffset} (end of season)", toWeekOffset);
+                    return (-1, toWeekOffset);
+                }, log, clubCode);
                 // #1779 (pariteit met de Postgres-tier, #1081): een run met mislukte fases (ook een
                 // ongeldige sportlinkApiUrl) mag niet als Success eindigen en meldt zich als
                 // getypeerde fout met faseoverzicht.
@@ -144,7 +146,8 @@ namespace SportlinkFunction
         /// Internal (#1676): elke aanroeper controleert EgressGuard vooraf. Verwacht geladen AppSettings.
         /// </summary>
         internal static async Task<SyncUitkomst> RunConfiguredSyncAsync(
-            Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow, ILogger log, SyncLogWriter? syncLog = null)
+            Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow, ILogger log,
+            SyncLogWriter? syncLog = null, SqlServerSyncStagingLease? acquiredLease = null)
         {
             if (syncLog is null)
                 return await RunTrackedSyncAsync(buildWindow, log);
@@ -160,19 +163,21 @@ namespace SportlinkFunction
 
             string sportlinkClientId = $"clientId={AppSettings.GetSetting("sportlinkClientId")}";
             await SyncLogReporting.CompletePhaseAsync(syncLog, "configuratie", "succeeded");
-            return await SportlinkSyncPipeline.RunSyncWithSeasonWindowAsync(buildWindow, sportlinkApiUrl, sportlinkClientId, log, syncLog: syncLog);
+            return await SportlinkSyncPipeline.RunSyncWithSeasonWindowAsync(buildWindow, sportlinkApiUrl,
+                sportlinkClientId, log, syncLog: syncLog, acquiredLease: acquiredLease);
         }
 
-        private static async Task<SyncUitkomst> RunTrackedSyncAsync(
+        internal static async Task<SyncUitkomst> RunTrackedSyncAsync(
             Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow, ILogger log,
-            string? loadedClubCode = null, bool seasonEnsured = false)
+            string? loadedClubCode = null)
         {
             if (loadedClubCode is null)
                 await AppSettings.LoadSettingsAsync(log);
             var clubCode = loadedClubCode ?? AppSettings.GetSetting("clubCode")
                 ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings.");
-            if (!seasonEnsured)
-                await SqlServerSeasonRollover.EnsureAsync(clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
+            await using var stagingLease = await SqlServerSyncStagingLease.TryAcquireAsync()
+                ?? throw new SyncAlreadyRunningException();
+            await SqlServerSeasonRollover.EnsureAsync(clubCode, SqlServerSeasonRollover.VandaagInNederland, log);
             var (from, to) = await buildWindow();
             var connectionString = DatabaseConfig.ConnectionString;
             return await SyncJobRunCoordinator.RegisterClaimAndRunAsync(
@@ -182,7 +187,7 @@ namespace SportlinkFunction
                 async () => { await SyncLogRepository.CleanupAllAsync(DateTime.UtcNow); },
                 (id, outcome, attempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, attempt, incomplete),
                 (id, succeeded, error, attempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, attempt),
-                writer => RunConfiguredSyncAsync(from, to, log, writer),
+                writer => RunConfiguredSyncAsync(() => Task.FromResult((from, to)), log, writer, stagingLease),
                 global::Planner.Endpoints.Sync.SyncQueuedJobCore.SafeFailureMessage));
         }
 

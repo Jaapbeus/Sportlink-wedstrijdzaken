@@ -48,10 +48,12 @@ internal static partial class PostgresSyncPipeline
         int fromWeekOffset, int toWeekOffset,
         string sportlinkApiUrl, string sportlinkClientId,
         string clubCode, string connectionString,
-        ILogger log, DateOnly? reconciliatieOndergrens = null, SyncLogWriter? syncLog = null)
+        ILogger log, DateOnly? reconciliatieOndergrens = null, SyncLogWriter? syncLog = null,
+        PostgresSyncStagingLease? acquiredLease = null)
     {
-        await using var stagingLease = await PostgresSyncStagingLease.TryAcquireAsync(connectionString)
-            ?? throw new SyncAlreadyRunningException();
+        await using var ownedLease = acquiredLease is null
+            ? await PostgresSyncStagingLease.TryAcquireAsync(connectionString) ?? throw new SyncAlreadyRunningException()
+            : null;
 
         var uitkomst = new SyncUitkomst();
         // #1779: één herhaalbudget voor alle dataservice-GET's van deze run (begrenst een brede storing).

@@ -35,7 +35,8 @@ internal static class SportlinkSyncPipeline
         string sportlinkApiUrl, string sportlinkClientId,
         ILogger log,
         Func<DateOnly>? bepaalVandaag = null,
-        SyncLogWriter? syncLog = null)
+        SyncLogWriter? syncLog = null,
+        SqlServerSyncStagingLease? acquiredLease = null)
     {
         var uitkomst = new SyncUitkomst();
         // #1779: één herhaalbudget voor alle dataservice-GET's van deze run (begrenst een brede storing).
@@ -44,11 +45,13 @@ internal static class SportlinkSyncPipeline
         if (string.IsNullOrWhiteSpace(clubCode))
             throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings — sync kan niet doorgaan zonder ClubCode.");
 
-        await using var stagingLease = await SqlServerSyncStagingLease.TryAcquireAsync()
-            ?? throw new SyncAlreadyRunningException();
+        await using var ownedLease = acquiredLease is null
+            ? await SqlServerSyncStagingLease.TryAcquireAsync() ?? throw new SyncAlreadyRunningException()
+            : null;
 
-        await SqlServerSeasonRollover.EnsureAsync(
-            clubCode, bepaalVandaag?.Invoke() ?? SqlServerSeasonRollover.VandaagInNederland, log);
+        if (acquiredLease is null)
+            await SqlServerSeasonRollover.EnsureAsync(
+                clubCode, bepaalVandaag?.Invoke() ?? SqlServerSeasonRollover.VandaagInNederland, log);
         var (fromWeekOffset, toWeekOffset) = await buildWindow();
 
         var (teamsFailed, matchesFailed) = await FetchAndMergeAsync(fromWeekOffset, toWeekOffset,

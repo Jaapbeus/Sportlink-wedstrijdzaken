@@ -39,10 +39,11 @@ public static class SyncFunction
             await PostgresAppSettings.LoadSettingsAsync(log);
             var clubCode = PostgresAppSettings.GetSetting("clubCode")
                 ?? throw new InvalidOperationException("Vereiste instelling 'clubcode' ontbreekt in public.appsettings.");
-            // #861: rol public.clubseason zo nodig door vóór het venster gelezen wordt.
-            await PostgresSeasonHelper.EnsureSeasonsAsync(log);
-            var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-            var uitkomst = await RunTrackedSyncAsync(-1, toWeekOffset, log, clubCode);
+            var uitkomst = await RunTrackedSyncAsync(async () =>
+            {
+                var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                return (-1, toWeekOffset);
+            }, log, clubCode, () => PostgresSeasonHelper.EnsureSeasonsAsync(log));
 
             // #1081: een run met mislukte deelstappen mag niet als Success eindigen. Het
             // invocatie-overzicht in de portal toonde acht dagen 'Success 8 · Error 0' terwijl er
@@ -110,27 +111,24 @@ public static class SyncFunction
                 // endpoint en niet bij de generieke 500 van de wrapper.
                 try
                 {
-                    // #861: rol public.clubseason zo nodig door vóór het venster gelezen wordt.
-                    await PostgresSeasonHelper.EnsureSeasonsAsync(log);
-                    var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-                    var fromWeekOffset = -1;
-
-                    if (isReset && int.TryParse(seasonParam, out var seasonStartYear))
+                    var venster = (From: -1, To: 0);
+                    var uitkomst = await RunTrackedSyncAsync(async () =>
                     {
-                        fromWeekOffset = await PostgresSeasonHelper.GetSeasonStartWeekOffsetAsync(seasonStartYear, log);
-                        log.LogInformation("Reset mode: season {Year}, weekOffset {From} to {To}",
-                            seasonStartYear, fromWeekOffset, toWeekOffset);
-                    }
-                    else
-                    {
-                        log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
-                    }
-
-                    // #1081: 200 OK zou hier "klaar" betekenen terwijl lastsynctimestamp bewust niet is
-                    // bijgewerkt; 207 maakt het verschil zichtbaar. Gedeeld met de SQL Server-tier (#1779).
-                    var uitkomst = await RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log);
-                    return SyncMatchesAntwoordCore.Bepaal(uitkomst, fromWeekOffset, toWeekOffset,
-                        $"Sync voltooid. WeekOffset-bereik: {fromWeekOffset} tot {toWeekOffset}.");
+                        var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
+                        var fromWeekOffset = -1;
+                        if (isReset && int.TryParse(seasonParam, out var seasonStartYear))
+                        {
+                            fromWeekOffset = await PostgresSeasonHelper.GetSeasonStartWeekOffsetAsync(seasonStartYear, log);
+                            log.LogInformation("Reset mode: season {Year}, weekOffset {From} to {To}",
+                                seasonStartYear, fromWeekOffset, toWeekOffset);
+                        }
+                        else
+                            log.LogInformation("Default mode: weekOffset {From} to {To}", fromWeekOffset, toWeekOffset);
+                        venster = (fromWeekOffset, toWeekOffset);
+                        return venster;
+                    }, log, beforeWindow: () => PostgresSeasonHelper.EnsureSeasonsAsync(log));
+                    return SyncMatchesAntwoordCore.Bepaal(uitkomst, venster.From, venster.To,
+                        $"Sync voltooid. WeekOffset-bereik: {venster.From} tot {venster.To}.");
                 }
                 catch (SyncAlreadyRunningException)
                 {
@@ -148,7 +146,8 @@ public static class SyncFunction
     }
 
     /// <summary>Geeft de uitkomst met de mislukte fases terug (#1081, #1779).</summary>
-    internal static async Task<SyncUitkomst> RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log, SyncLogWriter? syncLog = null)
+    internal static async Task<SyncUitkomst> RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset,
+        ILogger log, SyncLogWriter? syncLog = null, PostgresSyncStagingLease? acquiredLease = null)
     {
         if (syncLog is null)
             return await RunTrackedSyncAsync(fromWeekOffset, toWeekOffset, log);
@@ -172,16 +171,27 @@ public static class SyncFunction
         return await PostgresSyncPipeline.RunSyncAsync(
             fromWeekOffset, toWeekOffset,
             canonicalSportlinkApiUrl, $"clientId={sportlinkClientId}",
-            clubCode, connectionString, log, syncLog: syncLog);
+            clubCode, connectionString, log, syncLog: syncLog, acquiredLease: acquiredLease);
     }
 
     private static async Task<SyncUitkomst> RunTrackedSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log, string? loadedClubCode = null)
+        => await RunTrackedSyncAsync(() => Task.FromResult((fromWeekOffset, toWeekOffset)), log, loadedClubCode);
+
+    internal static async Task<SyncUitkomst> RunTrackedSyncAsync(
+        Func<Task<(int FromWeekOffset, int ToWeekOffset)>> buildWindow, ILogger log,
+        string? loadedClubCode = null, Func<Task>? beforeWindow = null,
+        string? connectionStringOverride = null)
     {
         if (loadedClubCode is null)
             await PostgresAppSettings.LoadSettingsAsync(log);
         var clubCode = loadedClubCode ?? PostgresAppSettings.GetSetting("clubCode")
             ?? throw new InvalidOperationException("Vereiste instelling 'clubcode' ontbreekt in public.appsettings.");
-        var connectionString = PostgresDatabaseConfig.ConnectionString;
+        var connectionString = connectionStringOverride ?? PostgresDatabaseConfig.ConnectionString;
+        await using var stagingLease = await PostgresSyncStagingLease.TryAcquireAsync(connectionString)
+            ?? throw new SyncAlreadyRunningException();
+        if (beforeWindow is not null)
+            await beforeWindow();
+        var (fromWeekOffset, toWeekOffset) = await buildWindow();
         return await SyncJobRunCoordinator.RegisterClaimAndRunAsync(
             () => SyncJobsRepository.GetOrCreateActiveAsync(connectionString, Guid.NewGuid(), clubCode, fromWeekOffset, toWeekOffset),
             id => SyncJobsRepository.TryClaimAttemptAsync(connectionString, id),
@@ -189,7 +199,7 @@ public static class SyncFunction
             async () => { await SyncLogRepository.CleanupAllAsync(DateTime.UtcNow); },
             (id, outcome, attempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, attempt, incomplete),
             (id, succeeded, error, attempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, attempt),
-            writer => RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log, writer),
+            writer => RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log, writer, stagingLease),
             global::Planner.Endpoints.Sync.SyncQueuedJobCore.SafeFailureMessage));
     }
 
