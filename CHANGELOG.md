@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- De timeouttest van de Azure Management-client faalde soms in CI door de volgorde van annuleringscallbacks. De test is nu op beide tiers deterministisch; het productiegedrag is ongewijzigd (#1941).
+
 - Een synchronisatie die door een gecrashte of herstarte host blijft hangen, wordt nu automatisch hersteld (beide databasetiers, zie issue #1839): een job die 30 minuten op "running" staat geldt als onderbroken en wordt hoogstens 2 keer opnieuw aangeboden; daarna staat hij op "failed" met een melding. Het herstel heeft geen eigen timer en dus geen extra kosten of database-wake-ups: het loopt mee wanneer een sync wordt gestart, de syncstatus wordt opgevraagd of de geplande sync draait. Elke afronding is aan het pogingnummer gebonden, zodat een verouderde worker een herstarte poging niet kan overschrijven. Nieuwe kolom `Attempt`/`attempt` op de sync-jobtabel (additief; een bestaande lopende job telt als poging 1).
 - CI: de Build-workflow draait de guards, de zware guard-zelftests en de .NET-build nu in parallelle jobs. De verplichte check *Build FunctionApp + BlazorAdmin* is een aggregatiejob die op alle jobs wacht, ook op de twee verse-databasejobs, en faalt bij elke uitkomst anders dan geslaagd (#1942).
 
