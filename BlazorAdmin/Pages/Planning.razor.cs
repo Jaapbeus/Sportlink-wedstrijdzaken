@@ -71,6 +71,8 @@ public partial class Planning : ClubSelectorPageBase
     private async Task LoadVeldbezettingAsync()
     {
         _veldbezettingBezig = true;
+        _veldbezetting = new();
+        _sportlinkStatus = null;
         _veldbezettingError = null;
         try
         {
