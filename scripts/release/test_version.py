@@ -94,6 +94,61 @@ class VersionTests(unittest.TestCase):
                     self.assertEqual(changed, snapshot(self.repo))
                 path.write_bytes(before)
 
+    def test_fresh_checkout_at_target_is_explicit_no_op_without_writes(self) -> None:
+        target = "3.18.0.0"
+        version.prepare(self.repo, APP_VERSION, API_VERSION, target, True)
+        (self.repo / version.JOURNAL).unlink()
+        # Retain semantically equivalent noncanonical JSON: a no-op must not
+        # normalize formatting or manufacture a new recovery receipt.
+        path = self.repo / version.JSON_PATH
+        path.write_text(json.dumps(json.loads(path.read_text()), separators=(",", ":")))
+        before = snapshot(self.repo)
+        arguments = [sys.executable, version.__file__, "--repo", str(self.repo),
+                     "--expected-current", APP_VERSION, "--expected-api-version", API_VERSION,
+                     "--version", target]
+        for apply in (False, True):
+            self.assertEqual(version.prepare(self.repo, APP_VERSION, API_VERSION, target, apply), {})
+            result = subprocess.run(arguments + (["--apply"] if apply else []),
+                                    capture_output=True, text=True, check=True)
+            self.assertIn("Al op doelversie", result.stdout)
+            self.assertIn("geen schrijfactie uitgevoerd", result.stdout)
+            self.assertEqual(snapshot(self.repo), before)
+
+    def test_fresh_checkout_mixed_target_fields_or_api_mismatch_fail_closed(self) -> None:
+        target = "3.18.0.0"
+        version.prepare(self.repo, APP_VERSION, API_VERSION, target, True)
+        (self.repo / version.JOURNAL).unlink()
+        cases = [(relative, field) for relative in version.CSPROJS
+                 for field in ("Version", "AssemblyVersion", "FileVersion")]
+        cases.extend(((version.YAML, "version"), (version.JSON_PATH, "version")))
+        for relative, field in cases:
+            with self.subTest(relative=relative, field=field):
+                path = self.repo / relative
+                original = path.read_bytes()
+                source = original.decode()
+                if relative in version.CSPROJS:
+                    source = source.replace(f"<{field}>{target}</{field}>",
+                                            f"<{field}>{APP_VERSION}</{field}>")
+                else:
+                    source = source.replace(target, API_VERSION)
+                path.write_text(source)
+                before = snapshot(self.repo)
+                for apply in (False, True):
+                    with self.assertRaises(version.VersionError):
+                        version.prepare(self.repo, APP_VERSION, API_VERSION, target, apply)
+                    self.assertEqual(snapshot(self.repo), before)
+                path.write_bytes(original)
+        # Equal version fields alone cannot hide an API contract mismatch.
+        path = self.repo / version.JSON_PATH
+        data = json.loads(path.read_text())
+        data["info"]["title"] = "Changed"
+        path.write_text(json.dumps(data))
+        before = snapshot(self.repo)
+        for apply in (False, True):
+            with self.assertRaises(version.VersionError):
+                version.prepare(self.repo, APP_VERSION, API_VERSION, target, apply)
+            self.assertEqual(snapshot(self.repo), before)
+
 
 if __name__ == "__main__":
     unittest.main()

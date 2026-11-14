@@ -65,9 +65,13 @@ def _yaml_update(source: str, expected: str, target: str) -> str:
     return source[:match.start(1)] + updated_body + source[match.end(1):]
 
 
-def build_updates(repo: Path, expected: str, expected_api: str, target: str) -> dict[str, str]:
-    if not VERSION_RE.fullmatch(expected) or not VERSION_RE.fullmatch(expected_api) or not VERSION_RE.fullmatch(target):
+def _validate_versions(*values: str) -> None:
+    if any(not VERSION_RE.fullmatch(value) for value in values):
         raise VersionError("Versies moeten MAJOR.MINOR.PATCH.REVISION zijn")
+
+
+def build_updates(repo: Path, expected: str, expected_api: str, target: str) -> dict[str, str]:
+    _validate_versions(expected, expected_api, target)
     updates = {}
     for relative in CSPROJS:
         updates[relative] = _csproj_update(repo / relative, expected, target)
@@ -91,11 +95,20 @@ def build_updates(repo: Path, expected: str, expected_api: str, target: str) -> 
 
 
 def prepare(repo: Path, expected: str, expected_api: str, target: str, apply: bool) -> dict[str, str]:
+    _validate_versions(expected, expected_api, target)
     identity = {"expected": expected, "expected_api": expected_api, "target": target}
     paths = (*CSPROJS, YAML, JSON_PATH)
     restored = transaction.resume(repo, JOURNAL, identity, paths, {}, apply, _write_atomic)
     if restored is not None:
         return restored
+    try:
+        build_updates(repo, target, target, target)
+    except VersionError:
+        pass
+    else:
+        # This proves only the current target fields and API parity. With no
+        # matching receipt it does not attest original contents or recovery.
+        return {}
     updates = build_updates(repo, expected, expected_api, target)
     if apply:
         transaction.commit(repo, JOURNAL, identity, updates, {}, _write_atomic)
@@ -113,7 +126,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         repo = args.repo.resolve(strict=True)
         updates = prepare(repo, args.expected_current, args.expected_api_version, args.version, args.apply)
-        if args.apply:
+        if not updates:
+            print(f"Al op doelversie {args.version}; geen schrijfactie uitgevoerd.")
+        elif args.apply:
             print(f"Versie bijgewerkt naar {args.version} in {len(updates)} bestanden.")
         else:
             print(f"Preview: {len(updates)} bestanden krijgen versie {args.version}; gebruik --apply om te schrijven.")
