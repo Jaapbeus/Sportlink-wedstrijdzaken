@@ -1348,6 +1348,16 @@ curl http://localhost:7094/api/sync-matches
 job-rij en een bericht op de bestaande `AzureWebJobsStorage`-queue `sync-jobs`. Een aparte
 QueueTrigger-functie (`SyncJobProcessor`) verwerkt het bericht en werkt de status bij.
 
+**Herstel van onderbroken jobs (#1839, eigenaarsbesluit 2026-11-11).** Blijft een job door een
+gecrashte of herstarte host op `running` staan, dan herstelt de timer `SyncJobRecovery` (elke
+15 minuten, beide tiers, bestaande Function App) hem begrensd: een job die 30 minuten op `running`
+staat geldt als onderbroken en wordt hoogstens 2 keer opnieuw aangeboden (3 pogingen in totaal);
+daarna staat hij op `failed` met een vaste melding. Een normale fout of gedeeltelijke mislukking
+blijft terminaal `failed` en wordt niet automatisch herhaald. De claim (`pending` naar `running`)
+telt een poging in de kolom `Attempt`/`attempt` en elke afronding is aan dat pogingnummer
+gebonden, zodat een verouderde worker een herstarte poging niet overschrijft. De drempels staan op
+één plek: `Planner.Shared/Sync/SyncJobRecoveryPolicy.cs`. De API zelf verandert niet.
+
 ```bash
 curl -X POST http://localhost:7094/api/beheer/sync/trigger
 # {"status":"gestart","jobId":"…","weekOffsetFrom":-1,"weekOffsetTo":15,"tijdstip":"…"}

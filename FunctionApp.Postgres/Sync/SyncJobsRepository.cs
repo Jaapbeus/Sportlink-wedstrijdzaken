@@ -16,12 +16,6 @@ internal static class SyncJobsRepository
     internal static Task CreateAsync(Guid id, string clubCode, int weekOffsetFrom, int weekOffsetTo)
         => CreateAsync(PostgresDatabaseConfig.ConnectionString, id, clubCode, weekOffsetFrom, weekOffsetTo);
 
-    internal static Task<bool> TryClaimPendingAsync(Guid id)
-        => TryClaimPendingAsync(PostgresDatabaseConfig.ConnectionString, id);
-
-    internal static Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage)
-        => MarkCompletedAsync(PostgresDatabaseConfig.ConnectionString, id, succeeded, errorMessage);
-
     internal static Task<SyncJobStatus?> GetLatestOrByIdAsync(string clubCode, Guid? jobId)
         => GetLatestOrByIdAsync(PostgresDatabaseConfig.ConnectionString, clubCode, jobId);
 
@@ -40,30 +34,70 @@ internal static class SyncJobsRepository
         await command.ExecuteNonQueryAsync();
     }
 
-    internal static async Task<bool> TryClaimPendingAsync(string connectionString, Guid id)
+    /// <summary>
+    /// Atomaire pending-to-running-claim (#1839): geeft het pogingnummer van deze claim terug,
+    /// <c>null</c> als de job niet meer pending is. Het nummer is de duurzame pogingseigendom:
+    /// afrondingen voor een oudere poging worden door <see cref="MarkCompletedAsync(Guid, bool, string?, int)"/> genegeerd.
+    /// </summary>
+    internal static async Task<int?> TryClaimAttemptAsync(string connectionString, Guid id)
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
-            "UPDATE public.syncjobs SET status = 'running', startedat = now() " +
-            "WHERE id = @id AND status = 'pending' RETURNING id",
+            "UPDATE public.syncjobs SET status = 'running', startedat = now(), attempt = attempt + 1 " +
+            "WHERE id = @id AND status = 'pending' RETURNING attempt",
             connection);
         command.Parameters.AddWithValue("id", id);
-        return SyncJobTransitions.IsClaimGranted(await command.ExecuteScalarAsync());
+        return SyncJobTransitions.ReadClaimedAttempt(await command.ExecuteScalarAsync());
     }
 
-    internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage)
+    /// <summary>
+    /// Rondt de job af. Met <paramref name="attempt"/> alleen voor precies die poging: een verouderde
+    /// poging (de job is intussen herplaatst en opnieuw geclaimd) schrijft niets. Zonder pogingnummer
+    /// (alleen tests) geldt alleen de running-voorwaarde.
+    /// </summary>
+    internal static Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage, int attempt)
+        => MarkCompletedAsync(PostgresDatabaseConfig.ConnectionString, id, succeeded, errorMessage, attempt);
+
+    internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage, int? attempt = null)
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
             "UPDATE public.syncjobs SET status = @status, completedat = now(), errormessage = @errormessage " +
-            "WHERE id = @id AND status = 'running'",
+            "WHERE id = @id AND status = 'running' AND (@attempt::int IS NULL OR attempt = @attempt::int)",
             connection);
         command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("attempt", (object?)attempt ?? DBNull.Value);
         command.Parameters.AddWithValue("status", SyncJobTransitions.CompletionStatus(succeeded));
         command.Parameters.AddWithValue("errormessage", (object?)SyncJobTransitions.TruncateError(errorMessage) ?? DBNull.Value);
         await command.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Eén atomaire herstelstap (#1839): uitgeputte onderbroken jobs gaan naar "failed", de overige
+    /// onderbroken jobs (en "pending"-jobs waarvan het bericht kwijt is) gaan terug naar "pending"
+    /// met een nieuw <c>startedat</c>. Drempels komen uit <see cref="SyncJobRecoveryPolicy"/>.
+    /// </summary>
+    internal static async Task<SyncJobRecoveryBatch> RecoverInterruptedAsync(string connectionString, DateTime cutoffUtc)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        // Een UPDATE, dus atomair: uitgeput (running, poging >= max) wordt failed, de rest pending.
+        await using var command = new NpgsqlCommand(
+            "UPDATE public.syncjobs SET " +
+            "status = CASE WHEN status = 'running' AND attempt >= @max THEN 'failed' ELSE 'pending' END, " +
+            "completedat = CASE WHEN status = 'running' AND attempt >= @max THEN now() ELSE completedat END, " +
+            "errormessage = CASE WHEN status = 'running' AND attempt >= @max THEN @message ELSE errormessage END, " +
+            "startedat = CASE WHEN status = 'running' AND attempt >= @max THEN startedat ELSE now() END " +
+            "WHERE status IN ('running', 'pending') AND (status = 'running' OR attempt > 0) AND startedat <= @cutoff " +
+            "RETURNING id, clubcode, weekoffsetfrom, weekoffsetto, status",
+            connection);
+        command.Parameters.AddWithValue("max", SyncJobRecoveryPolicy.MaxAttempts);
+        command.Parameters.AddWithValue("message", SyncJobRecoveryPolicy.ExhaustedMessage);
+        command.Parameters.AddWithValue("cutoff", DateTime.SpecifyKind(cutoffUtc, DateTimeKind.Utc));
+        await using var reader = await command.ExecuteReaderAsync();
+        return await SyncJobRecoveryCore.ReadBatchAsync(reader);
     }
 
     /// <summary>
@@ -85,25 +119,7 @@ internal static class SyncJobsRepository
         if (!await reader.ReadAsync())
             return null;
 
-        return new SyncJobStatus(
-            Id: reader.GetGuid(0),
-            Status: reader.GetString(1),
-            WeekOffsetFrom: reader.GetInt32(2),
-            WeekOffsetTo: reader.GetInt32(3),
-            CreatedAt: reader.GetDateTime(4),
-            StartedAt: reader.IsDBNull(5) ? null : reader.GetDateTime(5),
-            CompletedAt: reader.IsDBNull(6) ? null : reader.GetDateTime(6),
-            ErrorMessage: reader.IsDBNull(7) ? null : reader.GetString(7));
+        return SyncJobStatus.FromReader(reader);
     }
 
 }
-
-internal sealed record SyncJobStatus(
-    Guid Id,
-    string Status,
-    int WeekOffsetFrom,
-    int WeekOffsetTo,
-    DateTime CreatedAt,
-    DateTime? StartedAt,
-    DateTime? CompletedAt,
-    string? ErrorMessage);

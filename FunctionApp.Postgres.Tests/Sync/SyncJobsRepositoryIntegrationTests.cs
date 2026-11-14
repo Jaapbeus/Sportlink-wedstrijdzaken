@@ -55,9 +55,8 @@ public class SyncJobsRepositoryIntegrationTests
         {
             await start.Task;
             return await SyncJobClaimCore.ExecuteIfClaimedAsync(
-                id,
-                claimId => SyncJobsRepository.TryClaimPendingAsync(ConnectionString, claimId),
-                () =>
+                    () => SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id),
+                    _ =>
                 {
                     Interlocked.Increment(ref processCount);
                     return Task.CompletedTask;
@@ -78,9 +77,8 @@ public class SyncJobsRepositoryIntegrationTests
 
         var startedAt = job.StartedAt;
         var claimedAgain = await SyncJobClaimCore.ExecuteIfClaimedAsync(
-            id,
-            claimId => SyncJobsRepository.TryClaimPendingAsync(ConnectionString, claimId),
-            () => { Interlocked.Increment(ref processCount); return Task.CompletedTask; });
+                    () => SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id),
+                    _ => { Interlocked.Increment(ref processCount); return Task.CompletedTask; });
         claimedAgain.Should().BeFalse();
         processCount.Should().Be(1);
         var duplicate = await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id);
@@ -97,13 +95,12 @@ public class SyncJobsRepositoryIntegrationTests
         var id = Guid.NewGuid();
         await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
 
-        (await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id)).Should().BeTrue();
+        (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id)).Should().NotBeNull();
 
         var processCount = 0;
         var redeliveryClaimed = await SyncJobClaimCore.ExecuteIfClaimedAsync(
-            id,
-            claimId => SyncJobsRepository.TryClaimPendingAsync(ConnectionString, claimId),
-            () => { processCount++; return Task.CompletedTask; });
+                    () => SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id),
+                    _ => { processCount++; return Task.CompletedTask; });
 
         redeliveryClaimed.Should().BeFalse();
         processCount.Should().Be(0);
@@ -117,7 +114,7 @@ public class SyncJobsRepositoryIntegrationTests
         await SchoonAsync();
         var id = Guid.NewGuid();
         await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
-        await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id);
+        await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id);
 
         await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: true, errorMessage: null);
         await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: false, errorMessage: "late duplicate");
@@ -134,7 +131,7 @@ public class SyncJobsRepositoryIntegrationTests
         await SchoonAsync();
         var id = Guid.NewGuid();
         await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
-        await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id);
+        await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id);
 
         await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: false, errorMessage: "testfout");
 
@@ -150,12 +147,12 @@ public class SyncJobsRepositoryIntegrationTests
         await SchoonAsync();
         var id = Guid.NewGuid();
         await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
-        await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id);
+        await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id);
         await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: true, errorMessage: null);
 
         var terminalBefore = await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id);
-        (await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, Guid.NewGuid())).Should().BeFalse();
-        (await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id)).Should().BeFalse();
+        (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, Guid.NewGuid())).Should().BeNull();
+        (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id)).Should().BeNull();
         await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: false, errorMessage: "late duplicate");
         var terminalAfter = await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id);
 
@@ -171,7 +168,7 @@ public class SyncJobsRepositoryIntegrationTests
         await SchoonAsync();
         var id = Guid.NewGuid();
         await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
-        await SyncJobsRepository.TryClaimPendingAsync(ConnectionString, id);
+        await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id);
 
         await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: false, errorMessage: new string('x', 1500));
 
@@ -222,6 +219,125 @@ public class SyncJobsRepositoryIntegrationTests
         await SchoonAsync();
 
         (await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, jobId: null)).Should().BeNull();
+    }
+
+    // ── #1839: begrensd herstel van onderbroken jobs ────────────────────────────────────────────
+
+    [PostgresFact]
+    public async Task Herstel_DriePogingenDaarnaFailed_EnVerouderdeWorkerSchrijftNiets()
+    {
+        await SchoonAsync();
+        var id = Guid.NewGuid();
+        await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
+
+        (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id)).Should().Be(1);
+        await MaakStartOuderAsync(id, minuten: 31);
+        var eerste = await HerstelAsync();
+        eerste.Retry.Select(r => r.JobId).Should().Contain(id);
+        (await StatusAsync(id)).Should().Be("pending");
+
+        (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id)).Should().Be(2);
+        // De oorspronkelijke (verouderde) worker rondt alsnog af en mag poging 2 niet beïnvloeden.
+        await SyncJobsRepository.MarkCompletedAsync(ConnectionString, id, succeeded: true, errorMessage: null, attempt: 1);
+        (await StatusAsync(id)).Should().Be("running");
+
+        await MaakStartOuderAsync(id, minuten: 31);
+        (await HerstelAsync()).Retry.Select(r => r.JobId).Should().Contain(id);
+        (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id)).Should().Be(3);
+
+        await MaakStartOuderAsync(id, minuten: 31);
+        var laatste = await HerstelAsync();
+        laatste.Retry.Select(r => r.JobId).Should().NotContain(id);
+        laatste.GaveUp.Should().BeGreaterThanOrEqualTo(1);
+
+        var job = await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id);
+        job!.Status.Should().Be("failed");
+        job.ErrorMessage.Should().Be(SyncJobRecoveryPolicy.ExhaustedMessage);
+        job.CompletedAt.Should().NotBeNull();
+
+        (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id)).Should().BeNull("een opgegeven job wordt nooit meer geclaimd");
+    }
+
+    [PostgresFact]
+    public async Task Herstel_Grenswaarde_29MinutenBlijftRunning_30MinutenWordtHerplaatst()
+    {
+        await SchoonAsync();
+        var id = Guid.NewGuid();
+        await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
+        await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id);
+
+        await MaakStartOuderAsync(id, minuten: 29);
+        (await HerstelAsync()).Retry.Select(r => r.JobId).Should().NotContain(id);
+        (await StatusAsync(id)).Should().Be("running");
+
+        await MaakStartOuderAsync(id, minuten: 30);
+        (await HerstelAsync()).Retry.Select(r => r.JobId).Should().Contain(id);
+        (await StatusAsync(id)).Should().Be("pending");
+    }
+
+    [PostgresFact]
+    public async Task Herstel_ParallelAangeroepen_PlaatstEenJobHoogstensEenKeerTerug()
+    {
+        await SchoonAsync();
+        var id = Guid.NewGuid();
+        await SyncJobsRepository.CreateAsync(ConnectionString, id, Club, 0, 1);
+        await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, id);
+        await MaakStartOuderAsync(id, minuten: 45);
+
+        var batches = await Task.WhenAll(HerstelAsync(), HerstelAsync(), HerstelAsync());
+
+        batches.Count(b => b.Retry.Any(r => r.JobId == id)).Should().Be(1);
+    }
+
+    [PostgresFact]
+    public async Task Herstel_RaaktAfgerondeEnVerseJobsNiet()
+    {
+        await SchoonAsync();
+        var klaar = Guid.NewGuid();
+        var vers = Guid.NewGuid();
+        await SyncJobsRepository.CreateAsync(ConnectionString, klaar, Club, 0, 1);
+        await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, klaar);
+        await SyncJobsRepository.MarkCompletedAsync(ConnectionString, klaar, succeeded: true, errorMessage: null, attempt: 1);
+        await MaakStartOuderAsync(klaar, minuten: 120);
+        await SyncJobsRepository.CreateAsync(ConnectionString, vers, Club, 0, 1);
+        await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, vers);
+
+        var batch = await HerstelAsync();
+
+        batch.Retry.Select(r => r.JobId).Should().NotContain([klaar, vers]);
+        (await StatusAsync(klaar)).Should().Be("succeeded");
+        (await StatusAsync(vers)).Should().Be("running");
+    }
+
+    [Fact]
+    public void HerstelBericht_HeeftDezelfdeVormAlHetBerichtVanDeAdminTrigger()
+    {
+        var item = new SyncJobRecoveryItem(Guid.NewGuid(), "testclub-syncjobs", -1, 3);
+
+        var gelezen = System.Text.Json.JsonSerializer.Deserialize<SyncJobMessage>(System.Text.Json.JsonSerializer.Serialize(item));
+
+        gelezen.Should().NotBeNull();
+        gelezen!.JobId.Should().Be(item.JobId);
+        gelezen.ClubCode.Should().Be(item.ClubCode);
+        gelezen.WeekOffsetFrom.Should().Be(-1);
+        gelezen.WeekOffsetTo.Should().Be(3);
+    }
+
+    private static Task<SyncJobRecoveryBatch> HerstelAsync()
+        => SyncJobsRepository.RecoverInterruptedAsync(ConnectionString, SyncJobRecoveryPolicy.StaleCutoff(DateTime.UtcNow));
+
+    private static async Task<string> StatusAsync(Guid id)
+        => (await SyncJobsRepository.GetLatestOrByIdAsync(ConnectionString, Club, id))!.Status;
+
+    private static async Task MaakStartOuderAsync(Guid id, int minuten)
+    {
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "UPDATE public.syncjobs SET startedat = now() - make_interval(mins => @minuten) - interval '2 seconds' WHERE id = @id", conn);
+        cmd.Parameters.AddWithValue("minuten", minuten);
+        cmd.Parameters.AddWithValue("id", id);
+        await cmd.ExecuteNonQueryAsync();
     }
 
     private static async Task SchoonAsync()

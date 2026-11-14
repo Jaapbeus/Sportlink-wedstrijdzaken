@@ -13,10 +13,11 @@ public static class SyncJobTransitions
     public static string CompletionStatus(bool succeeded) => succeeded ? "succeeded" : "failed";
 
     /// <summary>
-    /// De claim (UPDATE ... WHERE status = 'pending' met RETURNING/OUTPUT van de id) is gelukt
-    /// precies als de database de id van de bijgewerkte rij teruggeeft; geen rij = al geclaimd.
+    /// Leest het pogingnummer uit het resultaat van de claim (UPDATE ... RETURNING attempt, #1839):
+    /// een geheel getal &gt; 0 is een gelukte claim, alles anders (geen rij, DBNull) is niet geclaimd.
     /// </summary>
-    public static bool IsClaimGranted(object? claimedId) => claimedId is Guid;
+    public static int? ReadClaimedAttempt(object? claimedAttempt)
+        => claimedAttempt is int attempt && attempt > 0 ? attempt : null;
 
     /// <summary>Begrenst een foutmelding tot <see cref="MaxErrorMessageLength"/> tekens; null blijft null.</summary>
     public static string? TruncateError(string? errorMessage)

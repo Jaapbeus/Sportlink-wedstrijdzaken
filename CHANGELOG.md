@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Een synchronisatie die door een gecrashte of herstarte host blijft hangen, wordt nu automatisch hersteld (beide databasetiers, zie issue #1839): een job die 30 minuten op "running" staat geldt als onderbroken en wordt hoogstens 2 keer opnieuw aangeboden; daarna staat hij op "failed" met een melding. Elke afronding is aan het pogingnummer gebonden, zodat een verouderde worker een herstarte poging niet kan overschrijven. Nieuwe kolom `Attempt`/`attempt` op de sync-jobtabel (additief, bestaande rijen 0) en een timer `SyncJobRecovery` elke 15 minuten in de bestaande Function App.
+
 ## [3.17.0.0] — 2026-11-12
 
 - De auditregistratie van een aangemaakte clubwedstrijd legt nu het echte `PublicMatchId` van Sportlink vast in plaats van de tijdelijke waarde, op beide databasetiers. Daardoor is een latere wijziging of verwijdering aan de aanmaak te koppelen. Alleen bij een geslaagde, echte aanmaak; een fout bij het bijwerken breekt de aanmaak niet af (#1879).

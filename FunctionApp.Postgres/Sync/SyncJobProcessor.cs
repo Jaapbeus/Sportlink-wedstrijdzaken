@@ -8,12 +8,13 @@ namespace FunctionApp.Postgres.Sync;
 
 /// <summary>
 /// Verwerkt berichten van de <see cref="SyncJobsQueue.QueueName"/>-queue (#1138) — de opvolger van
-/// de fire-and-forget <c>Task.Run</c> in <c>AdminSyncFunction.Trigger</c>. Eén poging per bericht:
-/// een mislukking wordt in <c>syncjobs</c> vastgelegd als <c>failed</c> en niet opnieuw geprobeerd
-/// door de queue zelf (geen rethrow) — de sync-pipeline heeft al eigen retry-logica voor
-/// databaseverbindingen, en een tweede, automatische queue-retry zou een gedeeltelijk geslaagde
-/// merge riskeren te herhalen. Een beheerder die het opnieuw wil proberen klikt gewoon nogmaals op
-/// de sync-knop, wat een nieuwe job aanmaakt.
+/// de fire-and-forget <c>Task.Run</c> in <c>AdminSyncFunction.Trigger</c>. Een normale mislukking
+/// (fout of gedeeltelijk mislukt) wordt vastgelegd als <c>failed</c> en niet door de queue herhaald
+/// (geen rethrow): een tweede queue-retry zou een gedeeltelijk geslaagde merge riskeren te herhalen.
+/// Alleen een onderbroken job (30 minuten op <c>running</c>, bv. een gecrashte host) wordt door
+/// <see cref="SyncJobRecoveryFunction"/> begrensd opnieuw aangeboden (#1839, hoogstens 2 keer); elke
+/// afronding is aan het pogingnummer van de claim gebonden zodat een verouderde poging een
+/// herstarte niet overschrijft.
 /// </summary>
 public static class SyncJobProcessor
 {
@@ -42,21 +43,21 @@ public static class SyncJobProcessor
 
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["SyncJobId"] = job.JobId });
         if (!await global::Planner.Shared.Sync.SyncJobClaimCore.ExecuteIfClaimedAsync(
-                job.JobId, SyncJobsRepository.TryClaimPendingAsync, () => ProcessClaimedPostgresJobAsync(job, log)))
+                () => SyncJobsRepository.TryClaimAttemptAsync(PostgresDatabaseConfig.ConnectionString, job.JobId), attempt => ProcessClaimedPostgresJobAsync(job, attempt, log)))
         {
             log.LogInformation("SyncJobProcessor: Postgres-job {JobId} is not pending and will be skipped", job.JobId);
         }
     }
 
-    private static async Task ProcessClaimedPostgresJobAsync(SyncJobMessage job, ILogger log)
+    private static async Task ProcessClaimedPostgresJobAsync(SyncJobMessage job, int attempt, ILogger log)
     {
-        log.LogInformation("SyncJobProcessor: Postgres job {JobId} claimed, range {From} .. {To}", job.JobId, job.WeekOffsetFrom, job.WeekOffsetTo);
+        log.LogInformation("SyncJobProcessor: Postgres job {JobId} claimed (poging {Attempt}), range {From} .. {To}", job.JobId, attempt, job.WeekOffsetFrom, job.WeekOffsetTo);
         try
         {
             // #1676: na het claimen wordt een bericht buiten productie niet uitgevoerd en
             // als mislukt vastgelegd; een duplicaat kan die status niet overschrijven.
             if (await OverslaanZonderUitgaandVerkeerAsync(job.JobId, log,
-                    EgressGuard.ExternalIntegrationsAllowed, SyncJobsRepository.MarkCompletedAsync))
+                    EgressGuard.ExternalIntegrationsAllowed, (id, ok, msg) => SyncJobsRepository.MarkCompletedAsync(id, ok, msg, attempt)))
                 return;
 
             var uitkomst = await SyncFunction.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log);
@@ -64,18 +65,18 @@ public static class SyncJobProcessor
             {
                 log.LogWarning("SyncJobProcessor: job {JobId} gedeeltelijk mislukt", job.JobId);
                 await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: uitkomst.JobFoutmelding());
+                    errorMessage: uitkomst.JobFoutmelding(), attempt);
                 return;
             }
 
-            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: true, errorMessage: null);
+            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: true, errorMessage: null, attempt);
             log.LogInformation("SyncJobProcessor: job {JobId} voltooid", job.JobId);
         }
         catch (Exception ex)
         {
             log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
             await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                errorMessage: FoutmeldingVoorStatus(ex));
+                errorMessage: FoutmeldingVoorStatus(ex), attempt);
         }
     }
 

@@ -8,6 +8,7 @@ CREATE TABLE [dbo].[SyncJobs] (
     [StartedAt]      DATETIME2        NULL,
     [CompletedAt]    DATETIME2        NULL,
     [ErrorMessage]   NVARCHAR(1000)   NULL,
+    [Attempt]        INT              NOT NULL CONSTRAINT [DF_SyncJobs_Attempt] DEFAULT (0),
     CONSTRAINT [PK_SyncJobs] PRIMARY KEY CLUSTERED ([Id] ASC)
 );
 GO
