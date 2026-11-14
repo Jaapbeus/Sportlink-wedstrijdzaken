@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from . import test_coordinator as baseline
+from .__main__ import dispatch
 from .authority import FIELDS
 from .store import StoreError, initialize
 
@@ -233,3 +234,99 @@ class SafetyTests(unittest.TestCase):
         self.coordinator.finish(self.identity)
         with self.assertRaisesRegex(StoreError, "SHA"):
             self.coordinator.create_request(self._request(request_id="uppercase", head_sha=baseline.HEAD.upper()))
+
+    def _next_review(self, head="d" * 40):
+        self.coordinator.create_request(self._request(request_id="r2", head_sha=head))
+        identity = self._identity(request_id="r2", head_sha=head)
+        self.coordinator.claim(identity)
+        self._verify_task(identity, "verify-r2")
+        self.coordinator.record_check(identity, {
+            "check_name": "CI", "head_sha": head, "state": "success", "evidence": "run/2"})
+        return identity
+
+    def test_older_request_finding_invalidates_new_ready_and_action_boundary(self):
+        self._claim_and_check()
+        self.coordinator.finish(self.identity)
+        newer = self._next_review()
+        self.coordinator.finish(newer, {"result": "clean"})
+        self.coordinator.ready(newer)
+        self.coordinator.record_finding(self.identity, {
+            "finding_id": "late", "severity": "P1", "evidence": "old round result"})
+        self.assertEqual(self.coordinator.status("r2")["request"]["state"], "invalidated")
+        action = {"action_id": "a", "idempotency_key": "a", "action_kind": "publish",
+                  "target": "PR", "intent": "publish"}
+        with self.assertRaises(StoreError):
+            self.coordinator.action_intent(newer, action)
+        # Simulate a stale projection from an older coordinator: the final boundary scans the ledger.
+        self.db.execute("UPDATE requests SET state='ready' WHERE request_id='r2'")
+        with self.assertRaisesRegex(StoreError, "bevindingen open"):
+            self.coordinator.action_intent(newer, action)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM action_intents").fetchone()[0], 0)
+
+    def test_blocked_return_preserves_work_fences_actor_and_allows_new_head(self):
+        self.coordinator.claim(self.identity)
+        self._child()
+        self.coordinator.record_finding(self.identity, {
+            "finding_id": "f", "severity": "P2", "evidence": "CI investigation"})
+        blocked = {"result": "blocked", "reason": "CI missing or red", "reviewer_stopped": True,
+                   "stop_evidence": "reviewer and child stopped", "fence_evidence": "writers fenced"}
+        before = self.coordinator.status(self.request_id)
+        for changes in ({"reviewer_stopped": False}, {"stop_evidence": ""}, {"fence_evidence": ""}, {}):
+            with self.assertRaises(StoreError):
+                self.coordinator.finish(self.identity, blocked | changes)
+        dispatch("finish", {"identity": self.identity,
+                            "result": blocked | {"stopped_sessions": ["child"]}}, self.db)
+        after = self.coordinator.status(self.request_id)
+        self.assertEqual(after["tasks"], before["tasks"])
+        self.assertEqual(after["findings"], before["findings"])
+        self.assertEqual(after["checks"], before["checks"])
+        with self.assertRaisesRegex(StoreError, "verouderd"):
+            self.coordinator.register_task(self.identity, {"task_id": "verify-request-1"})
+        with self.assertRaises(StoreError):
+            self.coordinator.ready(self._identity(generation=2))
+        newer = self._next_review()
+        with self.assertRaisesRegex(StoreError, "bevindingen open"):
+            self.coordinator.finish(newer, {"result": "clean"})
+
+    def test_red_check_allows_explicit_blocked_return_only(self):
+        self._claim_and_check()
+        self.coordinator.record_check(self.identity, {
+            "check_name": "CI", "head_sha": baseline.HEAD, "state": "failure", "evidence": "run/failed"})
+        with self.assertRaises(StoreError):
+            self.coordinator.finish(self.identity)
+        self.coordinator.finish(self.identity, {"result": "blocked", "reason": "red CI",
+            "reviewer_stopped": True, "stop_evidence": "stopped", "fence_evidence": "fenced"})
+        with self.assertRaises(StoreError):
+            self.coordinator.ready(self._identity(generation=2))
+        self._next_review()
+
+    def test_clean_refuses_open_finding_and_verification_requires_current_fix_binding(self):
+        self._claim_and_check()
+        self.coordinator.record_finding(self.identity, {
+            "finding_id": "f", "severity": "P2", "evidence": "reproduced"})
+        with self.assertRaisesRegex(StoreError, "bevindingen open"):
+            self.coordinator.finish(self.identity, {"result": "clean"})
+        self.coordinator.finish(self.identity)
+        newer = self._next_review()
+        disposition = {"finding_id": "f", "disposition": "verified", "evidence": "fix checked",
+                       "fix_commit": "d" * 40, "verification_sha": "d" * 40,
+                       "verification_request_id": "r2"}
+        for key in ("fix_commit", "verification_sha", "verification_request_id"):
+            missing = {k: v for k, v in disposition.items() if k != key}
+            with self.assertRaises(StoreError):
+                self.coordinator.disposition_finding(newer, missing)
+        for wrong in ({"verification_sha": baseline.HEAD}, {"verification_request_id": self.request_id},
+                      {"fix_commit": baseline.HEAD}, {"fix_commit": "short"}):
+            with self.assertRaises(StoreError):
+                self.coordinator.disposition_finding(newer, disposition | wrong)
+        with self.assertRaises(StoreError):
+            self.coordinator.disposition_finding(self.identity, disposition)
+        self.coordinator.disposition_finding(newer, disposition)
+        self.coordinator.finish(newer, {"result": "clean"})
+        self.coordinator.ready(newer)
+        # Legacy unbound disposition remains in the append-only ledger but cannot authorize action.
+        self.db.execute("INSERT INTO finding_dispositions(finding_id,disposition,actor_session,evidence,event_id) "
+                        "VALUES('f','verified','reviewer-1','legacy',1)")
+        with self.assertRaisesRegex(StoreError, "huidige aanvraag"):
+            self.coordinator.action_intent(newer, {"action_id": "a", "idempotency_key": "a",
+                "action_kind": "publish", "target": "PR", "intent": "publish"})

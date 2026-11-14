@@ -143,3 +143,18 @@ class Obligations:
         stopped = data.get("stopped_sessions", [])
         if not isinstance(stopped, list) or not children.issubset(set(stopped)):
             raise StoreError("Overdracht vereist bevestigde stop van alle actieve child-sessies.")
+
+    def return_blocked(self, request, identity, data):
+        if data.get("reviewer_stopped") is not True or any(
+            not isinstance(data.get(key), str) or not data[key].strip()
+            for key in ("reason", "stop_evidence", "fence_evidence")
+        ):
+            raise StoreError("Geblokkeerde teruggave vereist reden, reviewerstop, stop- en fence-bewijs.")
+        self.confirm_children_stopped(request, data)
+        generation = request["generation"] + 1
+        event = append_event(self.db, "review_returned", request["request_id"], identity["session"],
+                             {**data, "head_sha": request["head_sha"], "next_generation": generation},
+                             generation=request["generation"])
+        self.db.execute("UPDATE requests SET state='invalidated',generation=? WHERE request_id=?",
+                        (generation, request["request_id"]))
+        return {"state": "invalidated", "generation": generation, "event_id": event}

@@ -182,14 +182,16 @@ class Coordinator:
                  request["request_id"], identity["session"], int(identity["generation"]),
                  data["severity"], str(data["evidence"]).strip(), int(unexpected), event),
             )
-            if request["state"] in ("review_returned", "ready"):
-                self.db.execute(
-                    "UPDATE requests SET state='invalidated' WHERE request_id=?",
-                    (request["request_id"],),
-                )
+            affected = self.db.execute(
+                "SELECT request_id,generation FROM requests WHERE repository=? AND pr=? "
+                "AND state IN ('review_returned','ready')", (request["repository"], request["pr"]),
+            ).fetchall()
+            for prior in affected:
+                self.db.execute("UPDATE requests SET state='invalidated' WHERE request_id=?",
+                                (prior["request_id"],))
                 append_event(
-                    self.db, "readiness_invalidated_by_finding", request["request_id"],
-                    self.name, {"finding_id": data["finding_id"]}, generation=request["generation"],
+                    self.db, "readiness_invalidated_by_finding", prior["request_id"],
+                    self.name, {"finding_id": data["finding_id"]}, generation=prior["generation"],
                 )
             return {"finding_id": data["finding_id"], "unexpected": unexpected, "event_id": event}
 
@@ -208,16 +210,18 @@ class Coordinator:
                 raise StoreError("Bevinding niet gevonden.")
             request = load_request(self.db, finding["request_id"])
             if disposition == "verified":
-                request = self._identity(identity, "reviewer_session", request_id=request["request_id"])
-                if identity["session"] == request["implementer_session"]:
-                    raise StoreError("De implementer kan een bevinding niet onafhankelijk verifiëren.")
+                original = request
+                request = self._identity(identity, "reviewer_session", states=("claimed", "reviewing"))
+                Authority(self.db).verify_fix_binding(identity, request, original, data)
             else:
                 Authority(self.db).require(identity, request, data, "owner_accepted", data["finding_id"])
             event = append_event(
                 self.db, "finding_disposition_recorded", request["request_id"],
                 identity["session"], {"finding_id": data["finding_id"],
                 "disposition": disposition, "evidence": data["evidence"],
-                "authorization_ref": data.get("authorization_ref"), "grant_id": data.get("grant_id")},
+                "authorization_ref": data.get("authorization_ref"), "grant_id": data.get("grant_id"),
+                "fix_commit": data.get("fix_commit"), "verification_sha": data.get("verification_sha"),
+                "verification_request_id": data.get("verification_request_id")},
                 generation=request["generation"],
             )
             self.db.execute(
@@ -269,16 +273,24 @@ class Coordinator:
             return {"check_name": data["check_name"], "state": data["state"], "event_id": event}
 
     def finish(self, identity: dict[str, Any], data: dict[str, Any] | None = None) -> dict[str, Any]:
-        if (data or {}).get("result", "completed") not in ("completed", "clean"):
+        data = {} if data is None else data
+        if not isinstance(data, dict):
+            raise StoreError("Reviewresultaat vereist een JSON-object.")
+        result = data.get("result", "completed")
+        if result not in ("completed", "clean", "blocked"):
             raise StoreError("Mislukte of onbekende reviewuitkomst kan niet als voltooid worden teruggegeven.")
         with transaction(self.db):
             request = self._identity(identity, "reviewer_session", states=("claimed", "reviewing"))
+            if result == "blocked":
+                return Obligations(self.db).return_blocked(request, identity, data)
             self._assert_tasks_complete(request["request_id"])
             self._assert_checks_success(request["request_id"])
             Integration(self.db).assert_valid(request)
+            if result == "clean":
+                Authority(self.db).assert_findings_resolved(request)
             event = append_event(
                 self.db, "review_returned", request["request_id"], identity["session"],
-                {"result": (data or {}).get("result", "completed"),
+                {"result": result,
                  "head_sha": request["head_sha"]}, generation=request["generation"],
             )
             self.db.execute(
@@ -293,16 +305,7 @@ class Coordinator:
             self._assert_tasks_complete(request["request_id"])
             self._assert_checks_success(request["request_id"])
             Integration(self.db).assert_valid(request)
-            pending = self.db.execute(
-                "SELECT f.finding_id FROM findings f LEFT JOIN finding_dispositions d "
-                "ON d.disposition_id=(SELECT MAX(d2.disposition_id) FROM finding_dispositions d2 "
-                "WHERE d2.finding_id=f.finding_id) WHERE f.repository=? AND f.pr=? "
-                "AND (d.disposition IS NULL OR d.disposition NOT IN ('verified','owner_accepted'))",
-                (request["repository"], request["pr"]),
-            ).fetchall()
-            if pending:
-                raise StoreError("Er staan nog niet afgehandelde bevindingen open.")
-            Authority(self.db).assert_dispositions(request)
+            Authority(self.db).assert_findings_resolved(request)
             event = append_event(
                 self.db, "request_ready", request["request_id"], identity["session"],
                 {"head_sha": request["head_sha"], "findings_reviewed": True,
@@ -418,7 +421,7 @@ class Coordinator:
         request = self._identity(identity, session_column, **options)
         if identity["session"] not in (request["reviewer_session"], request["implementer_session"]):
             raise StoreError("Actie vereist een toegewezen actor.")
-        Authority(self.db).assert_dispositions(request)
+        Authority(self.db).assert_findings_resolved(request)
         Integration(self.db).assert_valid(request)
         return request
 

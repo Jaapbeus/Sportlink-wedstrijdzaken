@@ -77,3 +77,37 @@ class Authority:
             identity = {key: original[key] for key in FIELDS}
             identity["session"] = row["actor_session"]
             self.require(identity, original, data, "owner_accepted", row["finding_id"])
+
+    def verify_fix_binding(self, identity, request, original, data):
+        if (request["repository"], request["pr"]) != (original["repository"], original["pr"]):
+            raise StoreError("Verificatie hoort niet bij dezelfde PR.")
+        if identity["session"] in (request["implementer_session"], original["implementer_session"]):
+            raise StoreError("De implementer kan een bevinding niet onafhankelijk verifiëren.")
+        fix = data.get("fix_commit")
+        if not isinstance(fix, str) or len(fix) != 40 or any(c not in "0123456789abcdef" for c in fix):
+            raise StoreError("Verificatie vereist een volledige fix_commit SHA.")
+        if (data.get("verification_request_id") != request["request_id"]
+                or data.get("verification_sha") != request["head_sha"]
+                or request["created_at"] <= original["created_at"]
+                or request["head_sha"] == original["head_sha"] or fix == original["head_sha"]):
+            raise StoreError("Verificatie vereist een nieuwe aanvraag op de actuele fix-SHA.")
+
+    def assert_findings_resolved(self, request):
+        rows = self.db.execute(
+            "SELECT d.disposition,d.event_id FROM findings f LEFT JOIN finding_dispositions d "
+            "ON d.disposition_id=(SELECT MAX(d2.disposition_id) FROM finding_dispositions d2 "
+            "WHERE d2.finding_id=f.finding_id) WHERE f.repository=? AND f.pr=?",
+            (request["repository"], request["pr"]),
+        ).fetchall()
+        for row in rows:
+            if row["disposition"] not in ("verified", "owner_accepted"):
+                raise StoreError("Er staan nog niet afgehandelde bevindingen open.")
+            if row["disposition"] == "verified":
+                event = self.db.execute("SELECT * FROM events WHERE event_id=?", (row["event_id"],)).fetchone()
+                data = decode(event["payload"])
+                if (not data.get("fix_commit") or data.get("verification_request_id") != request["request_id"]
+                        or data.get("verification_sha") != request["head_sha"]
+                        or event["generation"] != request["generation"]
+                        or event["actor"] != request["reviewer_session"]):
+                    raise StoreError("Bevinding vereist onafhankelijke verificatie op de huidige aanvraag en fix-SHA.")
+        self.assert_dispositions(request)

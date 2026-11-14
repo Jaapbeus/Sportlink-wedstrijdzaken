@@ -86,13 +86,28 @@ credential en kan remote schrijvers niet blokkeren.
 `request-create` vereist niet-lege `required_checks` en een vooraf vastgelegde `mandatory_tasks`-lijst
 met minstens één `reviewer_verification: true`-taak van de toegewezen reviewer. Per repository/PR
 is één actieve aanvraag toegestaan; een inhoudelijke SHA kan niet via een nieuw request-ID opnieuw
-worden aangeboden. Herstel gebruikt intrekking en `reassign` van de bestaande aanvraag. `task-register`
+worden aangeboden. Herstel op dezelfde SHA gebruikt intrekking en `reassign` van de bestaande aanvraag. `task-register`
 start zo'n taak; extra taken mogen alleen optioneel zijn. Een child levert `task-output` met exacte
 aanvraagidentiteit en resultaat. `task-complete` blijft een onafhankelijke revieweractie met
 succesvol verificatiebewijs en, bij een child, diens exacte `output_event_id`. Stale/ongeautoriseerde
 uitvoer blijft in de historie en kan geen nieuwe generatie voltooien. Een mislukte taakuitvoer
 blijft als te triëren bevinding behouden en maakt eerdere gereedheid voor die PR ongeldig. Bij `reassign` is ook de stop
 van alle actieve child-sessies expliciet vereist; taken en checks moeten opnieuw worden bewezen.
+
+Bij rode of ontbrekende checks, of onvoltooide taken, kan de reviewer `finish` met `result: blocked`
+teruggeven: reden, reviewerstop, stop-/fence-bewijs en bevestigde stop van actieve child-sessies zijn
+verplicht. De aanvraag wordt `invalidated`, de generatie stijgt en alle taken, checks en bevindingen
+blijven intact. Dit levert nooit `ready` op; een nieuwe SHA kan daarna een nieuwe aanvraag krijgen.
+`finish` met `result: clean` weigert iedere nog open PR-bevinding. Een late bevinding trekt ook
+nieuwere gereedheid van dezelfde PR in; `action-intent` controleert het ledger opnieuw.
+
+Een `verified`-dispositie vereist `fix_commit`, `verification_sha` en `verification_request_id`.
+De exact toegewezen onafhankelijke reviewer registreert deze op de actieve nieuwe aanvraag en
+nieuwe head waarop de fix is beoordeeld, ook voor bevindingen uit eerdere rondes. Gereedheid en
+actie-intents vereisen die binding op de huidige aanvraag/generatie. Oude ongebonden disposities
+blijven bewaard maar gelden niet als bewijs. De velden zijn lokale bewijsverklaringen; de CLI
+controleert geen Git-ancestry van de opgegeven fixcommit. Schema-revisie 2 blijft compatibel:
+nieuwe bindingen staan in append-only events, zonder bestaande historie te herschrijven.
 
 `kind: integration` vereist de nieuwste schone bronaanvraag en laat de CLI de bestaande
 `integration-evidence.py` uitvoeren. Alleen exacte integratietree of gesynchroniseerde versievelden

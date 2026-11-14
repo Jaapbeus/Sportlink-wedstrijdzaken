@@ -1422,6 +1422,23 @@ Het lokale JSON-contract (protocol 1, schema-revisie 2):
   `authorization_ref`. `finding-disposition` met `owner_accepted` vereist dezelfde actoridentity,
   `grant_id` en `authorization_ref`. `grant-revoke`: `grant_id`, `grantor_session`, `reason`.
   Verlopen/herroepen grants blokkeren ook gereedheid en nieuwe action-intents.
+- `finding-disposition` met `verified`: `{identity, disposition}` met `finding_id`, `disposition:
+  "verified"`, niet-leeg `evidence`, volledige `fix_commit`, `verification_sha` en
+  `verification_request_id`. Identity hoort bij de actieve nieuwe reviewaanvraag van dezelfde PR;
+  verificatie-SHA en -aanvraag moeten daarmee overeenkomen. De onafhankelijke reviewer controleert
+  de fixcommit op die head en verklaart dit in `evidence`; Git-ancestry wordt niet door de CLI
+  bewezen. De oude aanvraag/head kan de fix niet verifiëren. Iedere volgende aanvraag/generatie
+  vereist nieuwe verificatie van bestaande bevindingen. Oude ongebonden disposities blijven
+  bewaard maar blokkeren gereedheid en action-intents; events bevatten de nieuwe bindingen.
+- `finish`: `{identity, result: {result: "clean"}}`. `clean` weigert onopgeloste PR-bevindingen;
+  `completed` behoudt de bestaande taak-/checkvoorwaarden. Bij rode/ontbrekende checks of onafgeronde taken:
+  `{identity, result: {result: "blocked", reason, reviewer_stopped: true, stop_evidence, fence_evidence,
+  stopped_sessions: [...]}}`. Alle teksten zijn niet-leeg; de lijst noemt elke actieve child-sessie.
+  Dit bewaart taken/checks/bevindingen, registreert teruggave, verhoogt generation en zet de aanvraag
+  op `invalidated`, nooit op `ready`. Nieuwe aanvraag op een nieuwe SHA is vervolgens mogelijk;
+  herstel op dezelfde SHA gebruikt `reassign`. Late bevindingen blijven ook na fencing behouden.
+- Een late `finding-record` invalideert alle teruggegeven/gereedstaande aanvragen van dezelfde PR.
+  `action-intent` controleert open bevindingen en actuele fixbindingen nogmaals binnen de transactie.
 - `reassign` vereist naast de bestaande stopbevestiging `stopped_sessions` voor elke actieve
   child-sessie. Nieuwe generatie vereist opnieuw uitgevoerde taken en checks. `lane-release`
   met `outcome: "withdrawn"` vereist `reason`, `confirmed_stopped: true`, `stop_evidence`,

@@ -140,11 +140,21 @@ class CoordinatorTests(unittest.TestCase):
                 self._identity(session="implementer-1"),
                 {"finding_id": "finding-1", "disposition": "verified", "evidence": "checked"},
             )
-        self.coordinator.disposition_finding(self.identity, {
-            "finding_id": "finding-1", "disposition": "verified", "evidence": "fix commit checked",
-        })
         self.coordinator.finish(self.identity)
-        self.assertEqual(self.coordinator.ready(self.identity)["state"], "ready")
+        fixed = "d" * 40
+        self.coordinator.create_request(self._request(request_id="fixed", head_sha=fixed))
+        identity = self._identity(request_id="fixed", head_sha=fixed)
+        self.coordinator.claim(identity)
+        self._verify_task(identity, "verify-fixed")
+        self.coordinator.record_check(identity, {
+            "check_name": "CI", "head_sha": fixed, "state": "success", "evidence": "run/2",
+        })
+        self.coordinator.disposition_finding(identity, {
+            "finding_id": "finding-1", "disposition": "verified", "evidence": "fix commit checked",
+            "fix_commit": fixed, "verification_sha": fixed, "verification_request_id": "fixed",
+        })
+        self.coordinator.finish(identity, {"result": "clean"})
+        self.assertEqual(self.coordinator.ready(identity)["state"], "ready")
 
     def test_late_unexpected_finding_invalidates_readiness_and_is_retained(self) -> None:
         self._claim_and_check()
