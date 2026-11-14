@@ -54,4 +54,30 @@ public class SyncJobClaimCoreTests
         results.Count(claimed => claimed).Should().Be(1);
         processCount.Should().Be(1);
     }
+
+    [Fact]
+    public async Task ExecuteIfClaimedAsync_PogingVariant_GeeftHetPogingnummerDoorAanDeVerwerking()
+    {
+        int? verwerkt = null;
+
+        var claimed = await SyncJobClaimCore.ExecuteIfClaimedAsync(
+            () => Task.FromResult<int?>(2),
+            attempt => { verwerkt = attempt; return Task.CompletedTask; });
+
+        claimed.Should().BeTrue();
+        verwerkt.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ExecuteIfClaimedAsync_PogingVariant_ZonderClaimWordtNietVerwerkt()
+    {
+        var verwerkt = false;
+
+        var claimed = await SyncJobClaimCore.ExecuteIfClaimedAsync(
+            () => Task.FromResult<int?>(null),
+            _ => { verwerkt = true; return Task.CompletedTask; });
+
+        claimed.Should().BeFalse();
+        verwerkt.Should().BeFalse();
+    }
 }

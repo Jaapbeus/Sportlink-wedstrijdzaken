@@ -28,4 +28,23 @@ public static class SyncJobClaimCore
         await processClaimedAsync();
         return true;
     }
+
+    /// <summary>
+    /// Variant waarbij de claim het pogingnummer teruggeeft (#1839): <c>null</c> = niet geclaimd.
+    /// Het nummer gaat naar de verwerking, die er alle afrondingen aan bindt zodat een verouderde
+    /// poging een nieuwere niet kan overschrijven.
+    /// </summary>
+    public static async Task<bool> ExecuteIfClaimedAsync(
+        Func<Task<int?>> claimAttemptAsync,
+        Func<int, Task> processClaimedAsync)
+    {
+        ArgumentNullException.ThrowIfNull(claimAttemptAsync);
+        ArgumentNullException.ThrowIfNull(processClaimedAsync);
+
+        if (await claimAttemptAsync() is not { } attempt)
+            return false;
+
+        await processClaimedAsync(attempt);
+        return true;
+    }
 }

@@ -54,6 +54,7 @@ public static class AdminSyncFunction
                 var fetchSchedule = reader["FetchSchedule"].ToString() ?? "0 0 4 * * *";
 
                 Guid? jobId = Guid.TryParse(req.Query["jobId"], out var parsedJobId) ? parsedJobId : null;
+                await SyncJobsRepository.HerstelOnderbrokenAsync(context.GetLogger("AdminSyncStatus"));
                 var job = await SyncJobsRepository.GetLatestOrByIdAsync(clubCode, jobId);
 
                 return new OkObjectResult(new
@@ -105,6 +106,7 @@ public static class AdminSyncFunction
                     int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
                     var jobId = Guid.NewGuid();
 
+                    await SyncJobsRepository.HerstelOnderbrokenAsync(log);
                     await SyncJobsRepository.CreateAsync(jobId, clubCode, weekOffsetFrom: fromWeekOffset, weekOffsetTo: toWeekOffset);
 
                     var queueClient = SyncJobsQueue.CreateClient();

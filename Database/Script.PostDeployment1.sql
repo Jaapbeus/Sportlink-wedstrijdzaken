@@ -3706,6 +3706,17 @@ BEGIN
 END
 GO
 
+-- #1839: pogingsteller voor het begrensde herstel van onderbroken sync-jobs. De claim telt een poging;
+-- een afronding is aan het pogingnummer gebonden. Bestaande rijen krijgen 0. Additief en idempotent.
+-- Postgres-tegenhanger: Database.Postgres/migrations/052_syncjobs_attempt.sql.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.SyncJobs') AND name = 'Attempt')
+    ALTER TABLE [dbo].[SyncJobs] ADD [Attempt] INT NOT NULL CONSTRAINT [DF_SyncJobs_Attempt] DEFAULT (0);
+GO
+-- Een bestaande running-job is al één keer gestart en telt als poging 1 (anders krijgt hij bij herstel een
+-- extra poging boven de limiet); pending-jobs blijven 0. Idempotent: raakt alleen running met teller 0.
+UPDATE [dbo].[SyncJobs] SET [Attempt] = 1 WHERE [Status] = 'running' AND [Attempt] = 0;
+GO
+
 -- #1320: testnotitie gekoppeld aan een Sportlink-mutatiepoging — eigenaar-gestuurde
 -- productieproef met trace van validatie en bevestiging. Postgres-tegenhanger:
 -- Database.Postgres/migrations/028_sportlinkmutationaudit_notitie.sql.

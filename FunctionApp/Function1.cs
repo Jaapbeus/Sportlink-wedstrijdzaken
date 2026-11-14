@@ -34,6 +34,7 @@ namespace SportlinkFunction
             try
             {
                 await WaitForDatabaseAsync(log);
+                await SyncJobsRepository.HerstelOnderbrokenAsync(log); // #1839: herstel onderbroken jobs; loopt mee, geen eigen timer
                 await AppSettings.LoadSettingsAsync(log);
 
                 var uitkomst = await RunConfiguredSyncAsync(async () =>

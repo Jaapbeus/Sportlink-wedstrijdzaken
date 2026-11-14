@@ -1,4 +1,5 @@
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 using Planner.Shared.Sync;
 
 namespace SportlinkFunction;
@@ -26,41 +27,78 @@ internal static class SyncJobsRepository
         await command.ExecuteNonQueryAsync();
     }
 
-    internal static Task<bool> TryClaimPendingAsync(Guid id)
-    {
-        return TryClaimPendingAsync(SystemUtilities.DatabaseConfig.ConnectionString, id);
-    }
-
-    internal static async Task<bool> TryClaimPendingAsync(string connectionString, Guid id)
+    /// <summary>
+    /// Atomaire pending-to-running-claim (#1839): geeft het pogingnummer van deze claim terug,
+    /// <c>null</c> als de job niet meer pending is. Het nummer is de duurzame pogingseigendom:
+    /// afrondingen voor een oudere poging worden door <see cref="MarkCompletedAsync(Guid, bool, string?, int)"/> genegeerd.
+    /// </summary>
+    internal static async Task<int?> TryClaimAttemptAsync(string connectionString, Guid id)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new SqlCommand(
-            "UPDATE [dbo].[SyncJobs] SET [Status] = 'running', [StartedAt] = GETUTCDATE() " +
-            "OUTPUT INSERTED.[Id] WHERE [Id] = @Id AND [Status] = 'pending'",
+            "UPDATE [dbo].[SyncJobs] SET [Status] = 'running', [StartedAt] = GETUTCDATE(), [Attempt] = [Attempt] + 1 " +
+            "OUTPUT INSERTED.[Attempt] WHERE [Id] = @Id AND [Status] = 'pending'",
             connection);
         command.Parameters.AddWithValue("@Id", id);
-        return SyncJobTransitions.IsClaimGranted(await command.ExecuteScalarAsync());
+        return SyncJobTransitions.ReadClaimedAttempt(await command.ExecuteScalarAsync());
     }
 
-    internal static async Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage)
-    {
-        await MarkCompletedAsync(SystemUtilities.DatabaseConfig.ConnectionString, id, succeeded, errorMessage);
-    }
+    /// <summary>
+    /// Rondt de job af. Met <paramref name="attempt"/> alleen voor precies die poging: een verouderde
+    /// poging (de job is intussen herplaatst en opnieuw geclaimd) schrijft niets. Zonder pogingnummer
+    /// (alleen tests) geldt alleen de running-voorwaarde.
+    /// </summary>
+    internal static Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage, int attempt)
+        => MarkCompletedAsync(SystemUtilities.DatabaseConfig.ConnectionString, id, succeeded, errorMessage, attempt);
 
-    internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage)
+    internal static async Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage, int? attempt = null)
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             "UPDATE [dbo].[SyncJobs] SET [Status] = @Status, [CompletedAt] = GETUTCDATE(), [ErrorMessage] = @ErrorMessage " +
-            "WHERE [Id] = @Id AND [Status] = 'running'",
+            "WHERE [Id] = @Id AND [Status] = 'running' AND (@Attempt IS NULL OR [Attempt] = @Attempt)",
             connection);
         command.Parameters.AddWithValue("@Id", id);
+        command.Parameters.AddWithValue("@Attempt", (object?)attempt ?? DBNull.Value);
         command.Parameters.AddWithValue("@Status", SyncJobTransitions.CompletionStatus(succeeded));
         command.Parameters.AddWithValue("@ErrorMessage", (object?)SyncJobTransitions.TruncateError(errorMessage) ?? DBNull.Value);
         await command.ExecuteNonQueryAsync();
     }
+
+    /// <summary>
+    /// Eén atomaire herstelstap (#1839): uitgeputte onderbroken jobs gaan naar "failed", de overige
+    /// onderbroken jobs (en "pending"-jobs waarvan het bericht kwijt is) gaan terug naar "pending"
+    /// met een nieuw <c>StartedAt</c>. Drempels komen uit <see cref="SyncJobRecoveryPolicy"/>.
+    /// </summary>
+    internal static async Task<SyncJobRecoveryBatch> RecoverInterruptedAsync(string connectionString, DateTime cutoffUtc)
+    {
+        await using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        // Een UPDATE, dus atomair: uitgeput (running, poging >= max) wordt failed, de rest pending.
+        await using var command = new SqlCommand(
+            "UPDATE [dbo].[SyncJobs] SET " +
+            "[Status] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN 'failed' ELSE 'pending' END, " +
+            "[CompletedAt] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN GETUTCDATE() ELSE [CompletedAt] END, " +
+            "[ErrorMessage] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN @Message ELSE [ErrorMessage] END, " +
+            "[StartedAt] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN [StartedAt] ELSE GETUTCDATE() END " +
+            "OUTPUT INSERTED.[Id], INSERTED.[ClubCode], INSERTED.[WeekOffsetFrom], INSERTED.[WeekOffsetTo], INSERTED.[Status] " +
+            "WHERE [Status] IN ('running', 'pending') AND ([Status] = 'running' OR [Attempt] > 0) AND [StartedAt] <= @Cutoff",
+            connection);
+        command.Parameters.AddWithValue("@Max", SyncJobRecoveryPolicy.MaxAttempts);
+        command.Parameters.AddWithValue("@Message", SyncJobRecoveryPolicy.ExhaustedMessage);
+        command.Parameters.AddWithValue("@Cutoff", cutoffUtc);
+        await using var reader = await command.ExecuteReaderAsync();
+        return await SyncJobRecoveryCore.ReadBatchAsync(reader);
+    }
+
+    /// <summary>
+    /// Herstelt onderbroken jobs als onderdeel van bestaande activiteit (#1839); breekt die nooit.
+    /// </summary>
+    internal static Task HerstelOnderbrokenAsync(ILogger log)
+        => SyncJobRecoveryCore.TryRunAsync(
+            cutoff => RecoverInterruptedAsync(SystemUtilities.DatabaseConfig.ConnectionString, cutoff), SyncJobsQueue.CreateClient, log);
 
     /// <summary>
     /// Meest recente job voor <paramref name="clubCode"/>, of de job met <paramref name="jobId"/>
@@ -81,25 +119,7 @@ internal static class SyncJobsRepository
         if (!await reader.ReadAsync())
             return null;
 
-        return new SyncJobStatus(
-            Id: reader.GetGuid(0),
-            Status: reader.GetString(1),
-            WeekOffsetFrom: reader.GetInt32(2),
-            WeekOffsetTo: reader.GetInt32(3),
-            CreatedAt: DateTime.SpecifyKind(reader.GetDateTime(4), DateTimeKind.Utc),
-            StartedAt: reader.IsDBNull(5) ? null : DateTime.SpecifyKind(reader.GetDateTime(5), DateTimeKind.Utc),
-            CompletedAt: reader.IsDBNull(6) ? null : DateTime.SpecifyKind(reader.GetDateTime(6), DateTimeKind.Utc),
-            ErrorMessage: reader.IsDBNull(7) ? null : reader.GetString(7));
+        return SyncJobStatus.FromReader(reader);
     }
 
 }
-
-internal sealed record SyncJobStatus(
-    Guid Id,
-    string Status,
-    int WeekOffsetFrom,
-    int WeekOffsetTo,
-    DateTime CreatedAt,
-    DateTime? StartedAt,
-    DateTime? CompletedAt,
-    string? ErrorMessage);
