@@ -424,6 +424,9 @@ serializers voorkomt dat overerving de JSON-volgorde verandert. De oorspronkelij
 slagen voor dezelfde goldens (standaard, gevuld, ontbrekende velden en expliciete nullwaarden), inclusief
 naamruimte, interfaces, setters en read/write-nullability. Tests: `InkomendBerichtContractTests` op beide tiers;
 mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice14.tsv scripts/ci/mutatiebewijs-1716.sh`.
+Deze extractie verwijdert zes dubbele velddeclaraties, maar verlaagt de gemeten tierduplicatie niet:
+`BerichtModels.cs` en `EmailModels.cs` hebben verschillende bestandsnamen en waren geen gemeten paar.
+De geïntegreerde meting blijft 3740 tierregels en 536 interne regels; de plafonds en de mapping blijven gelijk.
 
 ---
 
