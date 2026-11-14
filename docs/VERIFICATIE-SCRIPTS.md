@@ -206,10 +206,18 @@ of writer-exclusiviteit op basis van shadowbewijs op.
 
 De nieuwe `scripts/dev/check-worktree-preflight.py` valideert de opgegeven absolute worktree en
 branch vóór werk; `scripts/dev/integration-evidence.py` maakt een bewijsrapport voor de oude review,
-nieuwe base en kandidaat-head. Dit rapport autoriseert geen merge en is geen semantische review:
-alleen gelijke volledige bomen of de nauw begrensde versie/changelog-transformatie kunnen als
-gelijkwaardigheid gelden. Conflicten, extra bestanden of iedere andere verandering falen gesloten
-en vragen handmatige inhoudelijke beoordeling. Controleer commandoreferentie en code bij wijzigingen.
+nieuwe base en kandidaat-head. Het rapporteert uitsluitend een exacte volledige integratietree of
+wijzigingen aan de elf gesynchroniseerde versievelden: `Version`, `AssemblyVersion` en `FileVersion`
+in elk van de drie applicatieprojecten, plus `info.version` in OpenAPI YAML en JSON. Alleen die
+scalaire versiewaarden mogen veranderen; overige tekst blijft bytegelijk. Dubbele JSON-sleutels,
+onduidelijke YAML-scopes en niet-ondersteunde of voorwaardelijke XML-versievelden krijgen geen
+versie-uitzondering. CHANGELOG-wijzigingen vallen buiten deze normalisatie.
+
+Conflicten, extra bestanden, moduswijzigingen en andere inhoud vragen gewone inhoudelijke of
+handmatige beoordeling. Het rapport behoudt de volledige tree-ID's, verschilpaden, geordende
+diff-hashes en overgeërfde commits. Ook bij een exacte tree of alleen versievelden blijft een
+onafhankelijke interactiereview verplicht; het rapport autoriseert geen reviewovername of merge.
+Controleer commandoreferentie en code bij wijzigingen.
 
 ### BlazorAdmin-build wordt overgeslagen bij een draaiende dev server
 

@@ -344,11 +344,44 @@ ondersteunen en alleen met expliciete apply schrijven. Gedrag, normatieve instru
 blijven wel in dezelfde implementatie-PR bijgewerkt. Tot de aparte eigenaaractivering: volg de
 bestaande regels bovenaan §6; deze doelroute is geen reden om CHANGELOG of csproj-bumps over te slaan.
 
-De voorbereidende tooling biedt `scripts/release/changelog.py` met `validate`, `preview` en `prepare`
-voor een repository, versie en datum; alleen een expliciete `--apply` schrijft. De versiehelper
-controleert eveneens de verwachte huidige waarde en schrijft alleen met expliciete apply. Raadpleeg
-de actuele `--help` en code voor de precieze interface. Gebruik geen fragmentgenerator voordat de
-owner de doelroute activeert.
+De voorbereidende tooling heeft de volgende interface (`<worktree>` is de repository-root;
+`--repo` weglaten gebruikt de huidige map):
+
+| Commando | Verplichte invoer en gedrag |
+|---|---|
+| `python3 scripts/release/changelog.py validate --repo <worktree>` | Valideert fragmenten en manifest; geen versie of datum nodig, schrijft niets. |
+| `python3 scripts/release/changelog.py preview --repo <worktree>` | Toont nieuwe gebruikersgerichte fragmenttekst; geen versie of datum nodig, schrijft niets. |
+| `python3 scripts/release/changelog.py prepare --repo <worktree> --version <doelversie> --date <YYYY-MM-DD>` | Toont de geplande CHANGELOG en het releasemanifest; voeg `--apply` toe om te schrijven. |
+| `python3 scripts/release/version.py --repo <worktree> --expected-current <huidige-appversie> --expected-api-version <huidige-apiversie> --version <doelversie>` | Controleert de verwachte app- en API-versies en YAML/JSON-contractgelijkheid; standaard alleen preview, met `--apply` een update van drie projecten en beide OpenAPI-bestanden. |
+
+Alle versies hebben vier delen: `MAJOR.MINOR.PATCH.REVISION`. Alleen `changelog.py prepare`
+vereist een datum. Preview van beide schrijfbewerkingen is alleen-lezen, ook wanneer een
+onderbroken bewerking wacht op herstel; preview maakt of voltooit geen hersteljournaal.
+
+Elke helper bewaart maximaal één lokaal hersteljournaal van hoogstens 32 MiB:
+`artifacts/release/changelog-state.json` respectievelijk `artifacts/release/version-state.json`.
+Deze bestanden zijn gitignored via `artifacts/` en bevatten de operatie-identiteit en de exacte
+voor-/na-inhoud. Bewaar een journaal met status `pending` na een onderbreking en hervat in dezelfde
+worktree met exact de oorspronkelijke versie-/datumargumenten of verwachte app-/API-/doelversies,
+plus `--apply`. Een andere operatie mag een `pending` journaal niet vervangen. Afwijkende invoer
+of bestanden buiten de vastgelegde voor-/na-inhoud blokkeren herstel vóór enige schrijfactie;
+verwijder het journaal niet om deze controle te omzeilen. Een `completed` journaal blijft behouden
+voor exacte herhaling en kan bij een volgende operatie door één nieuw journaal worden vervangen.
+
+Na voltooiing kan een nieuwe checkout zonder lokaal journaal een changelogbewerking herhalen:
+`CHANGELOG.md`, de fragmentbytes en het gecommitteerde `changelog.d/release-manifest.json` moeten
+precies overeenkomen met het releasebewijs voor dezelfde versie en datum. Die herhaling schrijft
+ook met `--apply` niets. Een bestaande release zonder exact bewijs of met gewijzigde inhoud wordt
+geweigerd. Voor `version.py` is zonder passend journaal alleen een expliciete no-op mogelijk als
+alle elf versievelden al op de doelversie staan en OpenAPI YAML en JSON semantisch gelijk zijn.
+Dan verandert ook met `--apply` geen bestand of formattering en ontstaat geen journaal. Dit bewijst
+alleen de huidige doelversie en API-pariteit, niet de oorspronkelijke inhoud of een eerder herstel;
+gemengde versies en contractverschillen gelden niet als geslaagde no-op.
+
+Dit blijft voorbereidende SHADOW-tooling. De bestaande CHANGELOG-/versieroute blijft leidend tot
+aparte eigenaaractivering; deze CLI en herstelafspraken activeren geen automatisering. Raadpleeg
+ook de actuele `--help` en code. Gebruik geen fragmentgenerator voordat de eigenaar de doelroute
+activeert.
 
 Verifieer in één regel dat alle drie gelijk staan:
 
