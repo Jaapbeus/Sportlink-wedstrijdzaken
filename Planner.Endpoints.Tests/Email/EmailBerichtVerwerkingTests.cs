@@ -64,6 +64,19 @@ public sealed class EmailBerichtVerwerkingTests
         p.Gebeurtenissen.Should().Equal("id", "bepaal-reply", "status-reply", "ai-correctie", "antwoordlimiet");
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public async Task LegeConversationId_SlaatReplydetectieOver(string? conversationId)
+    {
+        var p = new Poort { ConversationIdValue = conversationId };
+
+        await EmailBerichtVerwerking.VerwerkAsync("bericht", new(), GeenAdressen, NullLogger.Instance, p);
+
+        p.Gebeurtenissen.Should().NotContain("bepaal-reply", "status-reply", "ai-correctie", "correctie-opslag");
+    }
+
     [Fact]
     public async Task SuccesvolleVerwerking_HoudtFasevolgordeEnStuurtNotificatieNaTrace()
     {
@@ -134,7 +147,9 @@ public sealed class EmailBerichtVerwerkingTests
     {
         var p = new Poort { AiFout = aiFout, InsertFout = insertFout, IsCorrectie = true };
 
-        await EmailBerichtVerwerking.VerwerkAsync("bericht", new(), GeenAdressen, NullLogger.Instance, p);
+        await EmailBerichtVerwerking.VerwerkAsync("bericht",
+            new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek, TeamNaam = "team", Datum = "2026-11-14" },
+            GeenAdressen, NullLogger.Instance, p);
 
         p.Gebeurtenissen.Should().Contain("status-reply");
         p.Gebeurtenissen.Should().Contain("ai-correctie");
@@ -184,7 +199,9 @@ public sealed class EmailBerichtVerwerkingTests
     {
         var p = new Poort { Uitkomst = ReplyVerwerkingUitkomst.VerzendFout };
 
-        await EmailBerichtVerwerking.VerwerkAsync("bericht", new(), GeenAdressen, NullLogger.Instance, p);
+        await EmailBerichtVerwerking.VerwerkAsync("bericht",
+            new BerichtClassificatie { Type = VerzoekType.HerplanVerzoek, TeamNaam = "team", Datum = "2026-11-14" },
+            GeenAdressen, NullLogger.Instance, p);
 
         p.Gebeurtenissen.Should().NotContain("notificatie");
         p.Gebeurtenissen.Should().Contain("trace");
@@ -203,6 +220,7 @@ public sealed class EmailBerichtVerwerkingTests
         public bool ReplyStatusFout { get; init; }
         public bool IsReply { get; init; } = true;
         public int? OrigineelId { get; init; } = 7;
+        public string? ConversationIdValue { get; init; } = "gesprek";
         public bool TraceFout { get; init; }
         public bool NotificationFout { get; init; }
         public Exception? PlannerFout { get; init; }
@@ -214,7 +232,7 @@ public sealed class EmailBerichtVerwerkingTests
         public Func<string, string> SanitizeFoutMelding => value => value;
         public string MessageId(string bericht) => bericht;
         public string Afzender(string bericht) => "afzender";
-        public string? ConversationId(string bericht) => "gesprek";
+        public string? ConversationId(string bericht) => ConversationIdValue;
         public Task MarkeerGelezenAsync(string messageId) { Gebeurtenissen.Add("gelezen"); return Task.CompletedTask; }
         public Task<int?> BepaalVerwerkingIdAsync(string bericht, Microsoft.Extensions.Logging.ILogger log)
         { Gebeurtenissen.Add("id"); return Task.FromResult(VerwerkingId); }
