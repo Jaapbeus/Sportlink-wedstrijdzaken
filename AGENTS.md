@@ -46,8 +46,8 @@ Elke implementatie, ook instructie-/docs-/CI-werk, heeft vooraf een issue met pr
 4. **Een issuecomment is geen lock**: wijs jezelf nooit aan op een leeg issue. Onduidelijk eigenaarschap: geen overlappende wijzigingen, eerst de eigenaar.
 5. **Wijzig alleen eigen werk**: geen commits, pushes, rebases, cherry-picks of cleanup op andermans branch/worktree; overdracht alleen met vastgelegde nieuwe implementer, sessie en status.
 
-**Bevoegdheden.** Binnen een toegewezen taak mogen beide agents code, tests, config, scripts en docs wijzigen, een eigen worktree/branch maken, committen, pushen, PR's openen en issues/labels (`type:`, `priority:`, `discipline:`, `source:`) beheren; `source:` wijzigt niet bij een andere implementer/reviewer, `status:` is van de automatisering (uitzondering Stap 5).
-Een ontbrekende tool of onuitgevoerde smoke-/browsercheck telt nooit als geslaagd; rapporteer wat wel en niet is uitgevoerd.
+**Bevoegdheden.** Binnen een toegewezen taak mogen beide agents code, tests, config, scripts en docs wijzigen, een eigen worktree/branch maken, committen, pushen, PR's openen en issues/labels (`type:`, `priority:`, `discipline:`, `source:`) beheren; `source:` wijzigt niet bij een andere implementer/reviewer, `status:`: zie Labels.
+Een ontbrekende tool of onuitgevoerde check telt nooit als geslaagd; rapporteer wat wel/niet draaide.
 Een onderzoeks- of reviewopdracht (leg probleem/impact, bewijs, stappen, acceptatiecriteria, risico's vast) verleent geen implementatieopdracht.
 **Merge en deployment vereisen aparte eigenaarsautorisatie**: opdracht, groene CI, review of `turn:`-label is geen toestemming; alleen een door de eigenaar gestarte `/release` of `/autonoom --release` autoriseert merges/deploy/tag binnen die procedure, plus de zelfmerge-regel hieronder.
 Werk na andere merges je eigen branch bij vanaf de afgesproken basis en herhaal de verificatie.
@@ -121,7 +121,7 @@ Rapporteer PR-URL en issue in één regel. **Alleen bij escalatie blijft `review
 **Afronding en overdracht aan de eigenaar**: een beslissurvey, geen feitenlijst; alleen echte besluiten, elk in gewone taal met 3–5 opties (voor/tegen) en een aanbeveling (`CONTRIBUTING.md`, "Afronding aan de eigenaar").
 
 **Labels.** Precies één herkomst: `source: codex|claude-code|owner` door de opsteller, óf `via: feedback-widget` bij een widgetmelding (dan géén extra `source:`); bestaande herkomst blijft, ontbrekende alleen op bewijs aanvullen; geef bij aanmaken zelf geen `status:` mee.
-De automatiek zet één `status:` (nooit `--add-label` zonder het oude te verwijderen; `blocked`/`wont-fix`/`waiting-owner` blijven staan; keten: `CONTRIBUTING.md`).
+Fasecomment (overdracht), `status:` (levenscyclus; automatiek, één per issue; `blocked`/`wont-fix`/`waiting-owner` blijven) en `turn:` (wie aan zet) zijn los; herstel oude status via `reconcilieer-issue-status.yml` (`CONTRIBUTING.md`).
 Alleen strong refs (`#NNN` in PR-titel of achter `Closes #N`) wijzigen een issue.
 **Een merge naar `develop` sluit het issue nooit** en de agent roept daarna nooit `gh issue close` aan (uitzondering: hotfix-PR naar `main` na merge en groene `close-released-issues.yml`).
 
