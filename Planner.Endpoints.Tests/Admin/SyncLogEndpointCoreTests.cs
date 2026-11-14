@@ -18,6 +18,38 @@ public class SyncLogEndpointCoreTests
     private static JsonElement Json(object value) => JsonSerializer.SerializeToElement(value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
     [Fact]
+    public async Task InvalidStartBody_DoesNotRecoverCreateOrEnqueue()
+    {
+        var result = await SyncLogEndpointCore.StartAsync("{invalid", 2026,
+            () => throw new Exception("must not read"), _ => throw new Exception("must not read"),
+            () => throw new Exception("must not recover"), (_, _) => throw new Exception("must not create"),
+            _ => throw new Exception("must not enqueue"), _ => throw new Exception("must not compensate"),
+            _ => throw new Exception("must not read phases"));
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task StartWithActiveJob_KeepsItsWindowAndCurrentAttemptPhase()
+    {
+        var job = Job("running", -1);
+        var recovered = false;
+        var phase = new SyncLogEntry(job.Id, job.Attempt, "teams", Now, null, "running", null, null, null, null, null, null, null);
+        var result = (ObjectResult)await SyncLogEndpointCore.StartAsync(null, 2026,
+            () => Task.FromResult(25), _ => throw new Exception("must not read season start"),
+            () => { recovered = true; return Task.CompletedTask; }, (from, to) =>
+            {
+                recovered.Should().BeTrue();
+                (from, to).Should().Be((-1, 25));
+                return Task.FromResult(new SyncJobCreation(job, false));
+            }, _ => throw new Exception("must not enqueue"), _ => throw new Exception("must not compensate"),
+            _ => Task.FromResult<IReadOnlyList<SyncLogEntry>>(new[] { phase }));
+        var json = Json(result.Value!);
+        json.GetProperty("weekOffsetTo").GetInt32().Should().Be(job.WeekOffsetTo);
+        json.GetProperty("phase").GetString().Should().Be("teams");
+        json.GetProperty("alreadyRunning").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
     public async Task SecondClick_ReusesJob_WithoutEnqueue()
     {
         var job = Job("running", -1);

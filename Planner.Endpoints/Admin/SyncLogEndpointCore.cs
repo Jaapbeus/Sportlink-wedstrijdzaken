@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Azure.Storage.Queues;
+using System.Text.Json;
 using Planner.Shared.Sync;
 
 namespace Planner.Endpoints.Admin;
@@ -6,6 +8,29 @@ namespace Planner.Endpoints.Admin;
 /// <summary>Veilige, gedeelde weergave en queue-orkestratie van het sync-logboek.</summary>
 public static class SyncLogEndpointCore
 {
+    public static async Task<IActionResult> StartAsync(string? body, int year,
+        Func<Task<int>> seasonEnd, Func<int, Task<int?>> seasonStart, Func<Task> recover,
+        Func<int, int, Task<SyncJobCreation>> create, Func<SyncJobStatus, Task> enqueue,
+        Func<Guid, Task> markEnqueueFailed, Func<Guid, Task<IReadOnlyList<SyncLogEntry>>> readPhases)
+    {
+        var window = await SyncTriggerEndpointCore.BepaalVensterAsync(body, year, seasonEnd, seasonStart);
+        if (window.Fout is not null) return window.Fout;
+        await recover();
+        var creation = await create(window.Van, window.Tot);
+        return await TriggerAsync(creation, enqueue, () => markEnqueueFailed(creation.Job.Id), async () =>
+        {
+            var phases = await readPhases(creation.Job.Id);
+            return phases.LastOrDefault(p => p.Attempt == creation.Job.Attempt && p.Status == "running")?.Phase;
+        });
+    }
+
+    public static async Task EnqueueAsync(QueueClient client, SyncJobStatus job, string clubCode)
+    {
+        await client.CreateIfNotExistsAsync();
+        await client.SendMessageAsync(JsonSerializer.Serialize(
+            new SyncJobRecoveryItem(job.Id, clubCode, job.WeekOffsetFrom, job.WeekOffsetTo)));
+    }
+
     public static async Task<IActionResult> ReadAsync(DateTime? lastSync, string schedule,
         IReadOnlyList<SyncJobStatus> jobs, Guid? requestedId, Func<Task<int>> cleanup,
         Func<Task<IReadOnlyList<SyncLogEntry>>> readEntries)

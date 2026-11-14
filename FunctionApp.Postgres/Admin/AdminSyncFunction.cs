@@ -2,8 +2,6 @@ using Planner.Shared.Sync;
 using Planner.Endpoints.Http;
 
 using FunctionApp.Postgres.Infrastructure;
-using System.Text.Json;
-using Azure.Storage.Queues;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -80,33 +78,17 @@ public static class AdminSyncFunction
                 // #1352/#1461/#1492: body + seizoensvenster via de gedeelde orkestratie (400 bij ongeldig).
                 return await BoundedRequestBodyReader.ExecuteUtf8Async(req, async bodyText =>
                 {
-                    var venster = await SyncTriggerEndpointCore.BepaalVensterAsync(
+                    return await SyncLogEndpointCore.StartAsync(
                         bodyText, DateTime.UtcNow.Year,
                         async () => { await PostgresSeasonHelper.EnsureSeasonsAsync(log); return await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log, clubCode); },
-                        jaar => PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar, clubCode));
-                    if (venster.Fout is not null) return venster.Fout;
-                    int fromWeekOffset = venster.Van, toWeekOffset = venster.Tot;
-                    await SyncJobsRepository.HerstelOnderbrokenAsync(log);
-                    var creation = await SyncJobsRepository.GetOrCreateActiveAsync(
-                        PostgresDatabaseConfig.ConnectionString, Guid.NewGuid(), clubCode, fromWeekOffset, toWeekOffset);
-                    return await SyncLogEndpointCore.TriggerAsync(creation, job => EnqueueAsync(job, clubCode),
-                        () => SyncJobsRepository.MarkEnqueueFailedAsync(PostgresDatabaseConfig.ConnectionString, creation.Job.Id, clubCode), async () =>
-                    {
-                        var phases = await SyncLogRepository.GetForJobsAsync(PostgresDatabaseConfig.ConnectionString, clubCode, new[] { creation.Job.Id });
-                        return phases.LastOrDefault(p => p.Attempt == creation.Job.Attempt && p.Status == "running")?.Phase;
-                    });
+                        jaar => PostgresSeasonHelper.GetSeasonStartWeekOffsetOrNullAsync(jaar, clubCode),
+                        () => SyncJobsRepository.HerstelOnderbrokenAsync(log),
+                        (from, to) => SyncJobsRepository.GetOrCreateActiveAsync(PostgresDatabaseConfig.ConnectionString, Guid.NewGuid(), clubCode, from, to),
+                        job => SyncLogEndpointCore.EnqueueAsync(SyncJobsQueue.CreateClient(), job, clubCode),
+                        id => SyncJobsRepository.MarkEnqueueFailedAsync(PostgresDatabaseConfig.ConnectionString, id, clubCode),
+                        id => SyncLogRepository.GetForJobsAsync(PostgresDatabaseConfig.ConnectionString, clubCode, new[] { id }));
                 });
             });
-    }
-    private static async Task EnqueueAsync(SyncJobStatus job, string clubCode)
-    {
-        var client = SyncJobsQueue.CreateClient();
-        await client.CreateIfNotExistsAsync();
-        await client.SendMessageAsync(JsonSerializer.Serialize(new SyncJobMessage
-        {
-            JobId = job.Id, ClubCode = clubCode,
-            WeekOffsetFrom = job.WeekOffsetFrom, WeekOffsetTo = job.WeekOffsetTo
-        }));
     }
 
 }
