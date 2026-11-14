@@ -1,6 +1,6 @@
 // Unit-tests voor issue-router.js en structuurchecks op de workflows van #1721 (fase 1).
 // Uitvoeren: node .github/scripts/issue-router.test.js   (exit 0 = alles groen)
-// Draait bij elke PR in de job 'Build FunctionApp + BlazorAdmin' (build.yml). De router en de aanroepbare
+// Draait bij elke PR in de job 'Repo-guards (zonder .NET)' (build.yml). De router en de aanroepbare
 // beurtworkflow draaien alleen op hun eigen trigger; zonder deze test blijkt een fout pas bij een proef.
 
 const fs = require('fs');

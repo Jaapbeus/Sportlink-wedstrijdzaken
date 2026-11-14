@@ -1,6 +1,6 @@
 // Unit-tests voor claude-issue-turn-review.js (#1727) — zonder GitHub, token of netwerk.
 // Uitvoeren: node .github/scripts/claude-issue-turn-review.test.js   (exit 0 = alles groen)
-// Draait bij elke PR in de job 'Build FunctionApp + BlazorAdmin' (build.yml), naast de poorttest.
+// Draait bij elke PR in de job 'Repo-guards (zonder .NET)' (build.yml), naast de poorttest.
 
 const {
   publishReview, parseReviewOutput, composePrComment, scanPublicText, nextTurn,

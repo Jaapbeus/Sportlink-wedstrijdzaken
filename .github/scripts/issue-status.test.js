@@ -1,6 +1,6 @@
 // Unit-tests voor issue-status.js — draaien zonder GitHub, zonder token, zonder netwerk.
 // Uitvoeren: node .github/scripts/issue-status.test.js   (exit 0 = alles groen)
-// Wordt bij elke PR gedraaid door de job 'Build FunctionApp + BlazorAdmin' in build.yml.
+// Wordt bij elke PR gedraaid door de job 'Repo-guards (zonder .NET)' in build.yml.
 const { extractIssueRefs, setIssueStatus, clearIssueStatus, clearTurnLabels, isEpic, updatePullRequestIssueStatuses,
   statusVoorPullRequest, plaatsFasecommentGemerged, reconcileIssueStatus, FASE_GEMERGED_MARKER } = require('./issue-status.js');
 
