@@ -45,13 +45,49 @@ if [ ! -f "$editorconfig" ]; then
   exit 1
 fi
 
-# Alleen de productiesectie [*.cs] telt: de testsectie zet dezelfde regels bewust op 'none'.
-productieblok="$(awk '/^\[/ { actief = ($0 == "[*.cs]"); next } actief' "$editorconfig")"
-for regel in CA1502 CA1505 CA1506; do
-  if ! printf '%s\n' "$productieblok" | grep -Eq "^dotnet_diagnostic\.${regel}\.severity[[:space:]]*=[[:space:]]*error[[:space:]]*$"; then
-    echo "::error::.editorconfig zet ${regel} in de sectie [*.cs] niet op error. Sinds #1945 vangt alleen de gewone build (severity error) een overtreding; op warning of none glipt hij stilzwijgend door."
+# #1946 review (Codex P2): EditorConfig neemt bij conflicten de LAATSTE waarde, en een later blok
+# kan een eerder blok overschrijven. "Er staat ergens een error-regel" bewijst dus niets over de
+# effectieve severity. Daarom streng en fail-closed:
+#   1. elke severity-toewijzing van CA1502/1505/1506 BUITEN de expliciete testsectie moet 'error' zijn
+#      (een latere 'warning' in [*.cs] of in een later productieblok faalt dus altijd);
+#   2. in de testsectie is alleen 'none' toegestaan;
+#   3. elke regel staat minstens één keer op 'error' in de sectie [*.cs];
+#   4. geen andere bron mag de regels noemen: geneste .editorconfig, .globalconfig, .ruleset,
+#      *.csproj, *.props, *.targets (NoWarn/WarningsNotAsErrors kan ze anders stil uitzetten).
+testsectie='[{*.Tests,*.Tests.*}/**.cs]'
+fouten="$(awk -v testsectie="$testsectie" '
+  BEGIN { sectie = "" }
+  /^[[:space:]]*\[/ { sectie = $0; sub(/^[[:space:]]+/, "", sectie); sub(/[[:space:]]+$/, "", sectie); next }
+  {
+    regel = tolower($0)
+    if (regel !~ /^[[:space:]]*dotnet_diagnostic\.ca150[256]\.severity[[:space:]]*=/) next
+    id = regel; sub(/^[[:space:]]*dotnet_diagnostic\./, "", id); sub(/\..*/, "", id)
+    waarde = regel; sub(/^[^=]*=[[:space:]]*/, "", waarde); sub(/[[:space:]]*([#;].*)?$/, "", waarde)
+    if (sectie == testsectie) {
+      if (waarde != "none") printf "regel %d: %s staat in de testsectie op %s (alleen none toegestaan)\n", NR, toupper(id), waarde
+    } else {
+      if (waarde != "error") printf "regel %d: %s staat in %s op %s (buiten de testsectie alleen error)\n", NR, toupper(id), sectie, waarde
+      else if (sectie == "[*.cs]") gezien[id] = 1
+    }
+  }
+  END { split("ca1502 ca1505 ca1506", r, " "); for (i = 1; i <= 3; i++) if (!(r[i] in gezien)) printf "%s staat in [*.cs] niet op error\n", toupper(r[i]) }
+' "$editorconfig")"
+if [ -n "$fouten" ]; then
+  printf '%s\n' "$fouten" | while IFS= read -r f; do echo "::error file=$editorconfig::$f"; done
+  echo "::error::CA1502/1505/1506 moeten effectief op error staan voor productiecode. Sinds #1945 vangt alleen de gewone build (severity error) een overtreding; op warning of none glipt hij stilzwijgend door."
+  exit 1
+fi
+
+# 4. Andere configuratiebronnen (ook nog niet getrackte bestanden, zodat een proef rood wordt).
+andere="$(git ls-files --cached --others --exclude-standard -- \
+  '*.editorconfig' '**/.editorconfig' '*.globalconfig' '*.ruleset' '*.csproj' '*.props' '*.targets' \
+  | grep -vx "$editorconfig" | grep -vx '.editorconfig' || true)"
+if [ -n "$andere" ]; then
+  treffers="$(printf '%s\n' "$andere" | while IFS= read -r f; do [ -f "$f" ] && grep -lE 'CA150[256]' "$f" || true; done)"
+  if [ -n "$treffers" ]; then
+    printf '%s\n' "$treffers" | while IFS= read -r f; do echo "::error file=$f::Dit bestand noemt CA1502/1505/1506 en kan de severity uit .editorconfig overschrijven of onderdrukken (bijv. NoWarn)."; done
     exit 1
   fi
-done
+fi
 
 echo "OK — CA1502/1505/1506 staan in [*.cs] van .editorconfig op error; de solutionbuild faalt op elke overtreding."

@@ -528,8 +528,12 @@ solutionbuild van de guard niets toe (ca. 30 s op het kritieke pad): de gewone R
 overtreding. De guard telt daarom niet meer en heeft geen .NET meer nodig (hij draait in
 *Repo-guards*); het plafond `analyzer-overtredingen` is vervallen. Hij eist nu **strikt `error`** in
 `[*.cs]`: `warning` is niet meer genoeg, want zonder teller zou een overtreding dan stilzwijgend
-doorglippen. `check-codekwaliteit.test.sh` bewijst beide faalwijzen (regel ontbreekt; regel op
-`warning`). Rood-bewijs van de build zelf staat in de PR van #1945.
+doorglippen. Omdat EditorConfig de **laatste** waarde neemt, is de controle fail-closed (review #1946): elke
+severity-toewijzing van de drie regels buiten de testsectie moet `error` zijn (een latere `warning`
+in `[*.cs]` of in een later productieblok faalt), de testsectie mag alleen `none`, en geen andere
+bron (geneste `.editorconfig`, `.globalconfig`, `.ruleset`, csproj/props/targets, bijv. `NoWarn`) mag
+ze noemen. `check-codekwaliteit.test.sh` bewijst al deze faalwijzen. Rood-bewijs van de build zelf
+staat in de PR van #1945.
 
 ### Regel 9 — Elk HTTP-endpoint autoriseert via de wrapper, nooit via een eigen poort (#1350)
 

@@ -362,6 +362,23 @@ cp "$TMP_B" .editorconfig
 awk '/^\[/ { actief = ($0 == "[*.cs]") } { if (actief && $0 ~ /^dotnet_diagnostic\.CA1502\.severity/) print "dotnet_diagnostic.CA1502.severity = warning"; else print }' "$TMP_B" > .editorconfig
 verwacht_falen "CA1502 op warning in [*.cs]" bash scripts/ci/check-analyzer-complexiteit.sh
 cp "$TMP_B" .editorconfig
+#    #1946 review (Codex P2): EditorConfig neemt de LAATSTE waarde. Een latere 'warning' in hetzelfde
+#    blok of in een later productieblok moet rood zijn, ook al staat er eerder een 'error'-regel.
+awk '{ print } /^dotnet_diagnostic\.CA1506\.severity = error/ && !klaar { print "dotnet_diagnostic.CA1502.severity = warning"; klaar = 1 }' "$TMP_B" > .editorconfig
+verwacht_falen "latere CA1502 = warning in hetzelfde [*.cs]-blok" bash scripts/ci/check-analyzer-complexiteit.sh
+cp "$TMP_B" .editorconfig
+{ cat "$TMP_B"; printf '\n[FunctionApp/**.cs]\ndotnet_diagnostic.CA1505.severity = none\n'; } > .editorconfig
+verwacht_falen "later productieblok zet CA1505 op none" bash scripts/ci/check-analyzer-complexiteit.sh
+cp "$TMP_B" .editorconfig
+#    Een andere bron (geneste .editorconfig of NoWarn in een projectbestand) kan de severity ook stil uitzetten.
+printf '[*.cs]\ndotnet_diagnostic.CA1506.severity = none\n' > Planner.Shared/.editorconfig
+verwacht_falen "geneste .editorconfig noemt CA1506" bash scripts/ci/check-analyzer-complexiteit.sh
+rm -f Planner.Shared/.editorconfig
+cp Planner.Shared/Planner.Shared.csproj "$TMP_C"
+awk '/<\/Project>/ { print "  <PropertyGroup><NoWarn>$(NoWarn);CA1502</NoWarn></PropertyGroup>" } { print }' "$TMP_C" > Planner.Shared/Planner.Shared.csproj
+verwacht_falen "NoWarn CA1502 in een csproj" bash scripts/ci/check-analyzer-complexiteit.sh
+cp "$TMP_C" Planner.Shared/Planner.Shared.csproj
+verwacht_slagen "echte .editorconfig (testsectie op none) is groen" bash scripts/ci/check-analyzer-complexiteit.sh
 
 echo
 echo "Resultaat: $geslaagd geslaagd, $mislukt mislukt."
