@@ -385,6 +385,10 @@ printf 'namespace Proef;\n#pragma warning disable ca1502\npublic static class P 
 verwacht_falen "#pragma warning disable ca1502 in productiecode" bash scripts/ci/check-analyzer-complexiteit.sh
 printf 'namespace Proef;\n[System.Diagnostics.CodeAnalysis.SuppressMessage("Maintainability", "CA1506")]\npublic static class P { }\n' > Planner.Shared/ProefOnderdrukking.cs
 verwacht_falen "SuppressMessage CA1506 in productiecode" bash scripts/ci/check-analyzer-complexiteit.sh
+printf 'namespace Proef;\n[System.Diagnostics.CodeAnalysis.SuppressMessage(\n    "Maintainability",\n    "CA1502:AvoidExcessiveComplexity")]\npublic static class P { }\n' > Planner.Shared/ProefOnderdrukking.cs
+verwacht_falen "SuppressMessage over meerdere regels (CA1502 op regel 3)" bash scripts/ci/check-analyzer-complexiteit.sh
+printf 'namespace Proef;\n// Deze methode blijft onder de CA1502-grens; SuppressMessage is hier niet nodig.\npublic static class P { }\n' > Planner.Shared/ProefOnderdrukking.cs
+verwacht_slagen "commentaar dat CA1502 en SuppressMessage noemt is geen onderdrukking" bash scripts/ci/check-analyzer-complexiteit.sh
 rm -f Planner.Shared/ProefOnderdrukking.cs
 verwacht_slagen "echte .editorconfig (testsectie op none) is groen" bash scripts/ci/check-analyzer-complexiteit.sh
 

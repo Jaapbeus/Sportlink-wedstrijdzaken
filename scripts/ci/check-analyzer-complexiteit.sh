@@ -96,7 +96,21 @@ fi
 #    productiecode is dat verboden; testprojecten vallen al onder de testsectie (none).
 onderdrukt="$(git ls-files --cached --others --exclude-standard -- '*.cs' '*.razor' \
   | grep -vE '(^|/)[^/]*\.Tests(\.[^/]*)?/' \
-  | while IFS= read -r f; do [ -f "$f" ] && grep -inE '(pragma[[:space:]]+warning[[:space:]]+disable|SuppressMessage).*ca150[256]' "$f" | sed "s#^#$f:#" || true; done)"
+  | python3 -c '
+import re, sys
+# Hele bestand, hoofdletterongevoelig: ook een attribuut verdeeld over meerdere regels (review #1946 ronde 3).
+patroon = re.compile(
+    r"#[ \t]*pragma[ \t]+warning[ \t]+disable[^\n]*ca150[256]"
+    r"|SuppressMessage(?:Attribute)?\s*\((?:[^()]|\([^()]*\))*?ca150[256]",
+    re.IGNORECASE | re.DOTALL)
+for pad in sys.stdin.read().splitlines():
+    try:
+        tekst = open(pad, encoding="utf-8", errors="replace").read()
+    except OSError:
+        continue
+    for m in patroon.finditer(tekst):
+        print(f"{pad}:{tekst.count(chr(10), 0, m.start()) + 1}")
+')"
 if [ -n "$onderdrukt" ]; then
   printf '%s\n' "$onderdrukt" | while IFS= read -r f; do echo "::error::Onderdrukking van CA1502/1505/1506 in productiecode: $f"; done
   echo "::error::Los de complexiteit of koppeling op in plaats van de analyzer te onderdrukken (#1651)."
