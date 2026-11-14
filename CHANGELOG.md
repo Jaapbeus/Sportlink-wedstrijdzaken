@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Het resultaatpaneel van **Wedstrijd aanmaken** toont nu het thuis- en uitteam zoals die naar Sportlink zijn gestuurd, met erbij of het uitteam aan een team is gekoppeld. Na een echte aanmaak leest de app de wedstrijd bij Sportlink terug en waarschuwt als Sportlink een ander uitteam toont dan opgegeven; een dry-run of een mislukte teruglezing geeft geen waarschuwing. Op beide databasetiers. Vervolg op #1871 (#1892).
+
 ## [3.17.0.0] — 2026-11-12
 
 - De auditregistratie van een aangemaakte clubwedstrijd legt nu het echte `PublicMatchId` van Sportlink vast in plaats van de tijdelijke waarde, op beide databasetiers. Daardoor is een latere wijziging of verwijdering aan de aanmaak te koppelen. Alleen bij een geslaagde, echte aanmaak; een fout bij het bijwerken breekt de aanmaak niet af (#1879).
