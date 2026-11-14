@@ -22,8 +22,28 @@ public static class SyncLogPersistenceValues
     public static DateTime RetentionCutoff(string clubCode, DateTime utcNow)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(clubCode);
+        return RetentionCutoff(utcNow);
+    }
+
+    public static DateTime RetentionCutoff(DateTime utcNow)
+    {
         SyncLogPolicy.RequireUtc(utcNow, nameof(utcNow));
         return utcNow.AddDays(-SyncLogPolicy.RetentionDays);
+    }
+
+    public static bool IsCurrentAttempt(object? currentAttempt, int attempt)
+    {
+        if (currentAttempt is null)
+            throw new InvalidOperationException("Sync-job niet gevonden.");
+        return Convert.ToInt32(currentAttempt) == attempt;
+    }
+
+    public static async Task<IReadOnlyList<SyncLogEntry>> ReadAllAsync(DbDataReader reader, bool specifyUtc)
+    {
+        var results = new List<SyncLogEntry>();
+        while (await reader.ReadAsync())
+            results.Add(Read(reader, specifyUtc));
+        return results;
     }
 
     public static SyncLogEntry Read(DbDataReader reader, bool specifyUtc)

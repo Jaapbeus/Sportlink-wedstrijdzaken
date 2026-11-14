@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.Data.SqlClient;
 using Planner.Shared.Sync;
 
@@ -15,6 +16,9 @@ internal static class SyncLogRepository
     internal static Task<int> CleanupAsync(string clubCode, DateTime utcNow)
         => CleanupAsync(SystemUtilities.DatabaseConfig.ConnectionString, clubCode, utcNow);
 
+    internal static Task<int> CleanupAllAsync(DateTime utcNow)
+        => CleanupAllAsync(SystemUtilities.DatabaseConfig.ConnectionString, utcNow);
+
     internal static async Task UpsertAsync(string connectionString, string clubCode, SyncLogEntry entry)
     {
         SyncLogPersistenceValues.ValidateUpsert(clubCode, entry);
@@ -29,9 +33,7 @@ internal static class SyncLogRepository
             ownerCommand.Parameters.AddWithValue("@JobId", entry.JobId);
             ownerCommand.Parameters.AddWithValue("@ClubCode", clubCode);
             var currentAttempt = await ownerCommand.ExecuteScalarAsync();
-            if (currentAttempt is null)
-                throw new InvalidOperationException("Sync-job niet gevonden.");
-            if (Convert.ToInt32(currentAttempt) != entry.Attempt)
+            if (!SyncLogPersistenceValues.IsCurrentAttempt(currentAttempt, entry.Attempt))
             {
                 await transaction.CommitAsync();
                 return;
@@ -81,13 +83,8 @@ internal static class SyncLogRepository
         for (var i = 0; i < ids.Length; i++)
             command.Parameters.AddWithValue(parameters[i], ids[i]);
 
-        var results = new List<SyncLogEntry>();
         using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            results.Add(SyncLogPersistenceValues.Read(reader, specifyUtc: true));
-        }
-        return results;
+        return await SyncLogPersistenceValues.ReadAllAsync(reader, specifyUtc: true);
     }
 
     internal static async Task<int> CleanupAsync(string connectionString, string clubCode, DateTime utcNow)
@@ -99,13 +96,29 @@ internal static class SyncLogRepository
             "DELETE FROM [dbo].[SyncJobPhaseLog] WHERE [ClubCode] = @ClubCode AND [StartedAt] < @Cutoff",
             connection);
         command.Parameters.AddWithValue("@ClubCode", clubCode);
-        command.Parameters.AddWithValue("@Cutoff", cutoff);
+        command.Parameters.Add("@Cutoff", SqlDbType.DateTime2).Value = cutoff;
+        return await command.ExecuteNonQueryAsync();
+    }
+
+    internal static async Task<int> CleanupAllAsync(string connectionString, DateTime utcNow)
+    {
+        var cutoff = SyncLogPersistenceValues.RetentionCutoff(utcNow);
+        using var connection = new SqlConnection(connectionString);
+        await connection.OpenAsync();
+        using var command = new SqlCommand(
+            "DELETE FROM [dbo].[SyncJobPhaseLog] WHERE [StartedAt] < @Cutoff", connection);
+        command.Parameters.Add("@Cutoff", SqlDbType.DateTime2).Value = cutoff;
         return await command.ExecuteNonQueryAsync();
     }
 
     private static void AddParameters(SqlCommand command, string clubCode, SyncLogEntry entry)
     {
         foreach (var (name, value) in SyncLogPersistenceValues.Parameters(clubCode, entry))
-            command.Parameters.AddWithValue("@" + name, value);
+        {
+            if (name is "startedat" or "completedat")
+                command.Parameters.Add("@" + name, SqlDbType.DateTime2).Value = value;
+            else
+                command.Parameters.AddWithValue("@" + name, value);
+        }
     }
 }

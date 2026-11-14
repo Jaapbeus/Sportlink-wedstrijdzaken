@@ -10,7 +10,7 @@ public sealed class SqlServerSyncJobsRepositoryIntegrationTests_Logboek
 {
     private const string Club = "testclub-synclog-a";
     private const string OtherClub = "testclub-synclog-b";
-    private static readonly DateTime Now = new(2026, 11, 14, 12, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime Now = new DateTime(2026, 11, 14, 12, 0, 0, DateTimeKind.Utc).AddTicks(123450);
     private static string ConnectionString => Environment.GetEnvironmentVariable(SqlServerFactAttribute.EnvVar)!;
 
     [SqlServerFact]
@@ -35,6 +35,7 @@ public sealed class SqlServerSyncJobsRepositoryIntegrationTests_Logboek
             var result = Assert.Single(await SyncLogRepository.GetForJobsAsync(ConnectionString, Club, [id, id]));
             Assert.Equal(SyncLogPolicy.StatusSucceeded, result.Status);
             Assert.Equal(8, result.Fetched);
+            Assert.Equal(Now, result.StartedAt);
             Assert.Equal(Now.AddMinutes(1), result.CompletedAt);
 
             using (var update = new SqlCommand("UPDATE dbo.SyncJobs SET Attempt = 2 WHERE Id = @id", connection))
@@ -76,12 +77,47 @@ public sealed class SqlServerSyncJobsRepositoryIntegrationTests_Logboek
             Assert.Empty(await SyncLogRepository.GetForJobsAsync(ConnectionString, Club, [old]));
             Assert.Single(await SyncLogRepository.GetForJobsAsync(ConnectionString, Club, [current]));
             Assert.Single(await SyncLogRepository.GetForJobsAsync(ConnectionString, OtherClub, [other]));
+
         }
         finally
         {
             await DeleteJobAsync(connection, old);
             await DeleteJobAsync(connection, current);
             await DeleteJobAsync(connection, other);
+        }
+    }
+
+    [SqlServerFact]
+    public async Task CleanupAllUsesExactBoundaryForClubsWithoutActiveConfiguration()
+    {
+        var ids = Enumerable.Range(0, 4).Select(_ => Guid.NewGuid()).ToArray();
+        using var connection = new SqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        try
+        {
+            // Deze jobs hebben geen actieve clubconfiguratie; retentie mag daarvan niet afhangen.
+            for (var i = 0; i < ids.Length; i++)
+            {
+                var club = i < 2 ? Club : OtherClub;
+                await InsertJobAsync(connection, ids[i], club);
+                var startedAt = Now.AddDays(-SyncLogPolicy.RetentionDays).AddTicks(i % 2 == 0 ? -10 : 0);
+                await SyncLogRepository.UpsertAsync(ConnectionString, club,
+                    Entry(ids[i], startedAt, null, SyncLogPolicy.StatusRunning));
+            }
+
+            Assert.Equal(2, await SyncLogRepository.CleanupAllAsync(ConnectionString, Now));
+            Assert.Empty(await SyncLogRepository.GetForJobsAsync(ConnectionString, Club, [ids[0]]));
+            Assert.Single(await SyncLogRepository.GetForJobsAsync(ConnectionString, Club, [ids[1]]));
+            Assert.Empty(await SyncLogRepository.GetForJobsAsync(ConnectionString, OtherClub, [ids[2]]));
+            Assert.Single(await SyncLogRepository.GetForJobsAsync(ConnectionString, OtherClub, [ids[3]]));
+            Assert.Equal(0, await SyncLogRepository.CleanupAllAsync(ConnectionString, Now));
+            await Assert.ThrowsAsync<ArgumentException>(() => SyncLogRepository.CleanupAllAsync(
+                ConnectionString, DateTime.SpecifyKind(Now, DateTimeKind.Local)));
+        }
+        finally
+        {
+            foreach (var id in ids)
+                await DeleteJobAsync(connection, id);
         }
     }
 

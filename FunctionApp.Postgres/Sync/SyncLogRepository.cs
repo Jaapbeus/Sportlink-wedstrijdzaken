@@ -15,6 +15,9 @@ internal static class SyncLogRepository
     internal static Task<int> CleanupAsync(string clubCode, DateTime utcNow)
         => CleanupAsync(PostgresDatabaseConfig.ConnectionString, clubCode, utcNow);
 
+    internal static Task<int> CleanupAllAsync(DateTime utcNow)
+        => CleanupAllAsync(PostgresDatabaseConfig.ConnectionString, utcNow);
+
     internal static async Task UpsertAsync(string connectionString, string clubCode, SyncLogEntry entry)
     {
         SyncLogPersistenceValues.ValidateUpsert(clubCode, entry);
@@ -28,9 +31,7 @@ internal static class SyncLogRepository
             ownerCommand.Parameters.AddWithValue("jobid", entry.JobId);
             ownerCommand.Parameters.AddWithValue("clubcode", clubCode);
             var currentAttempt = await ownerCommand.ExecuteScalarAsync();
-            if (currentAttempt is null)
-                throw new InvalidOperationException("Sync-job niet gevonden.");
-            if (Convert.ToInt32(currentAttempt) != entry.Attempt)
+            if (!SyncLogPersistenceValues.IsCurrentAttempt(currentAttempt, entry.Attempt))
             {
                 await transaction.CommitAsync();
                 return;
@@ -68,13 +69,8 @@ internal static class SyncLogRepository
             connection);
         command.Parameters.AddWithValue("clubcode", clubCode);
         command.Parameters.AddWithValue("jobids", jobIds.Distinct().ToArray());
-        var results = new List<SyncLogEntry>();
         await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            results.Add(SyncLogPersistenceValues.Read(reader, specifyUtc: false));
-        }
-        return results;
+        return await SyncLogPersistenceValues.ReadAllAsync(reader, specifyUtc: false);
     }
 
     internal static async Task<int> CleanupAsync(string connectionString, string clubCode, DateTime utcNow)
@@ -86,6 +82,17 @@ internal static class SyncLogRepository
             "DELETE FROM public.syncjobphaselog WHERE clubcode = @clubcode AND startedat < @cutoff",
             connection);
         command.Parameters.AddWithValue("clubcode", clubCode);
+        command.Parameters.AddWithValue("cutoff", cutoff);
+        return await command.ExecuteNonQueryAsync();
+    }
+
+    internal static async Task<int> CleanupAllAsync(string connectionString, DateTime utcNow)
+    {
+        var cutoff = SyncLogPersistenceValues.RetentionCutoff(utcNow);
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "DELETE FROM public.syncjobphaselog WHERE startedat < @cutoff", connection);
         command.Parameters.AddWithValue("cutoff", cutoff);
         return await command.ExecuteNonQueryAsync();
     }
