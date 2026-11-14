@@ -113,7 +113,8 @@ public static class ClubMatchEndpointCore
     /// <summary>
     /// Respons van <c>POST /api/sportlink/club-match</c>: het generieke mutatieresultaat plus wat de
     /// server uit teamnaam en instellingen heeft afgeleid, zodat de beheerder ziet wat er
-    /// (gesimuleerd) naar Sportlink zou gaan. Spiegelt <c>BlazorAdmin.Models.OefenwedstrijdResultaatDto</c>.
+    /// (gesimuleerd) naar Sportlink zou gaan. Sinds #1892 met de verstuurde namen van thuis- en uitteam
+    /// (<c>UitteamGekoppeld</c> = het uitteam is aan een Sportlink-team gekoppeld, anders een vrije tegenstander). Spiegelt <c>BlazorAdmin.Models.OefenwedstrijdResultaatDto</c>.
     /// </summary>
     public sealed record OefenwedstrijdAanmaakResultaat(
         bool IsSuccess,
@@ -130,7 +131,10 @@ public static class ClubMatchEndpointCore
         long? WedstrijdNummer,
         string? VeldNaam,
         IReadOnlyList<string> Waarschuwingen,
-        string? Velddeel);
+        string? Velddeel,
+        string? Thuisteam,
+        string? Uitteam,
+        bool UitteamGekoppeld);
 
     /// <summary>Invoervalidatie — <c>null</c> als de aanvraag bruikbaar is, anders een 400 met de reden.</summary>
     public static IActionResult? Valideer(OefenwedstrijdAanmakenDto? dto)
@@ -350,5 +354,7 @@ public static class ClubMatchEndpointCore
         SportlinkMutationResult r, SportlinkClubMatchAanvraag aanvraag, string? veldNaam, IReadOnlyList<string> waarschuwingen) =>
         new(r.IsSuccess, r.Violations, r.IsDryRun, r.IsForcedDryRun, r.PublicMatchId,
             aanvraag.Description, aanvraag.PublicTeamId, aanvraag.AgeClassCode, aanvraag.FacilityId,
-            aanvraag.SubFacilityId, aanvraag.SportIdTag, aanvraag.ExternalMatchId, veldNaam, waarschuwingen, aanvraag.FieldSize);
+            aanvraag.SubFacilityId, aanvraag.SportIdTag, aanvraag.ExternalMatchId, veldNaam, waarschuwingen, aanvraag.FieldSize,
+            aanvraag.HomeTeam, aanvraag.AwayTeam,
+            !string.Equals(aanvraag.PublicAwayTeamId, SportlinkClubMatchAanvraag.GeenTeamId, StringComparison.Ordinal));
 }

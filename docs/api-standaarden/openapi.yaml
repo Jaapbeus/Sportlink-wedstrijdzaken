@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.17.0.0
+  version: 3.17.2.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -1297,8 +1297,23 @@ components:
               type: string
               nullable: true
               description: '#1437: het velddeel zoals het naar Sportlink ging (`FieldSize`): 1.0, 0.5, 0.25 of 0.125.'
+            Thuisteam:
+              type: string
+              nullable: true
+              description: '#1892: de naam van het thuisteam zoals die naar Sportlink ging (`HomeTeam`).'
+            Uitteam:
+              type: string
+              nullable: true
+              description: '#1892: de naam van het uitteam (de tegenstander) zoals die naar Sportlink ging (`AwayTeam`).'
+            UitteamGekoppeld:
+              type: boolean
+              description: '#1892: `true` als het uitteam aan een Sportlink-team is gekoppeld, `false` bij een vrije tegenstander (sentinel = geen teamkoppeling).'
             Waarschuwingen:
               type: array
+              description: |
+                Terugvallen op Sportlinks standaardwaarden. Sinds #1892 komt er bij een echte aanmaak (geen dry-run) ook een waarschuwing
+                als Sportlink bij het teruglezen van de wedstrijd een ander uitteam toont dan opgegeven (WZ-ADR-013). Het teruglezen is
+                best-effort: lukt het niet, dan blijft de waarschuwing weg.
               items: { type: string }
     OefenwedstrijdFormulierResponse:
       type: object
