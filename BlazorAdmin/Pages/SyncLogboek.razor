@@ -90,3 +90,8 @@
         </div>
     </details>
 }
+
+@if (Status?.Jobs?.Any(job => job.Phases?.Any(phase => phase.Phase == "programma" && (phase.Added.HasValue || phase.Updated.HasValue)) == true) == true)
+{
+    <p class="small text-muted mt-2">Toegevoegd en bijgewerkt bij Programma omvatten ook de uitslagen.</p>
+}

@@ -2063,6 +2063,6 @@ u hier namen van collega's kunt lezen.
 
 Klik op **Nu synchroniseren** om een job aan te maken. De pagina laat zien of de job wacht, bezig is of klaar is en ververst de voortgang automatisch zolang er werk loopt. Een tweede klik volgt dezelfde lopende job. De health-status blijft apart staan: die zegt niet dat de huidige sync al klaar is.
 
-Het sync-logboek toont recente jobs en de fasen teams, programma, uitslagen, matchdetails, reconciliatie, planner-view en canonicalisatie. De tijden worden lokaal getoond. Aantallen en voortgang worden zichtbaar zodra de fase ze heeft gemeten; een onbekend aantal wordt niet als nul gepresenteerd. Een afgekapt programma of overgeslagen reconciliatie krijgt een zichtbare reden. De uitkomst van de laatste afgeronde job blijft apart beschikbaar.
+Het sync-logboek toont recente jobs en de fasen teams, programma, uitslagen, matchdetails, reconciliatie, planner-view en canonicalisatie. De tijden worden lokaal getoond. Aantallen en voortgang worden zichtbaar zodra de fase ze heeft gemeten; een onbekend aantal wordt niet als nul gepresenteerd. Toegevoegd en bijgewerkt bij Programma omvatten de wedstrijden uit programma én uitslagen samen. Een afgekapt programma of overgeslagen reconciliatie krijgt een zichtbare reden. De uitkomst van de laatste afgeronde job blijft apart beschikbaar.
 
 De fasegegevens verdwijnen na 30 dagen. Ze bevatten geen namen, URL's, tokens of vrije foutteksten. Bij tijdelijke onbereikbaarheid van het logboek blijft de gewone jobstatus zichtbaar.
