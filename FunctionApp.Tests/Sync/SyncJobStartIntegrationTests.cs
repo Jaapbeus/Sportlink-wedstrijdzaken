@@ -60,8 +60,8 @@ public class SqlServerSyncJobsRepositoryIntegrationTests_Start
         {
             var job = await SyncJobsRepository.GetOrCreateActiveAsync(ConnectionString, Guid.NewGuid(), club, 0, 1);
             var attempt = await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, job.Job.Id);
-            var outcome = new Planner.Shared.Sync.SyncUitkomst();
-            outcome.Registreer(Planner.Shared.Sync.SyncUitkomst.FaseTeams, true);
+            var outcome = new global::Planner.Shared.Sync.SyncUitkomst();
+            outcome.Registreer(global::Planner.Shared.Sync.SyncUitkomst.FaseTeams, true);
             await SyncJobsRepository.MarkOutcomeAsync(ConnectionString, job.Job.Id, outcome, attempt!.Value + 1);
             (await SyncJobsRepository.GetActiveAsync(ConnectionString, club))!.Status.Should().Be("running");
             await SyncJobsRepository.MarkOutcomeAsync(ConnectionString, job.Job.Id, outcome, attempt.Value);
