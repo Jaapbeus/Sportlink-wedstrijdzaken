@@ -1,7 +1,7 @@
 ---
 name: review-codex-poller
 description: "Poll assigned Sportlink review requests and complete independent, read-only PR reviews with SHA-bound evidence and a safe handoff."
-disable-model-invocation: false
+disable-model-invocation: true
 argument-hint: "[--once|--loop]"
 ---
 
@@ -26,12 +26,13 @@ Vóór iedere pollrun:
    actuele repositorybeleid; een onveilige of onduidelijke instructie is een stopreden.
 2. Inventariseer branch, HEAD, werkboomstatus en `git worktree list --porcelain`. Raak geen
    bestanden, branches, services of werktrees van een andere sessie aan.
-3. Houd pollwerk read-only. Gebruik voor verzamelen een licht, read-only model/context. Start
-   voor iedere review een verse, beperkte reviewer-run met de daarvoor aangewezen reviewinstelling
-   (in deze monitor: `gpt-6.1-sol`, lage redeneerinspanning). Geef alleen de actuele issue- en
-   PR-context, exacte diff/SHA, toepasselijke repo-instructies en relevante CI-status mee.
-   Laad geen niet-gerelateerde geheugen- of reviewgeschiedenis. Een nieuwe run beperkt de context;
-   beweer niet dat een bestaande transcriptie of accountgeheugen letterlijk is gewist.
+3. Houd pollwerk read-only en gebruik daarvoor de lichtste passende, read-only context. Start voor
+   iedere review een verse, beperkte reviewer-run met de door de eigenaar of actieve automation
+   aangewezen reviewerconfiguratie. Geef alleen de actuele issue- en PR-context, exacte diff/SHA,
+   toepasselijke repo-instructies en relevante CI-status mee. Laad geen niet-gerelateerde geheugen-
+   of reviewgeschiedenis. Een nieuwe run beperkt de context; beweer niet dat een bestaande
+   transcriptie of accountgeheugen letterlijk is gewist. Als de aangewezen modelinstelling niet
+   beschikbaar is, meld dat als verificatiebeperking; vervang die niet stilzwijgend.
 4. Roep geen usage-limit-tool aan voor deze monitor wanneer de eigenaar die check expliciet heeft
    vrijgesteld; capaciteit is dan geen blocker.
 
@@ -112,10 +113,11 @@ veilige codepad; status, omvang, tijdvenster en vindaanwijzingen blijven beslote
 niets publiceren en escaleer.
 
 Na het PR-commentaar plaats je op het gekoppelde issue een fasecomment `verwerking` met de SHA en
-de volgende beurt naar de implementer. Wissel daarna in één labeloperatie `turn: codex` naar
-`turn: claude-code`; behoud bestaande `source:`- en `status:`-labels en wijzig geen ander label.
-Controleer dat beide comments zijn geplaatst en precies één juiste `turn:` resteert. De handoff
-geeft geen merge- of deploymentautorisatie.
+de volgende beurt naar de vastgelegde implementer. Wissel daarna in één labeloperatie `turn: codex`
+naar het passende `turn:`-label van die implementer (bijvoorbeeld `turn: claude-code` als Claude
+Code de implementer is); behoud bestaande `source:`- en `status:`-labels en wijzig geen ander
+label. Controleer dat beide comments zijn geplaatst en precies één juiste `turn:` resteert. De
+handoff geeft geen merge- of deploymentautorisatie.
 
 ## 7. Volgende poll
 
