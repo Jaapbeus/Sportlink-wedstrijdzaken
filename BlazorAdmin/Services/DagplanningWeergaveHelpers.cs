@@ -1,4 +1,5 @@
 using BlazorAdmin.Models;
+using System.Globalization;
 
 namespace BlazorAdmin.Services;
 
@@ -10,6 +11,32 @@ namespace BlazorAdmin.Services;
 /// </summary>
 public static class DagplanningWeergaveHelpers
 {
+    /// <summary>#1952: chronologische veldbezetting, met het basisveld en de subpositie als tweede sortering.</summary>
+    public static IEnumerable<VeldbezettingItemDto> SorteerVeldbezetting(IEnumerable<VeldbezettingItemDto> wedstrijden)
+        => wedstrijden
+            .OrderBy(w => TimeOnly.TryParse(w.AanvangsTijd, CultureInfo.CurrentCulture, DateTimeStyles.None, out var tijd)
+                ? tijd : TimeOnly.MaxValue)
+            .ThenBy(w => VeldNummerVoorSortering(w.Veld))
+            .ThenBy(w => SubpositieVoorSortering(w.Veld))
+            .ThenBy(w => w.TeamNaam, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(w => w.WedstrijdCode);
+
+    private static int VeldNummerVoorSortering(string? veld)
+    {
+        if (string.IsNullOrWhiteSpace(veld)) return int.MaxValue;
+        var (basis, _) = GanttSplitVeld(veld);
+        var digits = new string(basis.Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var nummer)
+            ? nummer : int.MaxValue;
+    }
+
+    private static int SubpositieVoorSortering(string? veld)
+    {
+        var subpositie = GanttExtractSubPos(veld);
+        if (subpositie is null) return 0;
+        return Array.IndexOf(SubPosLabels, subpositie);
+    }
+
     /// <summary>#1774: toon de rode waarschuwing alleen als de status er is, Sportlink niet is geraadpleegd
     /// en het niet de demo-club betreft (die heeft bewust geen Sportlink).</summary>
     public static bool ToonSportlinkWaarschuwing(SportlinkVeldplannerStatusDto? status)
