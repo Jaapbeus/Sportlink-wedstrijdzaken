@@ -1,249 +1,36 @@
-using Planner.Shared.Email;
-using Newtonsoft.Json;
-using Planner.Shared.TeamResolution;
-using SportlinkFunction.Processing;
-using Planner.Shared;
-using Planner.Shared.Email.Trace;
 using Microsoft.Extensions.Logging;
+using Planner.Endpoints.Email;
+using Planner.Shared.Email;
+using Planner.Shared.Email.Trace;
+using Planner.Shared.TeamResolution;
 
 namespace SportlinkFunction.Email;
 
 public partial class EmailProcessorFunction
 {
-    internal static async Task VerwerkEmailAsync(
-        InkomendBericht email,
-        BerichtClassificatie classificatie,
-        IEmailGraphService graphService,
-        IReadOnlySet<string> uitgeslotenAdressen,
-        BerichtAiService aiService,
-        IEmailPersistenceService persistenceService,
-        EmailReplyPolicyService replyPolicyService,
-        ILogger log,
-        ITeamResolver teamResolver)
-    {
-        // Hercheck met verse DB-geladen uitsluitingslijst (kan afwijken van cache)
-        if (uitgeslotenAdressen.Contains(email.Afzender))
-        {
-            log.LogInformation("Email {MessageId} van uitgesloten adres (verse lijst), overslaan (afzender niet gelogd — AVG #210)", email.MessageId);
-            await graphService.MarkAsReadAsync(email.MessageId);
-            return;
-        }
+    internal static Task VerwerkEmailAsync(
+        InkomendBericht email, BerichtClassificatie classificatie, IEmailGraphService graphService,
+        IReadOnlySet<string> uitgeslotenAdressen, BerichtAiService aiService,
+        IEmailPersistenceService persistenceService, EmailReplyPolicyService replyPolicyService,
+        ILogger log, ITeamResolver teamResolver)
+        => EmailBerichtVerwerking.VerwerkAsync(email, classificatie, uitgeslotenAdressen, log,
+            new EmailBerichtPoort(graphService, persistenceService, aiService, replyPolicyService, teamResolver));
 
-        if (await BepaalVerwerkingIdAsync(email, graphService, persistenceService, log) is not int verwerkingId)
-            return;
-
-        // De goedgekeurde few-shots zijn al toegepast in fase 1 vóór de BuitenScope-afhandeling.
-        // Fase 2 detecteert alleen een nieuwe reply-correctie; dezelfde classificatie niet herhalen.
-        await DetecteerEnRegistreerCorrectieAsync(verwerkingId, email, persistenceService, aiService, log);
-        var classificatieJson = JsonConvert.SerializeObject(classificatie);
-
-        if (await VerwerkBuitenScopeAsync(
-                verwerkingId, email, classificatie, classificatieJson, graphService, persistenceService, log))
-            return;
-
-        if (await EmailVerwerkingKoppeling.HandelAntwoordLimietAsync(
-                verwerkingId, email, classificatie, classificatieJson, graphService, persistenceService, log))
-            return;
-
-        await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Geclassificeerd, classificatieJson);
-        log.LogInformation("Email {Id} geregistreerd als {Type}, datum={Datum}",
-            verwerkingId, classificatie.Type, LogWaarde.Schoon(classificatie.Datum));
-
-        var replyUitkomst = await VoerReplyFlowMetTraceAsync(
-            verwerkingId, email, classificatie, graphService, persistenceService, replyPolicyService, teamResolver, log);
-
-        if (replyUitkomst != ReplyVerwerkingUitkomst.AntwoordVerstuurd)
-            return;
-
-        await StuurVervolgNotificatiesAsync(classificatie, email, graphService, log);
-    }
-
-    /// <summary>
-    /// Buiten-scope-afhandeling: statusregistratie, Outlook-label en korte trace. Retourneert
-    /// <c>true</c> als het bericht buiten scope is en de verwerking hier eindigt.
-    /// </summary>
-    private static async Task<bool> VerwerkBuitenScopeAsync(
-        int verwerkingId,
-        InkomendBericht email,
-        BerichtClassificatie classificatie,
-        string classificatieJson,
-        IEmailGraphService graphService,
-        IEmailPersistenceService persistenceService,
-        ILogger log)
-    {
-        if (!await HandelBuitenScopeAsync(
-                verwerkingId, email.MessageId, classificatie, classificatieJson, graphService, persistenceService, log))
-            return false;
-
-        await BewaarTraceVeiligAsync(persistenceService, verwerkingId, classificatie.Type.ToString(),
-            EmailTraceOpslag.BouwKorteTrace(classificatie.Type.ToString(), classificatie.TeamNaam, classificatie.Tegenstander,
-                classificatie.GetAlleDatums().Count, classificatie.AanvangsTijd, EmailTraceOpslag.BuitenScopeReden), log);
-        return true;
-    }
-
-    /// <summary>
-    /// Planner-verwerking en reply-flow van één bericht. #1568: de beslissingstrace wordt per
-    /// bericht opgebouwd en altijd (ook bij een fout) bewaard.
-    /// </summary>
-    private static async Task<ReplyVerwerkingUitkomst> VoerReplyFlowMetTraceAsync(
-        int verwerkingId,
-        InkomendBericht email,
-        BerichtClassificatie classificatie,
-        IEmailGraphService graphService,
-        IEmailPersistenceService persistenceService,
-        EmailReplyPolicyService replyPolicyService,
-        ITeamResolver teamResolver,
-        ILogger log)
-    {
-        var trace = new TraceBuilder();
-        return await EmailTraceOpslag.MetTraceAsync(trace, async () =>
-        {
-            var plannerResponseJson = await BerichtPipeline.VerwerkMetPlannerAsync(
-                classificatie, email, log, teamResolver, trace: trace);
-            await persistenceService.UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
-            return await TeamHandmatigeAfhandeling.HandelOfVervolgAsync(classificatie, verwerkingId, email.MessageId,
-                persistenceService, graphService, async () =>
-            {
-                await persistenceService.UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
-
-                var reviewMode = EmailReviewModus.IsActief();
-                var reviewRecipient = Environment.GetEnvironmentVariable("EmailReviewRecipient");
-                return await replyPolicyService.HandelReplyFlowAfAsync(
-                    verwerkingId,
-                    email,
-                    classificatie,
-                    plannerResponseJson,
-                    reviewMode,
-                    reviewRecipient,
-                    graphService,
-                    persistenceService,
-                    () => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, email, log, trace: trace),
-                    SanitizeFoutMelding,
-                    log,
-                    trace,
-                    await ZekerheidspoortInstelling.IsActiefAsync(persistenceService.ResolveClubCode(), log));
-            }, log);
-        }, async t =>
-            {
-                // #1568 deel C: onbekende teamteksten naar de wachtrij; een fout hier breekt de trace-opslag niet.
-                await OnbekendeTeamTekstOpslag.BewaarVeiligAsync(t, persistenceService.ResolveClubCode(), verwerkingId,
-                    new Admin.SqlOnbekendeTeamTekstStore(SystemUtilities.DatabaseConfig.ConnectionString), log);
-                await persistenceService.UpsertTraceAsync(
-                    verwerkingId, classificatie.Type.ToString(), t, EmailTraceRecord.VersieVan(typeof(EmailProcessorFunction).Assembly));
-            },
-            log, verwerkingId);
-    }
-
-    /// <summary>
-    /// Bewaart de PII-arme beslissingstrace (#1568). Een mislukte opslag mag de verwerking nooit
-    /// laten falen; gelogd wordt alleen het fouttype, nooit de foutmelding.
-    /// </summary>
     internal static Task BewaarTraceVeiligAsync(
         IEmailPersistenceService persistenceService, int verwerkingId, string verzoekType,
         BeslissingsTrace trace, ILogger log)
         => EmailTraceOpslag.BewaarVeiligAsync(
-            () => persistenceService.UpsertTraceAsync(
-                verwerkingId, verzoekType, trace, EmailTraceRecord.VersieVan(typeof(EmailProcessorFunction).Assembly)),
-            log, verwerkingId);
+            () => persistenceService.UpsertTraceAsync(verwerkingId, verzoekType, trace,
+                EmailTraceRecord.VersieVan(typeof(EmailProcessorFunction).Assembly)), log, verwerkingId);
 
-    /// <summary>
-    /// Detecteert of dit bericht een reply is op een eerder door ons beantwoord bericht (#323) en,
-    /// zo ja, of de afzender daarin een correctie geeft op de eerdere classificatie. Faalt de
-    /// correctie-detectie zelf, dan gaat de hoofdverwerking gewoon door zonder correctie.
-    /// </summary>
-    private static async Task DetecteerEnRegistreerCorrectieAsync(
-        int verwerkingId,
-        InkomendBericht email,
-        IEmailPersistenceService persistenceService,
-        BerichtAiService aiService,
-        ILogger log)
-    {
-        if (string.IsNullOrWhiteSpace(email.ConversationId))
-            return;
-
-        var (isReply, origineleVerwerkingId, origineelType, originaleSamenvatting) =
-            await persistenceService.DetecteerReplyOpOnsAntwoordAsync(email.ConversationId, log);
-
-        if (!isReply || !origineleVerwerkingId.HasValue)
-            return;
-
-        await persistenceService.UpdateReplyStatusAsync(verwerkingId, true, origineleVerwerkingId.Value);
-        log.LogInformation("Email {Id} is reply op verwerking {OrigineleId}", verwerkingId, origineleVerwerkingId);
-
-        // Detecteer of het een correctie is op de eerdere classificatie
-        try
-        {
-            var (isCorrectie, afgeleidType, correctieSamenvatting) = await aiService.DetecteerCorrectieAsync(
-                email.Body, email.Onderwerp, origineelType ?? "", originaleSamenvatting);
-
-            if (isCorrectie)
-            {
-                await persistenceService.InsertClassificatieCorrectieAsync(
-                    origineleVerwerkingId.Value, verwerkingId,
-                    origineelType ?? "", afgeleidType,
-                    originaleSamenvatting, correctieSamenvatting);
-                log.LogInformation("Correctie gedetecteerd voor verwerking {OrigineleId}: {OrigineelType} → {JuistType}",
-                    origineleVerwerkingId, LogWaarde.Schoon(origineelType), LogWaarde.Schoon(afgeleidType));
-            }
-        }
-        catch (Exception ex)
-        {
-            log.LogWarning(ex, "Correctie-detectie mislukt voor reply {Id} — doorgaan zonder correctie", verwerkingId);
-        }
-    }
-
-    /// <summary>
-    /// Stuurt de interne vervolgnotificaties die horen bij een succesvol verstuurd antwoord:
-    /// teamleider-notificatie bij een herplanverzoek (#66) en het doorsturen van een
-    /// team-contact-vraag naar de coach (#168).
-    /// </summary>
-    private static async Task StuurVervolgNotificatiesAsync(
-        BerichtClassificatie classificatie,
-        InkomendBericht email,
-        IEmailGraphService graphService,
-        ILogger log)
-    {
-        // Stuur interne notificatie naar teamleider bij herplanverzoeken van externe afzender (#66)
-        if (classificatie.Type == VerzoekType.HerplanVerzoek
-            && !string.IsNullOrWhiteSpace(classificatie.TeamNaam)
-            && !string.IsNullOrWhiteSpace(classificatie.Datum))
-        {
-            await StuurTeamleiderNotificatieAsync(
-                graphService, classificatie.TeamNaam, classificatie.Datum, log);
-        }
-
-    }
-
-    /// <summary>
-    /// Bepaalt onder welk verwerkingId dit bericht verder verwerkt wordt, of <c>null</c> als de
-    /// verwerking hier moet stoppen (#712); zie <see cref="EmailVerwerkingsAfhandeling.BepaalVerwerkingIdAsync"/> (#1650).
-    /// </summary>
     internal static Task<int?> BepaalVerwerkingIdAsync(
-        InkomendBericht email,
-        IEmailGraphService graphService,
-        IEmailPersistenceService persistenceService,
-        ILogger log)
+        InkomendBericht email, IEmailGraphService graphService,
+        IEmailPersistenceService persistenceService, ILogger log)
         => EmailVerwerkingKoppeling.BepaalVerwerkingIdAsync(email, graphService, persistenceService, log);
 
-    /// <summary>
-    /// Handelt een buiten-scope classificatie af: status vastleggen, labelen, als gelezen markeren,
-    /// géén antwoord. Retourneert <c>true</c> als het bericht hiermee is afgehandeld.
-    /// <para>
-    /// Nodig omdat de herclassificatie met leermomenten alsnog 'buiten scope' kan opleveren. Zo'n
-    /// uitkomst kwam niet meer langs het BuitenScope-voorfilter van fase 1, waardoor er tóch een
-    /// automatisch "vereist handmatige afhandeling"-antwoord uitging: identieke input, ander gedrag,
-    /// puur afhankelijk van of er gevalideerde leermomenten in de database staan. (#712)
-    /// </para>
-    /// </summary>
     internal static Task<bool> HandelBuitenScopeAsync(
-        int verwerkingId,
-        string messageId,
-        BerichtClassificatie classificatie,
-        string classificatieJson,
-        IEmailGraphService graphService,
-        IEmailPersistenceService persistenceService,
-        ILogger log)
-        => EmailVerwerkingKoppeling.HandelBuitenScopeAsync(
-            verwerkingId, messageId, classificatie.Type == VerzoekType.BuitenScope, classificatieJson,
-            graphService, persistenceService, log);
+        int verwerkingId, string messageId, BerichtClassificatie classificatie, string classificatieJson,
+        IEmailGraphService graphService, IEmailPersistenceService persistenceService, ILogger log)
+        => EmailVerwerkingKoppeling.HandelBuitenScopeAsync(verwerkingId, messageId,
+            classificatie.Type == VerzoekType.BuitenScope, classificatieJson, graphService, persistenceService, log);
 }
