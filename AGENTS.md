@@ -2,7 +2,7 @@
 
 Codex/Claude Code. CI: root ≤27 KiB, FunctionApp/AGENTS.md ≤4 KiB, keten ≤30 KiB. Regels hier; uitleg docs/ (§13.1). Volg Leesmomenten; links importeren niet. Padloos: docs/; root: AGENTS.md, CLAUDE.md, CHANGELOG.md, CONTRIBUTING.md, SECURITY.md.
 
-## Absolute veiligheidsregels
+## Absolute veiligheidsregels — nooit omzeilen
 
 1. **Na elke push of commit CI controleren** (`gh pr checks <nr>`/`gh run list`); meld niets als klaar of geslaagd zonder dat alle Actions-checks groen zijn.
 2. **Na elke merge naar `main` de deploy per job verifiëren**: `gh run list --branch main --limit 3`; `gh run watch <id> --exit-status` (nooit op de achtergrond); ook bij exit 0 verplicht `gh run view <id> --json jobs --jq '.jobs[] | {name,conclusion}'`: alle jobs `success`/`skipped`, maar `skipped` is alleen onschuldig voor de job van de **niet-actieve** databasetier (`db-check`/`db-migrate` bij Postgres, `db-migrate-postgres` bij SqlServer); een overgeslagen migratiejob van de actieve tier is een gemiste migratie = `failure`.
@@ -22,7 +22,7 @@ Een verzamelissue **verwijst** daarnaar en herhaalt de inhoud nooit.
 5. **De Security Gate is leidend**: zolang `Security Gate — blokkeert merge bij fout` rood is wordt niets gemerged, ook al is de rest groen.
 6. **Elke implementatiesessie werkt in een eigen geverifieerde worktree** (S0); in de hoofd-checkout nooit een branch wisselen of schrijven (read-only review/onderzoek vraagt geen implementatiebranch). Zonder toegewezen taak of bij overlap: geen eigen claim, de eigenaar beslist; zoek of maak het issue vóór implementatie. Protocol: `SECURITY.md`.
 
-## Kostenbeleid
+## Kostenbeleid — absolute grens
 
 De stack draait op **gratis Azure-tiers**, niet onderhandelbaar.
 1. **Nooit een Azure-resource aanmaken of tier upgraden zonder expliciete bevestiging van de gebruiker**, ook niet bij lage kosten. Altijd vragen bij: Log Analytics, Application Insights, Metric Alerts, Key Vault, Flex Consumption, Premium/Standard-tier.
@@ -68,9 +68,9 @@ Geplande reviewruns hebben alleen reviewbevoegdheid (expliciete aanvraag, fase `
 Onbewaakt: rondelimiet, zelfmerge-voorwaarden, geplande uitvoering.
 **Reviewbewijs hoort bij de PR** (reviewer, ronde, SHA, uitkomst, afhandeling als PR-comment); een review geldt alleen voor de beoordeelde SHA; na verwerking wisselt de implementer eerst fase/beurt naar zichzelf; nooit twee gelijktijdige reviews op dezelfde SHA.
 
-Exacte sessies per aanvraag; ronde vier alleen met aparte eigenaarsscope.
+Exacte sessies/aanvraag; ronde 4: aparte eigenaarsscope.
 
-**SHADOW**: alleen bewijs; review-/exacte-head-CI-/merge-/bevoegdheidsregels blijven. Geen tweede dispatcher/automatische dispatch/ontwikkeling/merge uit shadowdata. Activering: aparte opdracht, implementatie/review, aantoonbare acceptatie van alle deelnemers/schrijfpaden (`SAMENWERKING-AGENTS.md`).
+**SHADOW**: alleen bewijs; alle huidige regels gelden. Geen 2e dispatcher/automatische dispatch/ontwikkeling/merge uit shadowdata. Actief na aparte owneropdracht, implementatie/review, bewezen acceptatie van alle deelnemers/writers (`SAMENWERKING-AGENTS.md`).
 
 **Gedeelde debugomgeving.** Worktrees isoleren bestanden; poorten/databases/Docker/Azurite/PID's/logs/externe integraties blijven gedeeld. `Start-Debug.ps1` stopt bestaande debugservices.
 Zonder runtime-isolatie: één vooraf aangewezen sessie; leg de runtime-eigenaar vast bij taak/overdracht.
@@ -88,7 +88,7 @@ Ratchet (`scripts/ci/agent-instructies-plafonds.txt`): toelichting naar `docs/`,
 **Memory**: datum/PR/uitrolstatus (ongemergd = vorige tekst); nooit merge-/deploybevoegdheid; eigenaarsbesluit leidend.
 Rapporteer ontbrekende handhaving als beperking.
 
-## Sessies, branches en worktrees
+## Sessie-isolatie, branches en worktrees
 
 - Sessiestart: inventariseer (regel 1); regel isolatie autonoom, escaleer alleen onduidelijk eigenaarschap of overlap.
 - **Branches**: features vanuit `develop` → PR naar `develop`; release = één PR `develop` → `main` (deploy); urgente fix = hotfix vanuit `main` → PR naar `main`. **Nooit direct committen of pushen naar `main` of `develop`.** B hangt af van A: B vanuit A, merge A, daarna `git rebase develop` op B.
@@ -102,7 +102,7 @@ De release-PR `develop` → `main` komt uit de gereserveerde acceptatieomgeving.
 **Sessie-einde**: worktree behouden; branch/SHA/status/taak-/runtime-eigenaar vastleggen (Claude: `ExitWorktree({ action: "keep" })`). Alleen eigen worktree/branch verwijderen na bevestigde merge, zonder actieve sessie/onverwerkt werk; nooit andermans worktree opruimen of `--force`.
 - **Hotfix (#1287)** pas af na backport naar `develop`: direct na de merge naar `main` een `feature/#<nr>-backport-…` vanuit `develop` met uitsluitend code, tests en docs van de hotfix, **niet** versienummer of CHANGELOG-sectie; toets per bestand op inhoud, **nooit `git checkout main -- <pad>`** (`VERSIONING.md`).
 
-## Ontwikkelcyclus — verplicht
+## Ontwikkelcyclus — verplicht, van issue tot groene CI
 
 **Stap 1**: alle lagen synchroon (DB-schema → API → Blazor), nooit één laag; check ClubCode, UTC, GUI, CISO-regels.
 
@@ -167,7 +167,7 @@ Onbekend databaseobject? Lees de definitie vóór een `DROP`, nooit `CASCADE`.
 
 ## Versiebeheer en release
 
-- Versie `MAJOR.MINOR.PATCH.REVISION`: `feat` → PATCH, `fix`/`security` → REVISION, `BREAKING CHANGE` → MAJOR, puur intern geen bump; release: MINOR bij ≥ 1 `feat`, anders PATCH. Zet de versie in **alle drie** csproj's (`FunctionApp/fa-dev-sportlink-01.csproj`, `BlazorAdmin/BlazorAdmin.csproj`, `FunctionApp.Postgres/FunctionApp.Postgres.csproj`) en controleer na elke rebase (`VERSIONING.md`). Late versie-/API-toewijzing en changelogfragmenten wachten op eigenaaractivering.
+- Versie `MAJOR.MINOR.PATCH.REVISION`: `feat` → PATCH, `fix`/`security` → REVISION, `BREAKING CHANGE` → MAJOR, puur intern geen bump; release: MINOR bij ≥ 1 `feat`, anders PATCH. Zet de versie in **alle drie** csproj's (`FunctionApp/fa-dev-sportlink-01.csproj`, `BlazorAdmin/BlazorAdmin.csproj`, `FunctionApp.Postgres/FunctionApp.Postgres.csproj`) en controleer na elke rebase (`VERSIONING.md`). Late versie-/API-toewijzing en fragmenten pas na eigenaaractivering.
 - `CHANGELOG.md`: elke feature/fix een entry onder `[Unreleased]`; `(#N)` sluit het issue bij de release, dus alleen voor werk in die versie (kruisverwijzing: `zie issue #N`).
 - **Release uitsluitend via `/release`**, door de eigenaar gestart, one-shot, geen agentreview; securitypoort eerst: `/security-review` op `origin/main...origin/develop`, geen open high/critical Dependabot-/code-scanning-alert en geen open secret-scanning-alert, Security Gate + CodeQL groen op develop-HEAD; één HIGH stopt de release; release-PR alleen aantallen per severity (4a).
 `deploy.yml` past migraties zelf toe vóór de code (geen migratie die de vorige code breekt in dezelfde release); demodata in het idempotente seedscript.
