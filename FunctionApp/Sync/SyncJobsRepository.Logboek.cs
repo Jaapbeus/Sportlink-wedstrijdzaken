@@ -80,7 +80,6 @@ internal static partial class SyncJobsRepository
             "WHERE Id=@id AND ClubCode=@club AND Status='pending' AND Attempt=0", connection);
         command.Parameters.AddWithValue("@id", id);
         command.Parameters.AddWithValue("@club", clubCode);
-        command.Parameters.AddWithValue("@cutoff", SyncJobRecoveryPolicy.StaleCutoff(DateTime.UtcNow));
         await command.ExecuteNonQueryAsync();
     }
 }
