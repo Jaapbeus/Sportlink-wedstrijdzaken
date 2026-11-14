@@ -8,7 +8,7 @@ public partial class SyncLogboek
     [Parameter] public SyncStatusDto? Status { get; set; }
     [Parameter] public bool StatusOnzeker { get; set; }
 
-    // Beide gebouwde tiers registreren deze zeven pipelinefasen in vaste volgorde. De laatste twee
+    // Beide gebouwde tiers registreren eerst deze vijf pipelinefasen. De laatste twee
     // wisselen per tier van volgorde; ook een overgeslagen fase krijgt een logregel.
     private static readonly string[] VasteFasen = ["teams", "programma", "uitslagen", "matchdetails", "reconciliatie"];
     private const int NormaleFaseAantal = 7;
@@ -17,14 +17,17 @@ public partial class SyncLogboek
     {
         if (!logAvailable) return "Fasepositie tijdelijk niet beschikbaar.";
         var fasen = job.Phases?.OrderBy(fase => fase.StartedAt).ToArray() ?? [];
-        var namen = fasen.Select(fase => fase.Phase).Where(naam => naam != null).Select(naam => naam!).Distinct().ToArray();
-        var pipelineNamen = namen.Where(naam => naam != "configuratie").ToArray();
-        if (namen.Length == 0)
+        var pipelineFasen = fasen.Where(fase => fase.Phase != "configuratie").ToArray();
+        var pipelineNamen = pipelineFasen.Select(fase => fase.Phase).Where(naam => naam != null).Select(naam => naam!).Distinct().ToArray();
+        if (fasen.Length == 0)
             return job.Status == "pending" ? "Fase 1 van 7 volgt na het ophalen uit de wachtrij." : "Nog geen fase geregistreerd (0 van 7).";
 
-        var afgerond = fasen.Count(fase => fase.Status is "succeeded" or "partial" or "failed" or "skipped");
+        if (pipelineNamen.Length == 0)
+            return fasen.Any(fase => fase.Phase == "configuratie" && fase.Status == "failed")
+                ? "Configuratie mislukt; geen pipelinefase gestart."
+                : "Nog geen pipelinefase geregistreerd (0 van 7).";
+        var afgerond = pipelineFasen.Count(fase => fase.Status is "succeeded" or "partial" or "failed" or "skipped");
         var voortgang = $"{afgerond} {(afgerond == 1 ? "fase" : "fasen")} afgerond";
-        if (pipelineNamen.Length == 0) return $"Fasepositie onbekend; {voortgang}.";
         var volgordeBekend = pipelineNamen.Length <= NormaleFaseAantal &&
             pipelineNamen.Take(Math.Min(pipelineNamen.Length, VasteFasen.Length)).SequenceEqual(VasteFasen.Take(Math.Min(pipelineNamen.Length, VasteFasen.Length))) &&
             (pipelineNamen.Length <= 5 || pipelineNamen[5] is "planner-view" or "canonicalisatie") &&

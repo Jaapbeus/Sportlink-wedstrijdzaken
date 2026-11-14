@@ -1354,7 +1354,7 @@ job die 30 minuten op `running` staat geldt als onderbroken en wordt hoogstens 2
 aangeboden (3 pogingen in totaal); daarna staat hij op `failed` met een vaste melding. Het herstel
 heeft bewust geen eigen timer (geen extra uitvoeringen of database-wake-ups): het loopt mee met
 bestaande activiteit, namelijk `POST /beheer/sync/trigger`, `GET /beheer/sync/status` en de geplande
-sync. Een normale fout of gedeeltelijke mislukking blijft terminaal `failed` en wordt niet automatisch
+sync. Een fatale fout of configuratiefout blijft terminaal `failed`; een gedeeltelijke run zonder configuratiefout wordt `partial`. Beide worden niet automatisch
 herhaald. De claim (`pending` naar `running`) telt een poging in de kolom `Attempt`/`attempt` (een
 bestaande lopende job telt bij de upgrade als poging 1) en elke afronding is aan dat pogingnummer
 gebonden, zodat een verouderde worker een herstarte poging niet overschrijft. De drempels staan op
@@ -1366,8 +1366,9 @@ curl -X POST http://localhost:7094/api/beheer/sync/trigger
 
 curl "http://localhost:7094/api/beheer/sync/status?jobId=<jobId>"
 # {"lastSyncTimestamp":"…","fetchSchedule":"…","status":"ok",
-#  "job":{"id":"…","status":"running|succeeded|failed","weekOffsetFrom":-1,"weekOffsetTo":15,
-#         "createdAt":"…","startedAt":"…","completedAt":null,"errorMessage":null}}
+#  "job":{"id":"…","status":"pending|running|succeeded|partial|failed","weekOffsetFrom":-1,"weekOffsetTo":15,
+#         "createdAt":"…","startedAt":"…","completedAt":null,"errorMessage":null,"attempt":1,"phases":[]},
+#  "activeJob":{…},"lastCompletedJob":null,"jobs":[…],"logAvailable":true}
 ```
 
 **Volledig seizoen opnieuw ophalen (#1352):** optionele JSON-body, zelfde semantiek als
@@ -1386,12 +1387,12 @@ JSON → `400` met `{"error":"…"}` (NL-melding). Validatie staat tier-onafhank
 
 Zonder `?jobId=` geeft `/beheer/sync/status` de actieve job terug, anders de laatste afgeronde job. `job` is `null` zolang er
 nog nooit een sync is gestart. Mogelijke `job.status`-waarden: `pending`, `running`, `succeeded`,
-`partial` en `failed`. Bij `failed` bevat `errorMessage` een veilige melding met alleen het exceptiontype;
-details staan uitsluitend in het functielog.
+`partial` en `failed`. Bij `partial` en `failed` bevat `errorMessage` uitsluitend een vaste, veilige melding;
+historische foutteksten en exceptiontypen worden niet doorgegeven.
 
 ### Sync-logboek en voortgang (#1912)
 
-`GET /beheer/sync/status` levert aanvullend `activeJob`, `lastCompletedJob`, maximaal tien `jobs` en `logAvailable`. Elke job bevat `attempt` en `phases` voor de actuele poging. Elke fase bevat start/einde in UTC, een vaste status (`running`, `succeeded`, `partial`, `failed` of `skipped`) en een allowlisted `reasonCode`, aantallen `fetched`, `added`, `updated`, `failed` en voortgang `progress`/`total`. Onbekende aantallen zijn `null`; de UI toont geen verzonnen nul. Fasegegevens bevatten geen foutteksten of exception-details. `partial` maakt een onvolledige run zichtbaar.
+`GET /beheer/sync/status` levert aanvullend `activeJob`, `lastCompletedJob`, maximaal tien `jobs` en `logAvailable`. Elke job bevat `attempt` en `phases` voor de actuele poging. Elke fase bevat start/einde in UTC, een vaste status (`pending`, `running`, `succeeded`, `partial`, `failed` of `skipped`) en een allowlisted `reasonCode`, aantallen `fetched`, `added`, `updated`, `failed` en voortgang `progress`/`total`. Onbekende aantallen zijn `null`; de UI toont geen verzonnen nul. Fasegegevens bevatten geen foutteksten of exception-details. `partial` maakt een onvolledige run zichtbaar.
 
 `POST /beheer/sync/trigger` kiest atomair per club een actieve job of maakt er één aan. Bij een bestaande job volgt HTTP 202 met `alreadyRunning: true`, dezelfde `jobId` en eventueel `startedAt`/`phase`; alleen de maker zet een bericht op de queue. Bij enqueue-falen volgt een vaste 503-melding. Een nooit geclaimde, oudere pending-rij blijft bewaard maar blokkeert na de bestaande hersteltermijn geen nieuwe handmatige start. Dit verwijdert of herstelt de historische rij niet.
 

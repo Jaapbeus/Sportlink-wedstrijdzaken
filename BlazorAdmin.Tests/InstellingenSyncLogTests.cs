@@ -53,8 +53,9 @@ public sealed class InstellingenSyncLogTests
             new() { Phase = "teams", Status = "succeeded", StartedAt = tijd.AddSeconds(1) },
             new() { Phase = "programma", Status = "running", StartedAt = tijd.AddSeconds(2) }
         ];
-        Assert.Equal("Fase 2 van 7: Programma · 2 fasen afgerond.", Call<string>(log, "FaseVoortgang", job, true));
+        Assert.Equal("Fase 2 van 7: Programma · 1 fase afgerond.", Call<string>(log, "FaseVoortgang", job, true));
 
+        job.Phases[2].Status = "succeeded";
         job.Phases.AddRange(
         [
             new() { Phase = "uitslagen", Status = "succeeded", StartedAt = tijd.AddSeconds(2) },
@@ -73,7 +74,9 @@ public sealed class InstellingenSyncLogTests
         Assert.Equal("Fasepositie onbekend; 1 fase afgerond.", Call<string>(log, "FaseVoortgang", job, true));
 
         job.Phases = [new() { Phase = "configuratie", Status = "failed", StartedAt = tijd }];
-        Assert.Equal("Fasepositie onbekend; 1 fase afgerond.", Call<string>(log, "FaseVoortgang", job, true));
+        Assert.Equal("Configuratie mislukt; geen pipelinefase gestart.", Call<string>(log, "FaseVoortgang", job, true));
+        job.Phases[0].Status = "succeeded";
+        Assert.Equal("Nog geen pipelinefase geregistreerd (0 van 7).", Call<string>(log, "FaseVoortgang", job, true));
         Assert.Equal("Fasepositie tijdelijk niet beschikbaar.", Call<string>(log, "FaseVoortgang", job, false));
     }
 
