@@ -75,7 +75,7 @@ Graph-verzending kan "inpluggen" zonder ze opnieuw te bouwen.
 | `FunctionApp/Email/EmailPersistenceService.cs` | Dunne, DI-testbare wrapper rond `IEmailPersistenceRepository` (zie §1.5 voor de laagstructuur). **Alleen SQL Server-tier** |
 | `FunctionApp/Email/IEmailPersistenceRepository.cs` | Interface + enige productie-implementatie `SqlEmailPersistenceRepository` — bevat sinds #827 rechtstreeks de ADO.NET-toegang tot `planner.EmailVerwerking` (voorheen een aparte `EmailProcessingRepository`, nu geabsorbeerd); forwardt alleen classificatiecorrectie/leermomenten nog naar `LearningMomentRepository`. **Alleen SQL Server-tier**: Postgres heeft `Email/SqlEmailPersistenceRepository.cs` als `internal static class`, zonder interface en zonder wrapper |
 | `FunctionApp/Email/EmailBatchFilterService.cs` | Fase-1-voorfilter: eigen mailbox, gecachede uitsluitingslijst |
-| `FunctionApp/Email/EmailClassificationService.cs` | Batch-wrapper rond de AI-classificatie, vangt quota-fouten |
+| `Planner.Endpoints/Email/EmailClassificationBatchProcessor.cs` + tier-omhulsels `FunctionApp*/Email/EmailClassificationService.cs` | #1716 slice 10: gedeelde batchlus (few-shots, datumvalidatie, doorgaan na gewone fout, stoppen bij quota); de tier-adapter levert de eigen berichtvelden en validator. Postgres behoudt `Body ?? ""`; SQL Server gebruikt de niet-nullable `Body`. |
 | `Planner.Shared/Email/EmailReplyAfhandeling.cs` (omhulsel per tier: `FunctionApp*/Email/EmailReplyPolicyService.cs`, #1760) | Beslist óf en bouwt het antwoord, markeert verzendintentie vóór het versturen (#716), roept `EmailGraphService.SendReplyAsync` aan. Bij een verzendfout classificeert `Planner.Shared.EmailVerzendFoutClassificatie` (#1133) of dit een bewezen afwijzing is (intentie wissen, opnieuw proberen) of een onbekende uitkomst (intentie laten staan, direct naar `Review`) |
 | `FunctionApp/Email/EmailTemplateService.cs` | DB-templates (`dbo.EmailTemplateInstellingen`) met 5-minuten TTL-cache per `(clubCode, key)`, valt terug op hardcoded defaults, `ApplyPlaceholders` voor `{{key}}`-substitutie |
 | `FunctionApp/Email/BerichtAiService.cs` | AI-classificatie; gebruikt al `IChatClient` (regel 11-14) — goed precedent voor provider-abstractie |
@@ -397,7 +397,10 @@ zijn: een ontbrekende `IChatClient` gooit op SQL Server en stopt de poll stil op
 op SQL Server de teamlijst (`TeamlijstGereedheid`) en ververst op Postgres de canonieke teamlijst. Tests:
 `Planner.Endpoints.Tests/Email/` (orkestratie en noodmails), per tier `EmailProcessorFasenTests` (omhulsel);
 mutatiebewijs `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice9.tsv scripts/ci/mutatiebewijs-1716.sh`. Nog per
-tier: de verwerking van één bericht (`.Verwerking.cs`), `EmailBatchFilterService` en `EmailClassificationService`.
+tier: de verwerking van één bericht (`.Verwerking.cs`) en `EmailBatchFilterService`. Sinds slice 10 staat
+`EmailClassificationService` als dunne tier-adapter rond `Planner.Endpoints/Email/EmailClassificationBatchProcessor.cs`;
+de gedeelde batchgevallen staan in `Planner.Endpoints.Tests/Email/EmailClassificationBatchProcessorTests.cs`,
+de bestaande adaptergevallen blijven per tier getest. Mutatiebewijs: `MUTATIELIJST=scripts/ci/mutatiebewijs-1716-slice10.tsv scripts/ci/mutatiebewijs-1716.sh`.
 
 ---
 
