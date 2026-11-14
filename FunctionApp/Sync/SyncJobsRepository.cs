@@ -88,18 +88,20 @@ internal static partial class SyncJobsRepository
     {
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync();
-        // Een UPDATE, dus atomair: uitgeput (running, poging >= max) wordt failed, de rest pending.
+        // Eén UPDATE: uitgeputte pogingen en verlopen eerste berichten eindigen atomair; alleen pending wordt herplaatst.
         await using var command = new SqlCommand(
             "UPDATE [dbo].[SyncJobs] SET " +
-            "[Status] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN 'failed' ELSE 'pending' END, " +
-            "[CompletedAt] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN GETUTCDATE() ELSE [CompletedAt] END, " +
-            "[ErrorMessage] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN @Message ELSE [ErrorMessage] END, " +
-            "[StartedAt] = CASE WHEN [Status] = 'running' AND [Attempt] >= @Max THEN [StartedAt] ELSE GETUTCDATE() END " +
+            "[Status] = CASE WHEN (([Status] = 'running' AND [Attempt] >= @Max) OR ([Status] = 'pending' AND [Attempt] = 0)) THEN 'failed' ELSE 'pending' END, " +
+            "[CompletedAt] = CASE WHEN (([Status] = 'running' AND [Attempt] >= @Max) OR ([Status] = 'pending' AND [Attempt] = 0)) THEN GETUTCDATE() ELSE [CompletedAt] END, " +
+            "[ErrorMessage] = CASE WHEN (([Status] = 'running' AND [Attempt] >= @Max) OR ([Status] = 'pending' AND [Attempt] = 0)) THEN CASE WHEN [Attempt] = 0 THEN @NeverStarted ELSE @Message END ELSE [ErrorMessage] END, " +
+            "[StartedAt] = CASE WHEN (([Status] = 'running' AND [Attempt] >= @Max) OR ([Status] = 'pending' AND [Attempt] = 0)) THEN [StartedAt] ELSE GETUTCDATE() END " +
             "OUTPUT INSERTED.[Id], INSERTED.[ClubCode], INSERTED.[WeekOffsetFrom], INSERTED.[WeekOffsetTo], INSERTED.[Status] " +
-            "WHERE [Status] IN ('running', 'pending') AND ([Status] = 'running' OR [Attempt] > 0) AND [StartedAt] <= @Cutoff",
+            "WHERE (([Status] = 'running' OR ([Status] = 'pending' AND [Attempt] > 0)) AND [StartedAt] <= @Cutoff) " +
+            "OR ([Status] = 'pending' AND [Attempt] = 0 AND [CreatedAt] <= @Cutoff)",
             connection);
         command.Parameters.AddWithValue("@Max", SyncJobRecoveryPolicy.MaxAttempts);
         command.Parameters.AddWithValue("@Message", SyncJobRecoveryPolicy.ExhaustedMessage);
+        command.Parameters.AddWithValue("@NeverStarted", SyncJobRecoveryPolicy.NeverStartedMessage);
         command.Parameters.AddWithValue("@Cutoff", cutoffUtc);
         await using var reader = await command.ExecuteReaderAsync();
         return await SyncJobRecoveryCore.ReadBatchAsync(reader);

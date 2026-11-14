@@ -95,18 +95,20 @@ internal static partial class SyncJobsRepository
     {
         await using var connection = new NpgsqlConnection(connectionString);
         await connection.OpenAsync();
-        // Een UPDATE, dus atomair: uitgeput (running, poging >= max) wordt failed, de rest pending.
+        // Eén UPDATE: uitgeputte pogingen en verlopen eerste berichten eindigen atomair; alleen pending wordt herplaatst.
         await using var command = new NpgsqlCommand(
             "UPDATE public.syncjobs SET " +
-            "status = CASE WHEN status = 'running' AND attempt >= @max THEN 'failed' ELSE 'pending' END, " +
-            "completedat = CASE WHEN status = 'running' AND attempt >= @max THEN now() ELSE completedat END, " +
-            "errormessage = CASE WHEN status = 'running' AND attempt >= @max THEN @message ELSE errormessage END, " +
-            "startedat = CASE WHEN status = 'running' AND attempt >= @max THEN startedat ELSE now() END " +
-            "WHERE status IN ('running', 'pending') AND (status = 'running' OR attempt > 0) AND startedat <= @cutoff " +
+            "status = CASE WHEN ((status = 'running' AND attempt >= @max) OR (status = 'pending' AND attempt = 0)) THEN 'failed' ELSE 'pending' END, " +
+            "completedat = CASE WHEN ((status = 'running' AND attempt >= @max) OR (status = 'pending' AND attempt = 0)) THEN now() ELSE completedat END, " +
+            "errormessage = CASE WHEN ((status = 'running' AND attempt >= @max) OR (status = 'pending' AND attempt = 0)) THEN CASE WHEN attempt = 0 THEN @neverStarted ELSE @message END ELSE errormessage END, " +
+            "startedat = CASE WHEN ((status = 'running' AND attempt >= @max) OR (status = 'pending' AND attempt = 0)) THEN startedat ELSE now() END " +
+            "WHERE ((status = 'running' OR (status = 'pending' AND attempt > 0)) AND startedat <= @cutoff) " +
+            "OR (status = 'pending' AND attempt = 0 AND createdat <= @cutoff) " +
             "RETURNING id, clubcode, weekoffsetfrom, weekoffsetto, status",
             connection);
         command.Parameters.AddWithValue("max", SyncJobRecoveryPolicy.MaxAttempts);
         command.Parameters.AddWithValue("message", SyncJobRecoveryPolicy.ExhaustedMessage);
+        command.Parameters.AddWithValue("neverStarted", SyncJobRecoveryPolicy.NeverStartedMessage);
         command.Parameters.AddWithValue("cutoff", DateTime.SpecifyKind(cutoffUtc, DateTimeKind.Utc));
         await using var reader = await command.ExecuteReaderAsync();
         return await SyncJobRecoveryCore.ReadBatchAsync(reader);

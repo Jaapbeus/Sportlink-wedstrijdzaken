@@ -52,12 +52,20 @@ public class SyncJobRecoveryPolicyTests
         => SyncJobRecoveryPolicy.Decide("running", 0, Nu.AddMinutes(-45), Nu).Should().Be(SyncJobRecoveryAction.Retry);
 
     [Theory]
-    [InlineData(0, 31, SyncJobRecoveryAction.None)]   // nooit geclaimd: geen herstel
+    [InlineData(0, 31, SyncJobRecoveryAction.None)]   // zonder aanmaaktijd: geen herstel
     [InlineData(1, 29, SyncJobRecoveryAction.None)]
     [InlineData(1, 30, SyncJobRecoveryAction.Retry)]  // bericht kwijt: opnieuw aanbieden
     [InlineData(3, 30, SyncJobRecoveryAction.Retry)]  // verbruikt geen poging; de claim telt
     public void Decide_Pending(int poging, int minuten, SyncJobRecoveryAction verwacht)
         => SyncJobRecoveryPolicy.Decide("pending", poging, Nu.AddMinutes(-minuten), Nu).Should().Be(verwacht);
+
+    [Theory]
+    [InlineData(29, SyncJobRecoveryAction.None)]
+    [InlineData(30, SyncJobRecoveryAction.GiveUp)]
+    [InlineData(31, SyncJobRecoveryAction.GiveUp)]
+    public void Decide_NooitGestart_GebruiktAanmaaktijdEnGeeftOp(int minuten, SyncJobRecoveryAction verwacht)
+        => SyncJobRecoveryPolicy.Decide("pending", 0, null, Nu, Nu.AddMinutes(-minuten))
+            .Should().Be(verwacht);
 
     [Theory]
     [InlineData("succeeded")]

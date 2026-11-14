@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Nooit gestarte sync-jobs krijgen na de hersteltermijn op beide databasetiers de eindstatus `failed` met een vaste melding en UTC-eindtijd. Ze worden niet opnieuw ingepland; late queueberichten kunnen niets uitvoeren of overschrijven (#1912).
+
 - De timeouttest van de Azure Management-client faalde soms in CI door de volgorde van annuleringscallbacks. De test is nu op beide tiers deterministisch; het productiegedrag is ongewijzigd (#1941).
 - Beheerders zien op Instellingen een sync-logboek met voortgang per fase, recente resultaten en redenen bij een onvolledige run. Een tweede klik volgt de lopende synchronisatie. Het logboek bewaart alleen codes, tijden en aantallen, gedurende 30 dagen op beide databasetiers; de bestaande syncactiviteit ruimt ook inactieve clubs op. Gedeeltelijke resultaten blijven als jobstatus behouden en een verlopen eerste queuebericht kan geen nieuwe run doorkruisen (#1912).
 
