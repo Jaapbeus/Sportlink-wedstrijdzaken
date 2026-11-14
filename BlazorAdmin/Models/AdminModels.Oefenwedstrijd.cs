@@ -20,6 +20,12 @@ public class OefenwedstrijdResultaatDto : SportlinkMutatieResultaatDto
     public List<string> Waarschuwingen { get; set; } = new();
     /// <summary>#1437: het velddeel zoals het naar Sportlink ging ("1.0", "0.5", "0.25" of "0.125").</summary>
     public string? Velddeel { get; set; }
+    /// <summary>#1892: de naam van het thuisteam zoals die naar Sportlink ging.</summary>
+    public string? Thuisteam { get; set; }
+    /// <summary>#1892: de naam van het uitteam (de tegenstander) zoals die naar Sportlink ging.</summary>
+    public string? Uitteam { get; set; }
+    /// <summary>#1892: <c>true</c> als het uitteam aan een Sportlink-team is gekoppeld, <c>false</c> bij een vrije tegenstander (geen teamkoppeling).</summary>
+    public bool UitteamGekoppeld { get; set; }
 }
 
 /// <summary>#1437: respons van <c>GET /api/sportlink/club-match/formulier</c> — de voorinvulling voor "Wedstrijd aanmaken".
