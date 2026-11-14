@@ -352,13 +352,15 @@ cp "$TMP_B" CLAUDE.md
 #    meer aanzet. Dat is de gevaarlijke faalwijze — zonder die controle telt hij stilzwijgend nul
 #    en staat hij voor altijd groen, precies het patroon van de splinter-no-op uit §67.
 #
-#    Alleen DEZE negatieve test staat hier, en niet die op het aantal overtredingen: die vraagt een
-#    volledige solution-build, en deze zelftest draait in CI vóór de buildstappen. De teltest is
-#    handmatig uitgevoerd bij #1300 (een methode met complexiteit 40 toegevoegd → 20 > 19 → rood).
-#    De controle hieronder breekt bewust af vóór de build, dus hij kost niets.
+#    Sinds #1945 telt de guard niet meer (de solutionbuild faalt zelf op elke overtreding bij
+#    severity error); hij eist alleen nog strikt 'error' in [*.cs]. Daarom ook het tweede geval:
+#    'warning' moet rood zijn, want dan glipt een overtreding stilzwijgend door de build.
 cp .editorconfig "$TMP_B"
 grep -v 'CA1506' "$TMP_B" > .editorconfig
 verwacht_falen "analyzers niet aangezet in .editorconfig" bash scripts/ci/check-analyzer-complexiteit.sh
+cp "$TMP_B" .editorconfig
+awk '/^\[/ { actief = ($0 == "[*.cs]") } { if (actief && $0 ~ /^dotnet_diagnostic\.CA1502\.severity/) print "dotnet_diagnostic.CA1502.severity = warning"; else print }' "$TMP_B" > .editorconfig
+verwacht_falen "CA1502 op warning in [*.cs]" bash scripts/ci/check-analyzer-complexiteit.sh
 cp "$TMP_B" .editorconfig
 
 echo

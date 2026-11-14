@@ -107,6 +107,12 @@ jobs:
 
       # Meta-guard: elke regel in het register heeft een bestaand, uitvoerbaar script dat ook echt
       # in de genoemde workflow draait — en elke guard in scripts/ci/ staat in het register.
+      # #1300/#1651/#1945: CA1502/1505/1506 staan niet standaard aan (ook niet bij AnalysisMode=All).
+      # .editorconfig zet ze op error, dus elke overtreding laat de solutionbuild in 'compile' falen.
+      # Deze guard (zonder .NET) bewaakt dat die drie regels in [*.cs] op error blijven staan.
+      - name: Codekwaliteit — maintainability-analyzers (CA1502/1505/1506)
+        run: bash scripts/ci/check-analyzer-complexiteit.sh
+
       - name: Codekwaliteit — regelregister klopt
         run: bash scripts/ci/check-regelregister.sh
 
@@ -481,16 +487,22 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: FunctionApp bouwen (net10.0)
-        run: dotnet build FunctionApp/fa-dev-sportlink-01.csproj --configuration Release
+      # #1945 (#1900 fase 3): één restore en één Release-build van de hele solution filter (alle 16
+      # projecten, ook de testprojecten). De teststappen hieronder draaien met --no-build --no-restore
+      # tegen precies deze build, elk als eigen stap zodat een rode suite direct te zien is. Een
+      # CA1502/1505/1506-overtreding (severity error sinds #1651) laat deze build al falen; daarom is
+      # de aparte analyzerherbouw vervallen en controleert check-analyzer-complexiteit.sh (repo-guards)
+      # alleen nog dat .editorconfig de drie regels op error zet.
+      - name: Restore (sportlink-wedstrijdzaken.slnf)
+        run: dotnet restore sportlink-wedstrijdzaken.slnf
 
-      - name: BlazorAdmin bouwen (net10.0)
-        run: dotnet build BlazorAdmin/BlazorAdmin.csproj --configuration Release
+      - name: Alle projecten bouwen (Release, net10.0)
+        run: dotnet build sportlink-wedstrijdzaken.slnf --configuration Release --no-restore
 
       # #1136: regressietests voor de teambegeleiding-lookup-race (LookupGeneratieGuard) —
       # pure C#-logica, geen bUnit/component-rendering, dus geen browser/JS-runtime nodig.
       - name: BlazorAdmin.Tests draaien
-        run: dotnet test BlazorAdmin.Tests/BlazorAdmin.Tests.csproj --configuration Release --verbosity minimal
+        run: dotnet test BlazorAdmin.Tests/BlazorAdmin.Tests.csproj --configuration Release --no-build --no-restore --verbosity minimal
 
       # #818: Database.Postgres bouwt de C#-schemadefinitie/DDL-generator voor de Postgres-tier.
       # Deze build/test is onafhankelijk van welke DatabaseTier déze fork daadwerkelijk deployt
@@ -498,48 +510,34 @@ jobs:
       # geselecteerde. De integratietests (tegen een échte Postgres-instantie) zijn hier env-gestuurd
       # zichtbaar overgeslagen ([PostgresFact]/[PostgresTheory], #866) — de fresh-db-postgres-job
       # verderop in dit bestand draait ze wél, tegen de instantie die die job zelf opzet.
-      - name: Database.Postgres bouwen (net10.0)
-        run: dotnet build Database.Postgres/Database.Postgres.csproj --configuration Release
-
       - name: Database.Postgres.Tests draaien (unit tests, geen Postgres nodig)
-        run: dotnet test Database.Postgres.Tests/Database.Postgres.Tests.csproj --configuration Release --verbosity minimal
-
-      # #891: FunctionApp.Postgres — de applicatie-datalaag voor de Postgres-tier (#860). Vandaag
-      # nog een minimaal project (alleen /api/health); #887-#890 breiden dit verder uit. Build-only
-      # hier, zelfde reden als Database.Postgres.Cli hieronder — geen live database in deze job.
-      - name: FunctionApp.Postgres bouwen (net10.0)
-        run: dotnet build FunctionApp.Postgres/FunctionApp.Postgres.csproj --configuration Release
+        run: dotnet test Database.Postgres.Tests/Database.Postgres.Tests.csproj --configuration Release --no-build --no-restore --verbosity minimal
 
       # Issue 890: het testproject voor de Postgres-applicatielaag. Hier bewust ZONDER
       # POSTGRES_TEST_CONNECTION_STRING: de integratietests slaan zichzelf dan zichtbaar over
       # (#866) en deze stap bewijst alleen dat de suite compileert en start. De echte uitvoering
       # gebeurt in de job 'fresh-db-postgres' hieronder, die al een gemigreerde instantie heeft.
       - name: FunctionApp.Postgres.Tests draaien (unit only, geen Postgres nodig)
-        run: dotnet test FunctionApp.Postgres.Tests/FunctionApp.Postgres.Tests.csproj --configuration Release --verbosity minimal
+        run: dotnet test FunctionApp.Postgres.Tests/FunctionApp.Postgres.Tests.csproj --configuration Release --no-build --no-restore --verbosity minimal
 
       # #819: Planner.Shared bevat de tier-agnostische veldresolutielogica (VeldResolver/
       # VeldNormalisatie) — gedeeld tussen FunctionApp (SQL Server-tier) en Database.Postgres,
       # zodat er nooit een derde, onafhankelijke kopie van deze matching ontstaat naast de
       # bestaande SQL Server-view en de C#-implementatie. Puur tekstlogica, geen databaseafhankelijkheid.
-      - name: Planner.Shared bouwen en testen (net10.0)
-        run: dotnet test Planner.Shared.Tests/Planner.Shared.Tests.csproj --configuration Release --verbosity minimal
+      - name: Planner.Shared.Tests draaien
+        run: dotnet test Planner.Shared.Tests/Planner.Shared.Tests.csproj --configuration Release --no-build --no-restore --verbosity minimal
 
       # #1411: de gedeelde beheer-endpoints (ook secretinvoer) moeten in CI worden getest.
-      - name: Planner.Endpoints bouwen en testen (net10.0)
-        run: dotnet test Planner.Endpoints.Tests/Planner.Endpoints.Tests.csproj --configuration Release --verbosity minimal
-
-      # #821: migratie-runner-CLI voor de Postgres-tier. Build-only hier (geen live database) —
-      # MigrationRunnerIntegrationTests hierboven dekt het gedrag [Fact(Skip=...)], zie #822/#823.
-      - name: Database.Postgres.Cli bouwen (net10.0)
-        run: dotnet build Database.Postgres.Cli/Database.Postgres.Cli.csproj --configuration Release
+      - name: Planner.Endpoints.Tests draaien
+        run: dotnet test Planner.Endpoints.Tests/Planner.Endpoints.Tests.csproj --configuration Release --no-build --no-restore --verbosity minimal
 
       # #1302: de CLI-argumentafhandeling bepaalt wat deploy.yml doet (migreren, his-tabellen
       # aanmaken of demodata seeden); de kopieerder vertaalt foreign keys bij de cutover.
       - name: Database.Postgres.Cli.Tests draaien (argumentafhandeling)
-        run: dotnet test Database.Postgres.Cli.Tests/Database.Postgres.Cli.Tests.csproj --configuration Release --verbosity minimal
+        run: dotnet test Database.Postgres.Cli.Tests/Database.Postgres.Cli.Tests.csproj --configuration Release --no-build --no-restore --verbosity minimal
 
       - name: MigrationTools.Tests draaien (id-vertaling bij de cutover)
-        run: dotnet test MigrationTools.Tests/MigrationTools.Tests.csproj --configuration Release --verbosity minimal
+        run: dotnet test MigrationTools.Tests/MigrationTools.Tests.csproj --configuration Release --no-build --no-restore --verbosity minimal
 
       # De unittests werden tot nu toe NIET in CI gedraaid: deze workflow bouwde alleen de twee
       # applicatieprojecten. Daardoor kon een regressie die lokaal wel rood was, ongemerkt gemerged
@@ -547,16 +545,7 @@ jobs:
       # meer de datumlogica, idempotentie en teamherkenning van de e-mailverwerking; die mag niet
       # meer stilzwijgend kunnen breken.
       - name: Unittests draaien (FunctionApp.Tests)
-        run: dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --verbosity minimal
-
-      # #1300: CA1502/1505/1506 staan niet standaard aan, ook niet bij AnalysisMode=All. De
-      # .editorconfig in de repo-root zet ze op 'warning'; deze guard bouwt de solution en telt
-      # de overtredingen. Ratchet, geen harde grens — de nulmeting bevat methodes met een
-      # cyclomatische complexiteit van 43, 46 en 58, en die herschrijf je niet in een chore-PR.
-      # Bewust ná de losse buildstappen: die geven een duidelijkere foutmelding bij een echte
-      # bouwfout dan deze guard, die dan alleen kan melden dat hij niets kon meten.
-      - name: Codekwaliteit — maintainability-analyzers (CA1502/1505/1506)
-        run: bash scripts/ci/check-analyzer-complexiteit.sh
+        run: dotnet test FunctionApp.Tests/FunctionApp.Tests.csproj --configuration Release --no-build --no-restore --verbosity minimal
 
       # ──────────────────────────────────────────────────────────────────────
       # #659: CSP-regressiewacht op de gepubliceerde index.html.
