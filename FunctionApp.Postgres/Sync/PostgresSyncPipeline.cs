@@ -29,7 +29,7 @@ namespace FunctionApp.Postgres.Sync;
 /// <c>fromWeekOffset</c>/<c>toWeekOffset</c> als expliciete parameters, exact zoals het origineel.</item>
 /// </list>
 /// </summary>
-internal static class PostgresSyncPipeline
+internal static partial class PostgresSyncPipeline
 {
     internal static readonly HttpClientHandler DataserviceHandler = new() { AllowAutoRedirect = false };
     private static readonly HttpClient HttpClient = new(DataserviceHandler);
@@ -48,7 +48,7 @@ internal static class PostgresSyncPipeline
         int fromWeekOffset, int toWeekOffset,
         string sportlinkApiUrl, string sportlinkClientId,
         string clubCode, string connectionString,
-        ILogger log, DateOnly? reconciliatieOndergrens = null)
+        ILogger log, DateOnly? reconciliatieOndergrens = null, SyncLogWriter? syncLog = null)
     {
         await using var stagingLease = await PostgresSyncStagingLease.TryAcquireAsync(connectionString)
             ?? throw new SyncAlreadyRunningException();
@@ -59,23 +59,56 @@ internal static class PostgresSyncPipeline
         var orchestrator = new PostgresMergeOrchestrator(connectionString);
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.Teams);
+        await SyncLogReporting.BeginPhaseAsync(syncLog, "teams");
+        int? teamsFetched = null;
         var teamsFailed = uitkomst.Registreer(SyncUitkomst.FaseTeams,
-            await FetchTeamsPhaseAsync(orchestrator, connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, budget, log));
+            await FetchTeamsPhaseAsync(orchestrator, connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, budget, log, syncLog,
+                count => teamsFetched = count));
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.Matches);
+        await SyncLogReporting.BeginPhaseAsync(syncLog, "programma");
+        var programmaAfgekapt = false;
+        var programmaFetched = 0;
+        var programmaFailedCount = 0;
         var programmaFailed = uitkomst.Registreer(SyncUitkomst.FaseProgramma,
-            await FetchProgrammaPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, toWeekOffset, budget, log));
+            await FetchProgrammaPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, toWeekOffset, budget, log, syncLog,
+                count => programmaFetched += count, () => programmaAfgekapt = true, () => programmaFailedCount++));
+        await SyncLogReporting.BeginPhaseAsync(syncLog, "uitslagen");
+        var uitslagenFetched = 0;
+        var uitslagenFailedCount = 0;
         var uitslagenFailed = uitkomst.Registreer(SyncUitkomst.FaseUitslagen,
-            await FetchUitslagenPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, budget, log));
+            await FetchUitslagenPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, fromWeekOffset, budget, log, syncLog,
+                count => uitslagenFetched += count, () => uitslagenFailedCount++));
         // #1547: een gespeelde wedstrijd komt alleen nog via /uitslagen binnen, zonder veld/datum/team.
         await PostgresStagingRepository.VulUitslagRijenAanUitHisAsync(connectionString, clubCode);
         var matchesFailed = programmaFailed || uitslagenFailed;
 
         await orchestrator.RecreateStgTableAsync(KnownEntities.MatchDetails);
+        await SyncLogReporting.BeginPhaseAsync(syncLog, "matchdetails");
+        var matchdetailsFetched = 0;
+        var matchdetailsFailedCount = 0;
         uitkomst.Registreer(SyncUitkomst.FaseMatchdetails,
-            await FetchMatchDetailsPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, budget, log));
+            await FetchMatchDetailsPhaseAsync(connectionString, sportlinkApiUrl, sportlinkClientId, clubCode, budget, log, syncLog,
+                count => matchdetailsFetched += count, count => matchdetailsFailedCount = count));
 
-        await MergeAllEntitiesAsync(orchestrator);
+        var merges = await MergeAllEntitiesAsync(orchestrator);
+        await SyncLogReporting.CompletePhaseAsync(syncLog, "teams", SyncLogReporting.StatusForPartialFailure(teamsFailed),
+            fetched: teamsFetched, added: merges.Teams.Added, updated: merges.Teams.Updated,
+            failed: teamsFailed ? 1 : 0, reasonCode: SyncLogReporting.ReasonForFailure(teamsFailed, "source_failed"));
+        await SyncLogReporting.CompletePhaseAsync(syncLog, "programma", SyncLogReporting.StatusForPartialFailure(programmaFailed),
+            fetched: programmaFetched, added: merges.Matches.Added, updated: merges.Matches.Updated,
+            failed: programmaFailedCount,
+            reasonCode: SyncLogReporting.ProgrammaReason(programmaAfgekapt, programmaFailed));
+        // Programme and results share stg.matches and one merge into his.matches; do not split the
+        // merge counters between the two provider fetch phases.
+        await SyncLogReporting.CompletePhaseAsync(syncLog, "uitslagen", SyncLogReporting.StatusForPartialFailure(uitslagenFailed),
+            fetched: uitslagenFetched, failed: uitslagenFailedCount,
+            reasonCode: SyncLogReporting.ReasonForFailure(uitslagenFailed, "partial_failure"));
+        var matchdetailsFailed = uitkomst.MislukteFases.Contains(SyncUitkomst.FaseMatchdetails);
+        await SyncLogReporting.CompletePhaseAsync(syncLog, "matchdetails", SyncLogReporting.StatusForPartialFailure(matchdetailsFailed),
+            fetched: matchdetailsFetched, failed: matchdetailsFailedCount,
+            added: merges.MatchDetails.Added, updated: merges.MatchDetails.Updated,
+            reasonCode: SyncLogReporting.ReasonForFailure(matchdetailsFailed, "partial_failure"));
 
         // Reconciliatie (#1193): "Sportlink is de waarheid altijd" — his-rijen die niet meer in de
         // zojuist geladen stg-snapshot voorkomen worden gemarkeerd als verwijderd (mta_deleted),
@@ -83,10 +116,16 @@ internal static class PostgresSyncPipeline
         // teamcanonicalisatie hieronder: his.* is op dit punt al gemerged, dus een fout hier mag de
         // al geslaagde ETL-run niet alsnog laten falen. Draait vóór de plannerview/canonicalisatie
         // zodat die stroomafwaartse stappen al met de opgeschoonde data werken.
-        await ReconcileVerdwenenAsync(orchestrator, clubCode, teamsFailed, matchesFailed,
+        await SyncLogReporting.BeginPhaseAsync(syncLog, "reconciliatie");
+        var reconciliationFailed = await ReconcileVerdwenenAsync(orchestrator, clubCode, teamsFailed, matchesFailed,
             reconciliatieOndergrens ?? EersteTeReconcilierenDatum(VandaagInNederland()), log);
+        var reconciliationSkipped = teamsFailed || matchesFailed;
+        var allReconciliationSkipped = teamsFailed && matchesFailed;
+        await SyncLogReporting.CompletePhaseAsync(syncLog, "reconciliatie",
+            SyncLogReporting.ReconciliationStatus(allReconciliationSkipped, reconciliationSkipped, reconciliationFailed),
+            reasonCode: SyncLogReporting.ReconciliationReason(reconciliationSkipped, reconciliationFailed));
 
-        await RondAfNaMergeAsync(connectionString, clubCode, log);
+        await RondAfNaMergeAsync(connectionString, clubCode, log, syncLog);
 
         if (!uitkomst.GedeeltelijkMislukt)
             await SaveLastSyncTimestampAsync(connectionString, clubCode, log);
@@ -96,59 +135,14 @@ internal static class PostgresSyncPipeline
         return uitkomst;
     }
 
-    /// <summary>
-    /// Stappen ná merge en reconciliatie, in vaste volgorde: plannerview, best-effort
-    /// teamcanonicalisatie en de ongeguarde markering van vervallen geplande wedstrijden.
-    /// </summary>
-    private static async Task RondAfNaMergeAsync(string connectionString, string clubCode, ILogger log)
-    {
-        // Plannerview (#861/#819): CREATE OR REPLACE VIEW planner.alle_wedstrijden_op_veld_ruw.
-        //
-        // WAAROM HIER EN NIET IN EEN MIGRATIE. De view selecteert uit his.matches/his.teams, en die
-        // tabellen worden niet door een migratie aangemaakt maar dynamisch door
-        // PostgresMergeOrchestrator zodra de eerste sync draait (#818). Postgres controleert de
-        // gerefereerde relaties al bij CREATE VIEW, dus een migratie zou hard falen met
-        // "relation his.matches does not exist" — empirisch bevestigd op een verse database.
-        // Dit is het vroegste punt waarop de view wél gemaakt kan worden.
-        //
-        // ZONDER DEZE AANROEP was de view op een verse installatie volledig afwezig: hij werd
-        // alleen door de testsuites aangemaakt. Elk endpoint dat eruit leest
-        // (veldbezetting, check-availability, doordeweeks-beschikbaar, herplan-check, auto-plan)
-        // faalde daardoor met 42P01 — een gat dat sectie 32 al signaleerde maar dat nog geen
-        // eigenaar had.
-        //
-        // CREATE OR REPLACE is idempotent, dus meelopen op elke sync is veilig en houdt de view
-        // bovendien vanzelf gelijk aan PostgresPlannerViewGenerator na een wijziging daar.
-        await EnsurePlannerViewAsync(connectionString, log);
-
-        // Teamcanonicalisatie (#889): vult public.teams/public.teamaliassen uit his.teams/his.matches.
-        //
-        // BEST-EFFORT, met opzet — exact zoals het SQL Server-origineel, dat beide aanroepen met
-        // try/catch omgeeft: his.* is op dit punt al gemerged, en een fout in de afgeleide
-        // canonicalisatie mag die geslaagde ETL-run niet alsnog laten falen. Dat is bewust een
-        // ander soort stap dan MarkeerVervallenGeplandeWedstrijdenAsync hieronder, die juist
-        // ONgeguard is.
-        await CanonicaliseerBestEffortAsync(connectionString, clubCode, clubCode, log);
-
-        // AllStars FC (#756) heeft geen eigen Sportlink-sync — zijn his.teams-rijen komen uit de
-        // demodata-seed, niet uit deze pipeline. Zonder deze aanroep blijft public.teams voor de
-        // democlub voor altijd leeg terwijl his.* wel gevuld is: de teamdropdown in de Admin UI zou
-        // dan voor de democlub 0 teams tonen. Meelopen op elke echte sync houdt de demodata canoniek
-        // zonder een aparte job.
-        if (!clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase))
-            await CanonicaliseerBestEffortAsync(connectionString, "ALLSTARS", "democlub ALLSTARS", log);
-
-        // Ongeguard, met opzet — zie klasse-doc-comment hierboven.
-        await PlannerMatchRepository.MarkeerVervallenGeplandeWedstrijdenAsync(connectionString, clubCode, log);
-    }
-
     private static async Task<bool> FetchTeamsPhaseAsync(
         PostgresMergeOrchestrator orchestrator, string connectionString,
-        string sportlinkApiUrl, string sportlinkClientId, string clubCode, HerhaalBudget budget, ILogger log)
+        string sportlinkApiUrl, string sportlinkClientId, string clubCode, HerhaalBudget budget, ILogger log, SyncLogWriter? syncLog, Action<int> setFetched)
     {
         try
         {
-            var volledig = await FetchAndStoreTeamsAsync(connectionString, $"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log, budget: budget);
+            var volledig = await FetchAndStoreTeamsAsync(connectionString, $"{sportlinkApiUrl}/teams?{sportlinkClientId}", clubCode, log, budget: budget,
+                fetched: async count => { setFetched(count); await SyncLogReporting.ReportProgressAsync(syncLog, "teams", fetched: count); });
             log.LogInformation("TEAMS - GET endpoint=/teams");
             // #1558 R1-F1: een lege of ontbrekende respons is geen geldige snapshot; dat telt als
             // mislukte fetch, zodat reconciliatie niet alle teams als verdwenen markeert.
@@ -163,7 +157,8 @@ internal static class PostgresSyncPipeline
 
     private static async Task<bool> FetchProgrammaPhaseAsync(
         string connectionString, string sportlinkApiUrl, string sportlinkClientId, string clubCode,
-        int fromWeekOffset, int toWeekOffset, HerhaalBudget budget, ILogger log)
+        int fromWeekOffset, int toWeekOffset, HerhaalBudget budget, ILogger log, SyncLogWriter? syncLog,
+        Func<int, int> addFetched, Action? markTruncated, Action markFailed)
     {
         var partialFailure = false;
 
@@ -175,15 +170,23 @@ internal static class PostgresSyncPipeline
                 var volledig = await FetchAndStoreProgrammaAsync(
                     connectionString,
                     $"{sportlinkApiUrl}/programma?{sportlinkClientId}&weekoffset={weekOffset}&aantaldagen={ProgrammaAfkapping.VensterDagen}",
-                    clubCode, log, budget: budget);
+                    clubCode, log, budget: budget, fetched: async count =>
+                    {
+                        var fetchedTotal = addFetched(count);
+                        await SyncLogReporting.ReportProgressAsync(syncLog, "programma", fetched: fetchedTotal,
+                            progress: weekOffset - fromWeekOffset + 1, total: toWeekOffset - fromWeekOffset + 1);
+                    });
                 log.LogInformation("MATCHES/PROGRAMMA - GET weekOffset={WeekOffset}", weekOffset);
                 // #1915: een afgekapt venster is een onvolledige snapshot — nooit reconciliëren op wat ontbreekt.
-                if (!volledig) partialFailure = true;
+                if (!volledig) { partialFailure = true; markTruncated?.Invoke(); markFailed(); }
             }
             catch (Exception ex)
             {
                 log.LogError(ex, "MATCHES/PROGRAMMA - fetch mislukt weekOffset={WeekOffset}", weekOffset);
                 partialFailure = true;
+                markFailed();
+                await SyncLogReporting.ReportProgressAsync(syncLog, "programma", fetched: addFetched(0),
+                    progress: weekOffset - fromWeekOffset + 1, total: toWeekOffset - fromWeekOffset + 1);
             }
         }
 
@@ -192,7 +195,7 @@ internal static class PostgresSyncPipeline
 
     private static async Task<bool> FetchUitslagenPhaseAsync(
         string connectionString, string sportlinkApiUrl, string sportlinkClientId, string clubCode,
-        int fromWeekOffset, HerhaalBudget budget, ILogger log)
+        int fromWeekOffset, HerhaalBudget budget, ILogger log, SyncLogWriter? syncLog, Func<int, int> addFetched, Action markFailed)
     {
         var partialFailure = false;
 
@@ -203,13 +206,22 @@ internal static class PostgresSyncPipeline
             try
             {
                 await FetchAndStoreUitslagenAsync(
-                    connectionString, $"{sportlinkApiUrl}/uitslagen?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log, budget: budget);
+                    connectionString, $"{sportlinkApiUrl}/uitslagen?{sportlinkClientId}&weekoffset={weekOffset}", clubCode, log, budget: budget,
+                    fetched: async count =>
+                    {
+                        var fetchedTotal = addFetched(count);
+                        await SyncLogReporting.ReportProgressAsync(syncLog, "uitslagen", fetched: fetchedTotal,
+                            progress: weekOffset - scoreFrom + 1, total: -scoreFrom + 1);
+                    });
                 log.LogInformation("MATCHES/UITSLAGEN - GET weekOffset={WeekOffset}", weekOffset);
             }
             catch (Exception ex)
             {
                 log.LogError(ex, "MATCHES/UITSLAGEN - fetch mislukt weekOffset={WeekOffset}", weekOffset);
                 partialFailure = true;
+                markFailed();
+                await SyncLogReporting.ReportProgressAsync(syncLog, "uitslagen", fetched: addFetched(0),
+                    progress: weekOffset - scoreFrom + 1, total: -scoreFrom + 1);
             }
         }
 
@@ -217,7 +229,8 @@ internal static class PostgresSyncPipeline
     }
 
     private static async Task<bool> FetchMatchDetailsPhaseAsync(
-        string connectionString, string sportlinkApiUrl, string sportlinkClientId, string clubCode, HerhaalBudget budget, ILogger log)
+        string connectionString, string sportlinkApiUrl, string sportlinkClientId, string clubCode, HerhaalBudget budget, ILogger log, SyncLogWriter? syncLog,
+        Action<int> addFetched, Action<int> setFailed)
     {
         var wedstrijdcodes = await PostgresStagingRepository.GetWedstrijdcodesAsync(connectionString, log);
         int mdOk = 0, mdFout = 0;
@@ -226,7 +239,7 @@ internal static class PostgresSyncPipeline
             if (await FetchAndStoreMatchDetailsAsync(
                     connectionString,
                     $"{sportlinkApiUrl}/wedstrijd-informatie?{sportlinkClientId}&wedstrijdcode={wedstrijdcode}",
-                    clubCode, log, budget: budget))
+                    clubCode, log, budget: budget, fetchedCount: addFetched))
             {
                 mdOk++;
                 log.LogInformation("MATCHDETAILS - GET wedstrijdcode={Code}", wedstrijdcode);
@@ -234,10 +247,13 @@ internal static class PostgresSyncPipeline
             else
             {
                 mdFout++;
+                setFailed(mdFout);
                 // De foutregel in FetchAndStoreMatchDetailsAsync noemt bewust geen URL meer (#1200);
                 // de wedstrijdcode is hier wél veilig te loggen en houdt de fout herleidbaar.
                 log.LogWarning("MATCHDETAILS - mislukt voor wedstrijdcode={Code}", wedstrijdcode);
             }
+            await SyncLogReporting.ReportProgressAsync(syncLog, "matchdetails", failed: mdFout,
+                progress: mdOk + mdFout, total: wedstrijdcodes.Count);
         }
         log.LogInformation("MATCHDETAILS - {Ok} succesvol, {Fout} mislukt van {Total}",
             mdOk, mdFout, wedstrijdcodes.Count);
@@ -245,14 +261,15 @@ internal static class PostgresSyncPipeline
         return mdFout > 0;
     }
 
-    private static async Task MergeAllEntitiesAsync(PostgresMergeOrchestrator orchestrator)
+    private static async Task<((int Added, int Updated) Teams, (int Added, int Updated) Matches, (int Added, int Updated) MatchDetails)> MergeAllEntitiesAsync(PostgresMergeOrchestrator orchestrator)
     {
         await orchestrator.EnsureHisTableAsync(KnownEntities.Teams);
-        await orchestrator.MergeStgToHisAsync(KnownEntities.Teams);
+        var teams = await orchestrator.MergeStgToHisWithCountsAsync(KnownEntities.Teams);
         await orchestrator.EnsureHisTableAsync(KnownEntities.Matches);
-        await orchestrator.MergeStgToHisAsync(KnownEntities.Matches);
+        var matches = await orchestrator.MergeStgToHisWithCountsAsync(KnownEntities.Matches);
         await orchestrator.EnsureHisTableAsync(KnownEntities.MatchDetails);
-        await orchestrator.MergeStgToHisAsync(KnownEntities.MatchDetails);
+        var details = await orchestrator.MergeStgToHisWithCountsAsync(KnownEntities.MatchDetails);
+        return (teams, matches, details);
     }
 
     /// <summary>
@@ -277,46 +294,6 @@ internal static class PostgresSyncPipeline
     /// als verdwenen kunnen markeren, puur door een transiënte netwerkfout bij die ene aanroep.
     /// </para>
     /// </summary>
-    private static async Task ReconcileVerdwenenAsync(
-        PostgresMergeOrchestrator orchestrator, string clubCode, bool teamsFailed, bool matchesFailed,
-        DateOnly ondergrens, ILogger log)
-    {
-        if (!teamsFailed)
-        {
-            try
-            {
-                var teamsVerwijderd = await orchestrator.ReconcileFullScopeAsync(KnownEntities.Teams, clubCode);
-                if (teamsVerwijderd > 0)
-                    log.LogInformation(
-                        "RECONCILIATIE - {Aantal} his.teams-rij(en) gemarkeerd als verwijderd voor {ClubCode}",
-                        teamsVerwijderd, clubCode);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "RECONCILIATIE - his.teams mislukt voor {ClubCode}", clubCode);
-            }
-        }
-
-        if (!matchesFailed)
-        {
-            try
-            {
-                // #1547: gespeelde wedstrijden verdwijnen uit /programma — alleen vanaf morgen
-                // (Nederlandse tijd) betekent "niet meer in stg" ook "niet meer bij Sportlink".
-                var matchesVerwijderd = await orchestrator.ReconcileWindowedAsync(
-                    KnownEntities.Matches, clubCode, "kaledatum", ondergrens: ondergrens);
-                if (matchesVerwijderd > 0)
-                    log.LogInformation(
-                        "RECONCILIATIE - {Aantal} his.matches-rij(en) gemarkeerd als verwijderd voor {ClubCode}",
-                        matchesVerwijderd, clubCode);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "RECONCILIATIE - his.matches mislukt voor {ClubCode}", clubCode);
-            }
-        }
-    }
-
     // De ondergrensregel is tier-onafhankelijk en staat in Planner.Shared (#1558); deze wrappers
     // houden de bestaande aanroepen en tests intact.
     internal static DateOnly EersteTeReconcilierenDatum(DateOnly vandaag) =>
@@ -327,68 +304,15 @@ internal static class PostgresSyncPipeline
     internal static DateOnly VandaagInNederland(DateTime utcNu, Func<string, TimeZoneInfo> zoekTijdzone) =>
         global::Planner.Shared.Sync.ReconciliatieOndergrens.VandaagInNederland(utcNu, zoekTijdzone);
 
-    /// <summary>
-    /// Maakt of vervangt <c>planner.alle_wedstrijden_op_veld_ruw</c> (#861). Eén bron van waarheid:
-    /// de DDL komt uit <see cref="Database.Postgres.PostgresPlannerViewGenerator.CreateView"/>, niet
-    /// uit een tweede kopie in een migratiebestand — <c>VeldResolutieDriftTests</c> bewaakt die
-    /// generator, en een SQL-kopie ernaast zou stilzwijgend uit de pas kunnen lopen.
-    /// <para>
-    /// Bewust NIET best-effort. Zonder deze view faalt de halve plannerlaag met een
-    /// <c>relation does not exist</c>; dat stil doorlaten zou de sync groen laten melden terwijl de
-    /// applicatie erna kapot is. Vergelijk <see cref="CanonicaliseerBestEffortAsync"/>, die juist
-    /// wél geguard is omdat een mislukte canonicalisatie de al geslaagde ETL niet ongedaan maakt.
-    /// </para>
-    /// </summary>
-    private static async Task EnsurePlannerViewAsync(string connectionString, ILogger log)
-    {
-        await using var conn = new NpgsqlConnection(connectionString);
-        await conn.OpenAsync();
-        await using var cmd = new NpgsqlCommand(Database.Postgres.PostgresPlannerViewGenerator.CreateView, conn);
-        await cmd.ExecuteNonQueryAsync();
-        log.LogInformation("PLANNERVIEW - {View} aangemaakt of bijgewerkt",
-            Database.Postgres.PostgresPlannerViewGenerator.ViewName);
-    }
-
-    /// <summary>
-    /// Roept de teamcanonicalisatie aan zonder dat een fout de rest van de sync raakt — zelfde
-    /// try/catch-vorm als het SQL Server-origineel. <paramref name="omschrijving"/> staat alleen in
-    /// de foutmelding, zodat de twee aanroepen (primaire club en democlub) in het log uit elkaar
-    /// te houden zijn.
-    /// </summary>
-    private static async Task CanonicaliseerBestEffortAsync(
-        string connectionString, string clubCode, string omschrijving, ILogger log)
-    {
-        try
-        {
-            await TeamResolution.TeamCanonicalisatieService.RefreshAsync(connectionString, clubCode, log);
-        }
-        catch (Exception ex)
-        {
-            // Nooit de hele sync laten falen op de teamcanonicalisatie (#696) — his.teams/matches
-            // zijn al gemerged; de volgende sync probeert het opnieuw.
-            log.LogError(ex, "TEAMS CANONICALISATIE - mislukt voor {Omschrijving}", omschrijving);
-        }
-    }
-
-    private static async Task SaveLastSyncTimestampAsync(string connectionString, string clubCode, ILogger log)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync();
-        await using var command = new NpgsqlCommand(
-            "UPDATE public.appsettings SET lastsynctimestamp = NOW() WHERE clubcode = @clubcode", connection);
-        command.Parameters.AddWithValue("clubcode", clubCode);
-        await command.ExecuteNonQueryAsync();
-        log.LogInformation("lastsynctimestamp bijgewerkt voor club {ClubCode}", clubCode);
-    }
-
     // #1779: alle dataservice-GET's lopen via SportlinkDataserviceHttp (begrensde herhaling op
     // 5xx/429/time-out, runbreed budget); zonder budget (tests) geldt alleen de grens per aanroep.
     internal static async Task<bool> FetchAndStoreTeamsAsync(string connectionString, string apiUrl, string clubCode, ILogger log,
-        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null)
+        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null, Func<int, Task>? fetched = null)
     {
         var json = await SportlinkDataserviceHttp.HaalTekstAsync(
             httpClient ?? HttpClient, apiUrl, budget ?? new HerhaalBudget(), "TEAMS", log, herhaalWachttijd);
         var teams = JsonConvert.DeserializeObject<List<Team>>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+        if (teams is not null) await (fetched?.Invoke(teams.Count) ?? Task.CompletedTask);
         if (teams is { Count: > 0 })
         {
             log.LogInformation("TEAMS - {Count} gevonden.", teams.Count);
@@ -408,7 +332,7 @@ internal static class PostgresSyncPipeline
     /// <returns><c>false</c> als het venster ook na splitsing afgekapt is: dan ontbreken er wedstrijden en mag de
     /// aanroeper niet reconciliëren.</returns>
     internal static async Task<bool> FetchAndStoreProgrammaAsync(string connectionString, string apiUrl, string clubCode, ILogger log,
-        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null)
+        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null, Func<int, Task>? fetched = null)
     {
         var herhaalBudget = budget ?? new HerhaalBudget();
         var ophaling = await ProgrammaAfkapping.HaalVolledigAsync<Match>(apiUrl, async url =>
@@ -421,6 +345,7 @@ internal static class PostgresSyncPipeline
         if (ophaling.Gesplitst)
             log.LogInformation("MATCHES/PROGRAMMA - venster raakte het plafond van {Plafond} rijen; opgehaald {Wijze} ({Count} rijen).",
                 ProgrammaAfkapping.Plafond, ophaling.PerTeam ? "per team" : "als thuis + uit", ophaling.Rijen.Count);
+        await (fetched?.Invoke(ophaling.Rijen.Count) ?? Task.CompletedTask);
         if (!ophaling.Volledig)
             log.LogWarning("MATCHES/PROGRAMMA - venster is ook na splitsing (thuis/uit, per team) afgekapt op {Plafond} rijen; sync telt als onvolledig.",
                 ProgrammaAfkapping.Plafond);
@@ -433,11 +358,12 @@ internal static class PostgresSyncPipeline
     }
 
     internal static async Task FetchAndStoreUitslagenAsync(string connectionString, string apiUrl, string clubCode, ILogger log,
-        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null)
+        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null, Func<int, Task>? fetched = null)
     {
         var json = await SportlinkDataserviceHttp.HaalTekstAsync(
             httpClient ?? HttpClient, apiUrl, budget ?? new HerhaalBudget(), "MATCHES/UITSLAGEN", log, herhaalWachttijd);
         var matches = JsonConvert.DeserializeObject<List<Match>>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+        if (matches is not null) await (fetched?.Invoke(matches.Count) ?? Task.CompletedTask);
         if (matches is { Count: > 0 })
         {
             log.LogInformation("MATCHES/UITSLAGEN - {Count} gevonden.", matches.Count);
@@ -450,7 +376,7 @@ internal static class PostgresSyncPipeline
     // nodig voor de logregressietests van #1200. Standaard blijft de static HttpClient in gebruik.
     internal static async Task<bool> FetchAndStoreMatchDetailsAsync(
         string connectionString, string apiUrl, string clubCode, ILogger log,
-        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null)
+        HttpClient? httpClient = null, TimeSpan? herhaalWachttijd = null, HerhaalBudget? budget = null, Action<int>? fetchedCount = null)
     {
         try
         {
@@ -460,6 +386,7 @@ internal static class PostgresSyncPipeline
             try
             {
                 var details = JsonConvert.DeserializeObject<MatchDetails>(json, new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+                fetchedCount?.Invoke(details is null ? 0 : 1);
                 if (details != null)
                     await PostgresStagingRepository.SaveMatchDetailsAsync(connectionString, details, clubCode, log);
                 else

@@ -53,4 +53,19 @@ public static class PostgresUpsertGenerator
             $"    {setClauses}\n" +
             $"WHERE {changeDetection};\n";
     }
+
+    /// <summary>
+    /// Same upsert with a single aggregate result row. PostgreSQL's MERGE outcome marker
+    /// (<c>xmax = 0</c>) distinguishes inserted rows from conflict updates; unchanged conflict
+    /// rows remain absent because the existing change-detection WHERE clause is preserved.
+    /// </summary>
+    public static string GenerateCountedUpsertFromStgToHis(EntityDefinition entity)
+    {
+        var upsert = GenerateUpsertFromStgToHis(entity).TrimEnd();
+        if (upsert.EndsWith(';')) upsert = upsert[..^1];
+        upsert += "\nRETURNING (xmax = 0) AS was_inserted";
+        return "WITH upserted AS (\n" + upsert + "\n)\n" +
+               "SELECT COUNT(*) FILTER (WHERE was_inserted)::int AS added, " +
+               "COUNT(*) FILTER (WHERE NOT was_inserted)::int AS updated FROM upserted;";
+    }
 }

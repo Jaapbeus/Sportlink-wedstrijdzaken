@@ -108,6 +108,28 @@ public class PostgresMergeOrchestratorIntegrationTests : IAsyncLifetime
     }
 
     [PostgresFact]
+    public async Task MergeStgToHisWithCountsAsync_GeeftAlleenEchteInsertEnUpdateActiesTerug()
+    {
+        var entity = TestEntities.SingleKeyNoClub;
+        await Orchestrator.RecreateStgTableAsync(entity);
+        await Orchestrator.EnsureHisTableAsync(entity);
+
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using (var insert = new NpgsqlCommand(
+            "INSERT INTO stg.\"matches\" (\"matchcode\", \"datum\") VALUES ('COUNT-1', '2026-09-01 10:00:00')", connection))
+            await insert.ExecuteNonQueryAsync();
+
+        (await Orchestrator.MergeStgToHisWithCountsAsync(entity)).Should().Be((1, 0));
+        (await Orchestrator.MergeStgToHisWithCountsAsync(entity)).Should().Be((0, 0));
+
+        await using (var update = new NpgsqlCommand(
+            "UPDATE stg.\"matches\" SET \"datum\" = '2026-09-01 11:00:00' WHERE \"matchcode\" = 'COUNT-1'", connection))
+            await update.ExecuteNonQueryAsync();
+        (await Orchestrator.MergeStgToHisWithCountsAsync(entity)).Should().Be((0, 1));
+    }
+
+    [PostgresFact]
     public async Task EnsureHisTableAsync_DubbeleBusinessKeyDirectInHis_WordtGeweigerdDoorUniqueIndex()
     {
         var entity = TestEntities.SingleKeyNoClub;

@@ -36,10 +36,22 @@ public static class SyncFunction
         {
             await PostgresSystemUtilities.WaitForDatabaseAsync(log);
             await SyncJobsRepository.HerstelOnderbrokenAsync(log); // #1839: herstel onderbroken jobs; loopt mee, geen eigen timer
+            await PostgresAppSettings.LoadSettingsAsync(log);
+            var clubCode = PostgresAppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubcode' ontbreekt in public.appsettings.");
             // #861: rol public.clubseason zo nodig door vóór het venster gelezen wordt.
             await PostgresSeasonHelper.EnsureSeasonsAsync(log);
             var toWeekOffset = await PostgresSeasonHelper.GetSeasonEndWeekOffsetAsync(log);
-            var uitkomst = await RunConfiguredSyncAsync(fromWeekOffset: -1, toWeekOffset, log);
+            var connectionString = PostgresDatabaseConfig.ConnectionString;
+            var uitkomst = await SyncJobRunCoordinator.RegisterClaimAndRunAsync(
+                () => SyncJobsRepository.GetOrCreateActiveAsync(connectionString, Guid.NewGuid(), clubCode, -1, toWeekOffset),
+                id => SyncJobsRepository.TryClaimAttemptAsync(connectionString, id),
+                entry => SyncLogRepository.UpsertAsync(clubCode, entry),
+                async () => { await SyncLogRepository.CleanupAllAsync(DateTime.UtcNow); },
+                (id, outcome, attempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, attempt, incomplete),
+                (id, succeeded, error, attempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, attempt),
+                writer => RunConfiguredSyncAsync(-1, toWeekOffset, log, writer),
+                SyncJobProcessor.FoutmeldingVoorStatus);
 
             // #1081: een run met mislukte deelstappen mag niet als Success eindigen. Het
             // invocatie-overzicht in de portal toonde acht dagen 'Success 8 · Error 0' terwijl er
@@ -145,24 +157,48 @@ public static class SyncFunction
     }
 
     /// <summary>Geeft de uitkomst met de mislukte fases terug (#1081, #1779).</summary>
-    internal static async Task<SyncUitkomst> RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log)
+    internal static async Task<SyncUitkomst> RunConfiguredSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log, SyncLogWriter? syncLog = null)
     {
+        if (syncLog is null)
+            return await RunTrackedSyncAsync(fromWeekOffset, toWeekOffset, log);
+
         await PostgresAppSettings.LoadSettingsAsync(log);
         var clubCode = PostgresAppSettings.GetSetting("clubCode")
             ?? throw new InvalidOperationException("Vereiste instelling 'clubcode' ontbreekt in public.appsettings — sync kan niet doorgaan.");
+        await SyncLogReporting.BeginPhaseAsync(syncLog, "configuratie");
 
         var connectionString = PostgresDatabaseConfig.ConnectionString;
         var (sportlinkApiUrl, sportlinkClientId) = await GetSportlinkConfigAsync(connectionString, clubCode);
         if (!SportlinkDataserviceBasisUrl.TryGetCanonical(sportlinkApiUrl, out var canonicalSportlinkApiUrl))
         {
             log.LogError("Sportlink data-service base URL is invalid.");
+            await SyncLogReporting.CompletePhaseAsync(syncLog, "configuratie", "failed", reasonCode: "configuration_missing");
             return SyncUitkomst.Configuratie();
         }
+
+        await SyncLogReporting.CompletePhaseAsync(syncLog, "configuratie", "succeeded");
 
         return await PostgresSyncPipeline.RunSyncAsync(
             fromWeekOffset, toWeekOffset,
             canonicalSportlinkApiUrl, $"clientId={sportlinkClientId}",
-            clubCode, connectionString, log);
+            clubCode, connectionString, log, syncLog: syncLog);
+    }
+
+    private static async Task<SyncUitkomst> RunTrackedSyncAsync(int fromWeekOffset, int toWeekOffset, ILogger log)
+    {
+        await PostgresAppSettings.LoadSettingsAsync(log);
+        var clubCode = PostgresAppSettings.GetSetting("clubCode")
+            ?? throw new InvalidOperationException("Vereiste instelling 'clubcode' ontbreekt in public.appsettings.");
+        var connectionString = PostgresDatabaseConfig.ConnectionString;
+        return await SyncJobRunCoordinator.RegisterClaimAndRunAsync(
+            () => SyncJobsRepository.GetOrCreateActiveAsync(connectionString, Guid.NewGuid(), clubCode, fromWeekOffset, toWeekOffset),
+            id => SyncJobsRepository.TryClaimAttemptAsync(connectionString, id),
+            entry => SyncLogRepository.UpsertAsync(clubCode, entry),
+            async () => { await SyncLogRepository.CleanupAllAsync(DateTime.UtcNow); },
+            (id, outcome, attempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, attempt, incomplete),
+            (id, succeeded, error, attempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, attempt),
+            writer => RunConfiguredSyncAsync(fromWeekOffset, toWeekOffset, log, writer),
+            SyncJobProcessor.FoutmeldingVoorStatus);
     }
 
     private static async Task<(string apiUrl, string clientId)> GetSportlinkConfigAsync(string connectionString, string clubCode)

@@ -53,6 +53,7 @@ public static class SyncJobProcessor
     private static async Task ProcessClaimedSqlServerJobAsync(SyncJobMessage job, int attempt, ILogger log)
     {
         log.LogInformation("SyncJobProcessor: SQL Server job {JobId} claimed (poging {Attempt}), range {From} .. {To}", job.JobId, attempt, job.WeekOffsetFrom, job.WeekOffsetTo);
+        var lifecycleHandedOff = false;
         try
         {
             if (await BlokkeerBuitenProductieAsync(
@@ -61,26 +62,35 @@ public static class SyncJobProcessor
 
             await WaitForDatabaseAsync(log);
             await AppSettings.LoadSettingsAsync(log);
+            var clubCode = AppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubCode' ontbreekt in dbo.AppSettings.");
+            lifecycleHandedOff = true;
 
             // #1779: een ongeldige of ontbrekende sportlinkApiUrl wordt de mislukte fase "configuratie"
             // (pariteit met de Postgres-tier); de jobfoutmelding noemt die fase.
-            var uitkomst = await FetchAndStoreApiData.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log);
+            var uitkomst = await SyncJobRunCoordinator.RunClaimedAndCompleteAsync(
+                job.JobId, attempt,
+                entry => SyncLogRepository.UpsertAsync(clubCode, entry),
+                async () => { await SyncLogRepository.CleanupAllAsync(DateTime.UtcNow); },
+                (id, outcome, claimedAttempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, claimedAttempt, incomplete),
+                (id, succeeded, error, claimedAttempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, claimedAttempt),
+                writer => FetchAndStoreApiData.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log, writer),
+                FoutmeldingVoorStatus);
             if (uitkomst.GedeeltelijkMislukt)
             {
                 log.LogWarning("SyncJobProcessor: job {JobId} gedeeltelijk mislukt", job.JobId);
-                await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: uitkomst.JobFoutmelding(), attempt);
-                return;
             }
-
-            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: true, errorMessage: null, attempt);
-            log.LogInformation("SyncJobProcessor: job {JobId} voltooid", job.JobId);
+            else
+                log.LogInformation("SyncJobProcessor: job {JobId} voltooid", job.JobId);
         }
         catch (Exception ex)
         {
             log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
-            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                errorMessage: FoutmeldingVoorStatus(ex), attempt);
+            if (!lifecycleHandedOff)
+            {
+                await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
+                    errorMessage: FoutmeldingVoorStatus(ex), attempt);
+            }
         }
     }
 

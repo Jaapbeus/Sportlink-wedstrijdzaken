@@ -52,6 +52,7 @@ public static class SyncJobProcessor
     private static async Task ProcessClaimedPostgresJobAsync(SyncJobMessage job, int attempt, ILogger log)
     {
         log.LogInformation("SyncJobProcessor: Postgres job {JobId} claimed (poging {Attempt}), range {From} .. {To}", job.JobId, attempt, job.WeekOffsetFrom, job.WeekOffsetTo);
+        var lifecycleHandedOff = false;
         try
         {
             // #1676: na het claimen wordt een bericht buiten productie niet uitgevoerd en
@@ -60,23 +61,31 @@ public static class SyncJobProcessor
                     EgressGuard.ExternalIntegrationsAllowed, (id, ok, msg) => SyncJobsRepository.MarkCompletedAsync(id, ok, msg, attempt)))
                 return;
 
-            var uitkomst = await SyncFunction.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log);
+            await PostgresAppSettings.LoadSettingsAsync(log);
+            var clubCode = PostgresAppSettings.GetSetting("clubCode")
+                ?? throw new InvalidOperationException("Vereiste instelling 'clubcode' ontbreekt in public.appsettings.");
+            lifecycleHandedOff = true;
+            var uitkomst = await global::Planner.Shared.Sync.SyncJobRunCoordinator.RunClaimedAndCompleteAsync(
+                job.JobId, attempt,
+                entry => SyncLogRepository.UpsertAsync(clubCode, entry),
+                async () => { await SyncLogRepository.CleanupAllAsync(DateTime.UtcNow); },
+                (id, outcome, claimedAttempt, incomplete) => SyncJobsRepository.MarkOutcomeAsync(id, outcome, claimedAttempt, incomplete),
+                (id, succeeded, error, claimedAttempt) => SyncJobsRepository.MarkCompletedAsync(id, succeeded, error, claimedAttempt),
+                writer => SyncFunction.RunConfiguredSyncAsync(job.WeekOffsetFrom, job.WeekOffsetTo, log, writer),
+                FoutmeldingVoorStatus);
             if (uitkomst.GedeeltelijkMislukt)
             {
                 log.LogWarning("SyncJobProcessor: job {JobId} gedeeltelijk mislukt", job.JobId);
-                await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: uitkomst.JobFoutmelding(), attempt);
-                return;
             }
-
-            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: true, errorMessage: null, attempt);
-            log.LogInformation("SyncJobProcessor: job {JobId} voltooid", job.JobId);
+            else
+                log.LogInformation("SyncJobProcessor: job {JobId} voltooid", job.JobId);
         }
         catch (Exception ex)
         {
             log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
-            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                errorMessage: FoutmeldingVoorStatus(ex), attempt);
+            if (!lifecycleHandedOff)
+                await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
+                    errorMessage: FoutmeldingVoorStatus(ex), attempt);
         }
     }
 

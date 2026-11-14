@@ -61,6 +61,18 @@ public sealed class PostgresMergeOrchestrator
         await command.ExecuteNonQueryAsync(ct);
     }
 
+    /// <summary>Runs the same upsert and returns rows inserted and changed by this run.</summary>
+    public async Task<(int Added, int Updated)> MergeStgToHisWithCountsAsync(EntityDefinition entity, CancellationToken ct = default)
+    {
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.OpenAsync(ct);
+        await using var command = new NpgsqlCommand(PostgresUpsertGenerator.GenerateCountedUpsertFromStgToHis(entity), connection);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        if (!await reader.ReadAsync(ct))
+            throw new InvalidOperationException("Postgres upsert did not return merge counts.");
+        return (reader.GetInt32(0), reader.GetInt32(1));
+    }
+
     /// <summary>
     /// Reconcilieert een entiteit ZONDER datumvenster (#1193; vandaag alleen <c>teams</c>): elke
     /// his-rij van deze club die niet meer in de zojuist geladen stg-snapshot voorkomt wordt
