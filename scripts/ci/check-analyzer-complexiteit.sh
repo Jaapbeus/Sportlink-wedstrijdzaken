@@ -83,11 +83,24 @@ andere="$(git ls-files --cached --others --exclude-standard -- \
   '*.editorconfig' '**/.editorconfig' '*.globalconfig' '*.ruleset' '*.csproj' '*.props' '*.targets' \
   | grep -vx "$editorconfig" | grep -vx '.editorconfig' || true)"
 if [ -n "$andere" ]; then
-  treffers="$(printf '%s\n' "$andere" | while IFS= read -r f; do [ -f "$f" ] && grep -lE 'CA150[256]' "$f" || true; done)"
+  # Hoofdletterongevoelig (review #1946 ronde 2): de compiler accepteert ook 'ca1502'.
+  treffers="$(printf '%s\n' "$andere" | while IFS= read -r f; do [ -f "$f" ] && grep -ilE 'ca150[256]' "$f" || true; done)"
   if [ -n "$treffers" ]; then
     printf '%s\n' "$treffers" | while IFS= read -r f; do echo "::error file=$f::Dit bestand noemt CA1502/1505/1506 en kan de severity uit .editorconfig overschrijven of onderdrukken (bijv. NoWarn)."; done
     exit 1
   fi
+fi
+
+# 5. Onderdrukking in de code zelf (review #1946 ronde 2): '#pragma warning disable CA1502' of
+#    [SuppressMessage(..., "CA1502")] zet de regel per methode uit, ongeacht .editorconfig. In
+#    productiecode is dat verboden; testprojecten vallen al onder de testsectie (none).
+onderdrukt="$(git ls-files --cached --others --exclude-standard -- '*.cs' '*.razor' \
+  | grep -vE '(^|/)[^/]*\.Tests(\.[^/]*)?/' \
+  | while IFS= read -r f; do [ -f "$f" ] && grep -inE '(pragma[[:space:]]+warning[[:space:]]+disable|SuppressMessage).*ca150[256]' "$f" | sed "s#^#$f:#" || true; done)"
+if [ -n "$onderdrukt" ]; then
+  printf '%s\n' "$onderdrukt" | while IFS= read -r f; do echo "::error::Onderdrukking van CA1502/1505/1506 in productiecode: $f"; done
+  echo "::error::Los de complexiteit of koppeling op in plaats van de analyzer te onderdrukken (#1651)."
+  exit 1
 fi
 
 echo "OK — CA1502/1505/1506 staan in [*.cs] van .editorconfig op error; de solutionbuild faalt op elke overtreding."

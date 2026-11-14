@@ -378,6 +378,14 @@ cp Planner.Shared/Planner.Shared.csproj "$TMP_C"
 awk '/<\/Project>/ { print "  <PropertyGroup><NoWarn>$(NoWarn);CA1502</NoWarn></PropertyGroup>" } { print }' "$TMP_C" > Planner.Shared/Planner.Shared.csproj
 verwacht_falen "NoWarn CA1502 in een csproj" bash scripts/ci/check-analyzer-complexiteit.sh
 cp "$TMP_C" Planner.Shared/Planner.Shared.csproj
+printf '[*.cs]\ndotnet_diagnostic.ca1502.severity = none\n' > Planner.Shared/.editorconfig
+verwacht_falen "geneste .editorconfig met lowercase ca1502" bash scripts/ci/check-analyzer-complexiteit.sh
+rm -f Planner.Shared/.editorconfig
+printf 'namespace Proef;\n#pragma warning disable ca1502\npublic static class P { }\n' > Planner.Shared/ProefOnderdrukking.cs
+verwacht_falen "#pragma warning disable ca1502 in productiecode" bash scripts/ci/check-analyzer-complexiteit.sh
+printf 'namespace Proef;\n[System.Diagnostics.CodeAnalysis.SuppressMessage("Maintainability", "CA1506")]\npublic static class P { }\n' > Planner.Shared/ProefOnderdrukking.cs
+verwacht_falen "SuppressMessage CA1506 in productiecode" bash scripts/ci/check-analyzer-complexiteit.sh
+rm -f Planner.Shared/ProefOnderdrukking.cs
 verwacht_slagen "echte .editorconfig (testsectie op none) is groen" bash scripts/ci/check-analyzer-complexiteit.sh
 
 echo

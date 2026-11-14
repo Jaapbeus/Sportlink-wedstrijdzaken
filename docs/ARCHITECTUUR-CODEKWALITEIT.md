@@ -532,7 +532,8 @@ doorglippen. Omdat EditorConfig de **laatste** waarde neemt, is de controle fail
 severity-toewijzing van de drie regels buiten de testsectie moet `error` zijn (een latere `warning`
 in `[*.cs]` of in een later productieblok faalt), de testsectie mag alleen `none`, en geen andere
 bron (geneste `.editorconfig`, `.globalconfig`, `.ruleset`, csproj/props/targets, bijv. `NoWarn`) mag
-ze noemen. `check-codekwaliteit.test.sh` bewijst al deze faalwijzen. Rood-bewijs van de build zelf
+ze noemen, hoofdletterongevoelig (`ca1502` werkt ook voor de compiler). Productiecode mag ze ook niet
+onderdrukken met `#pragma warning disable` of `[SuppressMessage]`. `check-codekwaliteit.test.sh` bewijst al deze faalwijzen. Rood-bewijs van de build zelf
 staat in de PR van #1945.
 
 ### Regel 9 — Elk HTTP-endpoint autoriseert via de wrapper, nooit via een eigen poort (#1350)
