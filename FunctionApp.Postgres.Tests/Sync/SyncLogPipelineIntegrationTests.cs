@@ -24,6 +24,12 @@ public class SyncLogPipelineIntegrationTests
         using var server = SportlinkFixtures.BuildServer(90001912, Club);
         try
         {
+            // Andere fixturetests gebruiken dezelfde teamsleutel; clubcode behoort niet tot die sleutel.
+            // Geef deze teltest een eigen sleutel, zodat de eerste run ook na andere tests een insert is.
+            using var fixtureClient = new HttpClient();
+            var teams = System.Text.Json.Nodes.JsonNode.Parse(await fixtureClient.GetStringAsync(server.BaseUrl + "/teams"))!;
+            teams[0]!["teamcode"] = 90001912;
+            server.RespondWithJson("/teams", teams.ToJsonString());
             var first = await RunAsync(server);
             first.Keys.Should().BeEquivalentTo(new[] { "teams", "programma", "uitslagen", "matchdetails", "reconciliatie", "planner-view", "canonicalisatie" });
             first.Values.Should().OnlyContain(e => e.CompletedAt.HasValue && e.Status != "running");
