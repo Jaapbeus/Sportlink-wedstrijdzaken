@@ -27,7 +27,7 @@ internal static partial class AutoPlanService
             var choices = request.Toewijzingen!.Select(c => new AutoPlanApplyChoice(
                 c.WedstrijdCode, c.HuidigeVeld, c.HuidigeTijd, c.VeldNummer, c.VeldSubpositie, c.Tijd)).ToList();
             var sourceRows = sources.Select(s => new AutoPlanApplySource(s.WedstrijdCode, s.Veld,
-                s.AanvangsTijd, s.TeamNaam, s.LeeftijdsCategorie, s.SportlinkSpeelduur)).ToList();
+                s.AanvangsTijd, s.TeamNaam, s.LeeftijdsCategorie)).ToList();
             var writes = AutoPlanExactApply.Validate(choices, sourceRows, velden, speeltijden,
                 buffers, request.BufferMinuten ?? PlannerShared.StandardBufferMinutes);
             var updated = await AutoPlanExactApply.PersistAsync(writes,

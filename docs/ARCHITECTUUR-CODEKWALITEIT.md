@@ -641,6 +641,8 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Beide tiers bieden dezelfde routes en timers (#1266, #1268) | `scripts/ci/check-tier-pariteit.sh` | `build.yml` |
 | Bestanden met uitgaand-verkeertypen of HttpClient-methoden in FunctionApp*, Planner.Shared en Planner.Endpoints controleren EgressGuard of staan met reden op de allowlist (bestandsniveau); de geclaimde syncjob-worker controleert EgressGuard vóór de sync-aanroep (#857, #1676) | `scripts/ci/check-egressguard-dekking.sh` | `build.yml` |
 | De EgressGuard-dekkingsguard kan ook rood worden (#1676) | `scripts/ci/check-egressguard-dekking.test.sh` | `build.yml` |
+| Planning en Veld optimalisatie gescheiden: optimalisatiecode gebruikt geen Sportlink-duur, overlay of Planning-duurregel; Planning-code (ook `VeldbezettingAsync`) geen scheduler, bufferregels of planningsdoel (WZ-ADR-014, #1960) | `scripts/ci/check-planning-optimalisatie-scheiding.sh` | `build.yml` |
+| De scheidingsguard Planning/optimalisatie kan ook rood worden (#1960) | `scripts/ci/check-planning-optimalisatie-scheiding.test.sh` | `build.yml` |
 | Verify-AzureAuthSetup.ps1 lekt geen PII bij lege parameter (#1474) | `scripts/ci/check-verify-script-guards.sh` | `build.yml` |
 | Een infra-deploy mag geen bestaande app setting wissen (#1455) | `scripts/ci/check-whatif-appsettings.sh` | `infrastructure.yml` |
 | De what-if-poort kan ook rood worden (#1455) | `scripts/ci/check-whatif-appsettings.test.sh` | `build.yml` |
@@ -654,7 +656,6 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Nieuw geschreven GitHub-tekst is Nederlands (#1896) | onbewaakt: natuurlijke taal is niet betrouwbaar te classificeren zonder vals-positieven; controle bij review | Handmatig: controleer titel, body, comments en workflow-uitvoer vóór publicatie |
 | AI: `IChatClient`, systeemprompt begint met de datumzin, geen vast jaar in few-shots (#1717) | onbewaakt: semantisch oordeel over promptinhoud; een tekstguard zou alleen de eerste regel zien, beoordeling bij review | n.v.t. |
 | Multi-club: geen clubwaarde in een `?? "…"`-fallback (#1717) | onbewaakt: vergt dataflow- of semantische analyse; alleen de `sensitive-patterns`-scan (security-scan.yml) vangt letterlijke clubwaarden | n.v.t. |
-| Planning ≠ Veld optimalisatie: optimalisatiecode gebruikt geen Sportlink-duur of veldplanner-overlay, Planning-code geen optimalisatieregels (WZ-ADR-014, #1961) | onbewaakt tot #1960: de guard wordt daar gebouwd en bewezen rood | Handmatig bij review: diff raakt niet beide domeinen |
 | Multi-club: nieuwe tabel heeft `ClubCode` of komt via de instellingentabel (#1717) | onbewaakt: de ClubCode-dekking in `build.yml` geldt alleen voor bestaande configuratietabellen, niet voor nieuwe tabellen in het algemeen; beoordeling bij review | n.v.t. |
 | Teamnaam-normalisatie alleen in `TeamNaamNormalisatie.cs` (geen nieuwe teamnaam-regex elders, #1717) | onbewaakt: een regex is niet betrouwbaar als teamnaam-regex te herkennen zonder veel vals-positieven; beoordeling bij review | n.v.t. |
 | Endpoint-wijziging werkt `openapi.yaml`, `openapi.json` (uit de YAML) en `docs/API.md` bij: operatieset van `openapi.json` = endpointtabel van `API.md` (#1717) | `scripts/ci/check-api-md-sync.py` | `build.yml` |

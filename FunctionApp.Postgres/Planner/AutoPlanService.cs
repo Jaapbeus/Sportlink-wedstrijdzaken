@@ -93,7 +93,9 @@ internal static class AutoPlanService
 
         // TeamRegels expliciet op de opgevraagde club (#666) — géén terugval: leeg betekent
         // gewoon "dit team heeft geen regels".
-        var teamBuffers = await TeamRulesRepository.GetAllTeamBuffersAsync(connectionString, clubCode);
+        // #1960: teambuffers via dezelfde teamsleutel als voorkeursveld en voorkeurstijd.
+        var teamBuffers = AutoPlanRegels.TeamBuffersVoorWedstrijden(alleWedstrijden.Select(w => w.TeamNaam),
+            await TeamRulesRepository.GetAllTeamBuffersAsync(connectionString, clubCode), clubCode);
         var voorkeurVelden = await TeamRulesRepository.GetAllTeamVoorkeurVeldenAsync(connectionString, clubCode);
 
         // Paren i.p.v. een dictionary — zie de klasse-doc-comment over record-waardegelijkheid.
@@ -196,11 +198,9 @@ internal static class AutoPlanService
         {
             var leeftijd = doel.Leeftijd;
             speeltijden.TryGetValue(leeftijd, out var speeltijdInfo);
-            // #1559: Sportlink is leidend; de onbekend-team-terugval geldt alleen zonder Sportlink-duur
-            // én zonder speeltijdenrij, dus een bestaande wedstrijd hangt niet af van de speeltijdentabel.
-            bool sportlinkLeidend = VeldbezettingDuur.IsSportlinkLeidend(wedstrijd.SportlinkSpeelduur);
-
-            if (speeltijdInfo == null && !sportlinkLeidend)
+            // WZ-ADR-014: de optimalisatie rekent alleen met de speeltijden van de club, nooit met
+            // Sportlinks speelduur. Zonder speeltijdenrij is er geen duur: onbekend-team.
+            if (speeltijdInfo == null)
             {
                 items.Add(new AutoPlanWedstrijdItem
                 {
@@ -232,9 +232,8 @@ internal static class AutoPlanService
             int? voorkeurAfwijking = null;
             int teamBufVoor = PlanningBufferRegels.Effectief(buffer,
                 teamBuffers.TryGetValue(wedstrijd.TeamNaam, out var tb) ? tb.bufferVoor : null);
-            // #1559: Sportlink is leidend voor wedstrijden die er al zijn; speeltijden alleen als terugval.
-            // Dan geldt ook geen app-buffer (club of team) rond die wedstrijd (sportlinkLeidend).
-            int duurMinuten = VeldbezettingDuur.Bepaal(wedstrijd.SportlinkSpeelduur, speeltijdInfo?.WedstrijdTotaal);
+            // WZ-ADR-014: duur uit de speeltijden; paginabuffer en teamregels gelden voor elke wedstrijd.
+            int duurMinuten = speeltijdInfo.WedstrijdTotaal;
 
             if (doel.DoelTijd.HasValue)
             {
@@ -242,7 +241,7 @@ internal static class AutoPlanService
                 voorkeurTijdStr = doelTijd.ToString("HH:mm");
                 slot = scheduler.FindAndOccupyNearTime(doelTijd, veldafmeting,
                     duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
-                    voorkeurVeldNummer: doel.VoorkeurVeldNummer, sportlinkLeidend: sportlinkLeidend);
+                    voorkeurVeldNummer: doel.VoorkeurVeldNummer);
                 if (slot != null)
                     voorkeurAfwijking = (int)(slot.AanvangsTijd.ToTimeSpan() - doelTijd.ToTimeSpan()).TotalMinutes;
             }
@@ -251,9 +250,9 @@ internal static class AutoPlanService
                 slot = doel.VoorkeurVeldNummer.HasValue
                     ? scheduler.FindAndOccupyNearTime(FieldScheduler.DagStart, veldafmeting,
                         duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
-                        voorkeurVeldNummer: doel.VoorkeurVeldNummer, sportlinkLeidend: sportlinkLeidend)
+                        voorkeurVeldNummer: doel.VoorkeurVeldNummer)
                     : scheduler.FindAndOccupyNextSlot(veldafmeting, duurMinuten,
-                        teamBufVoor, wedstrijd.TeamNaam, sportlinkLeidend: sportlinkLeidend);
+                        teamBufVoor, wedstrijd.TeamNaam);
             }
 
             if (slot == null)
@@ -306,7 +305,6 @@ internal static class AutoPlanService
                 OptimaalVeld = optimaalVeld,
                 OptimaalTijd = optimaalTijd,
                 Status = status,
-                SportlinkLeidend = sportlinkLeidend,
                 VoorkeurTijd = voorkeurTijdStr,
                 VoorkeurAfwijkingMinuten = voorkeurAfwijking,
                 VoorkeurBron = doel.Bron,
@@ -388,7 +386,7 @@ internal static class AutoPlanService
             var choices = request.Toewijzingen!.Select(c => new AutoPlanApplyChoice(
                 c.WedstrijdCode, c.HuidigeVeld, c.HuidigeTijd, c.VeldNummer, c.VeldSubpositie, c.Tijd)).ToList();
             var sourceRows = sources.Select(s => new AutoPlanApplySource(s.WedstrijdCode, s.Veld,
-                s.AanvangsTijd, s.TeamNaam, s.LeeftijdsCategorie, s.SportlinkSpeelduur)).ToList();
+                s.AanvangsTijd, s.TeamNaam, s.LeeftijdsCategorie)).ToList();
             var writes = AutoPlanExactApply.Validate(choices, sourceRows, velden, speeltijden,
                 buffers, request.BufferMinuten ?? PlannerShared.StandardBufferMinutes);
             var updated = await AutoPlanExactApply.PersistAsync(writes,

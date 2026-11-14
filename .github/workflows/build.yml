@@ -483,6 +483,13 @@ jobs:
       - name: EgressGuard — guard zelf getest
         run: bash scripts/ci/check-egressguard-dekking.test.sh
 
+      # #1960 (WZ-ADR-014): Planning en Veld optimalisatie gescheiden; de test bewijst dat de guard rood kan worden.
+      - name: Planning en Veld optimalisatie gescheiden
+        run: bash scripts/ci/check-planning-optimalisatie-scheiding.sh
+
+      - name: Planning en Veld optimalisatie gescheiden — guard zelf getest
+        run: bash scripts/ci/check-planning-optimalisatie-scheiding.test.sh
+
   compile:
     name: Compileren en testen (.NET)
     runs-on: ubuntu-latest
