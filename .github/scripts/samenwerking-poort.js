@@ -7,7 +7,7 @@ const fields = {
 function parseProtocolFields(body) {
   const result = {};
   for (const [key, label] of Object.entries(fields)) {
-    const matches = [...String(body || '').matchAll(new RegExp(`^\\s*${label}:\\s*(.*?)\\s*$`, 'gim'))];
+    const matches = [...String(body || '').matchAll(new RegExp('^[ \t>*_`-]*' + label + '[ *_`]*:[ \t]*(.*?)[ \t]*$', 'gim'))];
     if (matches.length) result[key] = matches[0][1];
     if (matches.length > 1) result.protocolInvalid = true;
   }

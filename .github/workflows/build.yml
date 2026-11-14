@@ -283,7 +283,7 @@ jobs:
         run: |
           node .github/scripts/samenwerking-poort.test.js
           python3 scripts/dev/test_collaboration_tools.py
-          python3 -m unittest discover -s scripts/samenwerking -p 'test*.py'
+          python3 -m unittest discover -s scripts/samenwerking -t . -p 'test*.py'
 
       - name: Changelogfragmenten en versieverwerking testen
         run: |

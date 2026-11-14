@@ -13,7 +13,7 @@ for (const bad of [null, {}, { ...shadow, protocol_version: 2 },
 }
 for (const text of ['Request-ID: r1', 'Reviewer-sessie: claude-een',
   'Reviewroute: local', 'Protocol-versie: 1', 'Request-ID:',
-  'Request-ID: een\nRequest-ID: twee']) {
+  'Request-ID: een\nRequest-ID: twee', '**Request-ID:** r1', '- Reviewroute: lokaal', '> `Reviewer-sessie`: claude-een']) {
   assert.ok(ciBlock(parseProtocolFields(text), shadow));
 }
 assert.equal(parseProtocolFields('Request-ID: een\nRequest-ID: twee').protocolInvalid, true);
