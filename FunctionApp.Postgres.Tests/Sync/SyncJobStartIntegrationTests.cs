@@ -69,6 +69,35 @@ public class SyncJobStartIntegrationTests
             history.Single(j => j.Id == job.Job.Id).Status.Should().Be("partial");
             await SyncJobsRepository.MarkCompletedAsync(ConnectionString, job.Job.Id, false, "late failure", attempt);
             (await SyncJobsRepository.GetRecentAsync(ConnectionString, club, job.Job.Id)).Single().Status.Should().Be("partial");
+            var bestEffort = await SyncJobsRepository.GetOrCreateActiveAsync(ConnectionString, Guid.NewGuid(), club, 0, 1);
+            var nextAttempt = await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, bestEffort.Job.Id);
+            await SyncJobsRepository.MarkOutcomeAsync(ConnectionString, bestEffort.Job.Id,
+                new global::Planner.Shared.Sync.SyncUitkomst(), nextAttempt!.Value, incompletePhases: true);
+            (await SyncJobsRepository.GetRecentAsync(ConnectionString, club, bestEffort.Job.Id))
+                .Single(j => j.Id == bestEffort.Job.Id).Status.Should().Be("partial");
+        }
+        finally { await DeleteAsync(club); }
+    }
+
+    [PostgresFact]
+    public async Task ExpiredUnclaimedMessage_CannotRaceWithReplacementJob()
+    {
+        const string club = "ALLSTARS-EXPIRED";
+        await DeleteAsync(club);
+        try
+        {
+            var old = await SyncJobsRepository.GetOrCreateActiveAsync(ConnectionString, Guid.NewGuid(), club, 0, 1);
+            await using (var connection = new NpgsqlConnection(ConnectionString))
+            {
+                await connection.OpenAsync();
+                await using var command = new NpgsqlCommand("UPDATE public.syncjobs SET createdat=now()-interval '1 hour' WHERE id=@id", connection);
+                command.Parameters.AddWithValue("@id", old.Job.Id);
+                await command.ExecuteNonQueryAsync();
+            }
+            var current = await SyncJobsRepository.GetOrCreateActiveAsync(ConnectionString, Guid.NewGuid(), club, 0, 1);
+            current.Created.Should().BeTrue();
+            (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, old.Job.Id)).Should().BeNull();
+            (await SyncJobsRepository.TryClaimAttemptAsync(ConnectionString, current.Job.Id)).Should().Be(1);
         }
         finally { await DeleteAsync(club); }
     }

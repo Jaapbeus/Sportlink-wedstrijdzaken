@@ -9,6 +9,11 @@ public sealed class SyncLogWriter
     private const int ProgressWriteEvery = 10;
     private static readonly TimeSpan ProgressWriteInterval = TimeSpan.FromSeconds(2);
 
+    private int _incompletePhases;
+
+    /// <summary>Ook als persistence faalt blijft de gemeten onvolledige uitkomst bekend.</summary>
+    public bool HasIncompletePhases => Volatile.Read(ref _incompletePhases) != 0;
+
     private readonly Guid _jobId;
     private readonly int _attempt;
     private readonly Func<SyncLogEntry, Task> _upsert;
@@ -127,6 +132,9 @@ public sealed class SyncLogWriter
                     fetched ?? previous?.Fetched, added ?? previous?.Added,
                     updated ?? previous?.Updated, failed ?? previous?.Failed,
                     previous?.Progress, previous?.Total);
+                if (status is SyncLogPolicy.StatusPartial or SyncLogPolicy.StatusFailed ||
+                    (status == SyncLogPolicy.StatusSkipped && reasonCode != SyncLogPolicy.ReasonNotApplicable))
+                    Interlocked.Exchange(ref _incompletePhases, 1);
                 state.CompletedAt = completedAtUtc;
                 state.LastWrittenAt = _timeProvider.GetUtcNow().UtcDateTime;
                 await TryUpsertAsync(Entry(phase, state, completedAtUtc, status, reasonCode));

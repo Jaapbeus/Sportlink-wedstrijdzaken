@@ -38,9 +38,11 @@ internal static partial class SyncJobsRepository
         await connection.OpenAsync();
         await using var command = new SqlCommand(
             "UPDATE [dbo].[SyncJobs] SET [Status] = 'running', [StartedAt] = GETUTCDATE(), [Attempt] = [Attempt] + 1 " +
-            "OUTPUT INSERTED.[Attempt] WHERE [Id] = @Id AND [Status] = 'pending'",
+            "OUTPUT INSERTED.[Attempt] WHERE [Id] = @Id AND [Status] = 'pending' " +
+            "AND ([Attempt] > 0 OR [CreatedAt] > @Cutoff)",
             connection);
         command.Parameters.AddWithValue("@Id", id);
+        command.Parameters.Add("@Cutoff", System.Data.SqlDbType.DateTime2).Value = SyncJobRecoveryPolicy.StaleCutoff(DateTime.UtcNow);
         return SyncJobTransitions.ReadClaimedAttempt(await command.ExecuteScalarAsync());
     }
 
@@ -52,11 +54,11 @@ internal static partial class SyncJobsRepository
     internal static Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage, int attempt)
         => MarkCompletedAsync(SystemUtilities.DatabaseConfig.ConnectionString, id, succeeded, errorMessage, attempt);
 
-    internal static Task MarkOutcomeAsync(Guid id, SyncUitkomst outcome, int attempt)
-        => MarkOutcomeAsync(SystemUtilities.DatabaseConfig.ConnectionString, id, outcome, attempt);
+    internal static Task MarkOutcomeAsync(Guid id, SyncUitkomst outcome, int attempt, bool incompletePhases = false)
+        => MarkOutcomeAsync(SystemUtilities.DatabaseConfig.ConnectionString, id, outcome, attempt, incompletePhases);
 
-    internal static Task MarkOutcomeAsync(string connectionString, Guid id, SyncUitkomst outcome, int attempt)
-        => MarkTerminalAsync(connectionString, id, SyncJobTransitions.CompletionStatus(outcome),
+    internal static Task MarkOutcomeAsync(string connectionString, Guid id, SyncUitkomst outcome, int attempt, bool incompletePhases = false)
+        => MarkTerminalAsync(connectionString, id, SyncJobTransitions.CompletionStatus(outcome, incompletePhases),
             outcome.GedeeltelijkMislukt ? outcome.JobFoutmelding() : null, attempt);
 
     internal static Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage, int? attempt = null)

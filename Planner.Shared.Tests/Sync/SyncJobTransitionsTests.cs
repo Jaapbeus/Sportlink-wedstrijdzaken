@@ -17,6 +17,7 @@ public class SyncJobTransitionsTests
     {
         var outcome = new SyncUitkomst();
         SyncJobTransitions.CompletionStatus(outcome).Should().Be("succeeded");
+        SyncJobTransitions.CompletionStatus(outcome, incompletePhases: true).Should().Be("partial");
         outcome.Registreer(SyncUitkomst.FaseTeams, true);
         SyncJobTransitions.CompletionStatus(outcome).Should().Be("partial");
         SyncJobTransitions.CompletionStatus(SyncUitkomst.Configuratie()).Should().Be("failed");

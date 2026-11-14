@@ -7,6 +7,21 @@ public sealed class SyncLogWriterTests
 {
     private static readonly DateTime Start = new(2026, 11, 14, 10, 0, 0, DateTimeKind.Utc);
 
+    [Theory]
+    [InlineData("partial", "partial_failure", true)]
+    [InlineData("failed", "operation_failed", true)]
+    [InlineData("skipped", "reconciliation_skipped", true)]
+    [InlineData("skipped", "not_applicable", false)]
+    [InlineData("succeeded", null, false)]
+    public async Task IncompleteOutcome_IsRetainedEvenWhenLogWritesFail(string status, string? reason, bool incomplete)
+    {
+        var writer = new SyncLogWriter(Guid.NewGuid(), 1, _ => throw new InvalidOperationException("unavailable"));
+        var now = DateTime.UtcNow;
+        await writer.BeginPhaseAsync("reconciliatie", now);
+        await writer.CompletePhaseAsync("reconciliatie", now.AddSeconds(1), status, reasonCode: reason);
+        Assert.Equal(incomplete, writer.HasIncompletePhases);
+    }
+
     [Fact]
     public async Task PartialReportsAndCompletionPreservePreviousCounters()
     {

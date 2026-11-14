@@ -13,9 +13,9 @@ public static class SyncJobTransitions
     public static string CompletionStatus(bool succeeded) => succeeded ? "succeeded" : "failed";
 
     /// <summary>Een afgeronde pipeline houdt een deelresultaat apart van een fatale fout.</summary>
-    public static string CompletionStatus(SyncUitkomst outcome) =>
-        !outcome.GedeeltelijkMislukt ? "succeeded" :
-        outcome.MislukteFases.Contains(SyncUitkomst.FaseConfiguratie) ? "failed" : "partial";
+    public static string CompletionStatus(SyncUitkomst outcome, bool incompletePhases = false) =>
+        outcome.MislukteFases.Contains(SyncUitkomst.FaseConfiguratie) ? "failed" :
+        outcome.GedeeltelijkMislukt || incompletePhases ? "partial" : "succeeded";
 
     /// <summary>
     /// Leest het pogingnummer uit het resultaat van de claim (UPDATE ... RETURNING attempt, #1839):

@@ -46,9 +46,10 @@ internal static partial class SyncJobsRepository
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
             "UPDATE public.syncjobs SET status = 'running', startedat = now(), attempt = attempt + 1 " +
-            "WHERE id = @id AND status = 'pending' RETURNING attempt",
+            "WHERE id = @id AND status = 'pending' AND (attempt > 0 OR createdat > @cutoff) RETURNING attempt",
             connection);
         command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("cutoff", SyncJobRecoveryPolicy.StaleCutoff(DateTime.UtcNow));
         return SyncJobTransitions.ReadClaimedAttempt(await command.ExecuteScalarAsync());
     }
 
@@ -60,11 +61,11 @@ internal static partial class SyncJobsRepository
     internal static Task MarkCompletedAsync(Guid id, bool succeeded, string? errorMessage, int attempt)
         => MarkCompletedAsync(PostgresDatabaseConfig.ConnectionString, id, succeeded, errorMessage, attempt);
 
-    internal static Task MarkOutcomeAsync(Guid id, SyncUitkomst outcome, int attempt)
-        => MarkOutcomeAsync(PostgresDatabaseConfig.ConnectionString, id, outcome, attempt);
+    internal static Task MarkOutcomeAsync(Guid id, SyncUitkomst outcome, int attempt, bool incompletePhases = false)
+        => MarkOutcomeAsync(PostgresDatabaseConfig.ConnectionString, id, outcome, attempt, incompletePhases);
 
-    internal static Task MarkOutcomeAsync(string connectionString, Guid id, SyncUitkomst outcome, int attempt)
-        => MarkTerminalAsync(connectionString, id, SyncJobTransitions.CompletionStatus(outcome),
+    internal static Task MarkOutcomeAsync(string connectionString, Guid id, SyncUitkomst outcome, int attempt, bool incompletePhases = false)
+        => MarkTerminalAsync(connectionString, id, SyncJobTransitions.CompletionStatus(outcome, incompletePhases),
             outcome.GedeeltelijkMislukt ? outcome.JobFoutmelding() : null, attempt);
 
     internal static Task MarkCompletedAsync(string connectionString, Guid id, bool succeeded, string? errorMessage, int? attempt = null)
