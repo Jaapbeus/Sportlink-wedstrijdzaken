@@ -417,6 +417,9 @@ release-notes vindt.
    high/critical-alerts (Dependabot, code scanning) en geen open secret-scanning-alert. Eén
    HIGH-bevinding stopt de release.
 
+   Wijzigt `AiModelName` in deze release? Controleer dan dat `AiReasoningEffort` mee staat in de
+   productie-app-settings (#1958); code vangt een ontbrekende waarde op, maar de instelling hoort expliciet.
+
 1. **Bepaal het nieuwe nummer** volgens Fase 2 hierboven, op basis van de inhoud van
    `## [Unreleased]`.
 2. **Verplaats alles** van `## [Unreleased]` naar een nieuwe kop `## [x.y.z.r] — YYYY-MM-DD` en zet
