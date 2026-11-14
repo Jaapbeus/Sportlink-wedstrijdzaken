@@ -107,11 +107,16 @@ jobs:
       # skills, override, metadatamap, settings/config, symlinks, ook in mappen die de doorloop overslaat)
       # en een omvangplafond: Codex leest standaard maximaal 32 KiB van de projectinstructies. De
       # mutatietest schakelt geselecteerde guardregels afzonderlijk uit en eist dat de tests dan falen.
+      # #1930: guard, tests en mutaties zijn aparte stappen, zodat hun duur en een rode uitkomst
+      # afzonderlijk zichtbaar zijn (#1900). Volgorde en commando's zijn ongewijzigd.
       - name: Agentinstructies — AGENTS.md enige bron, stubs, laadpaden, omvang, skills en codeblokken
-        run: |
-          python3 scripts/ci/check-agent-instructies.py
-          python3 scripts/ci/check-agent-instructies.test.py
-          python3 scripts/ci/check-agent-instructies.mutaties.py
+        run: python3 scripts/ci/check-agent-instructies.py
+
+      - name: Agentinstructies — fixturetests van de guard
+        run: python3 scripts/ci/check-agent-instructies.test.py
+
+      - name: Agentinstructies — mutatietests van de guard
+        run: python3 scripts/ci/check-agent-instructies.mutaties.py
 
       - name: Agentinstructies — skillkopieën identiek aan de bron
         run: python3 scripts/ci/sync-skills.py
@@ -166,10 +171,12 @@ jobs:
 
       # #1676: elk bestand met uitgaand HTTP-verkeer controleert EgressGuard of staat met reden in
       # scripts/ci/egressguard-allowlist.txt; de test bewijst dat de guard rood kan worden.
+      # #1930: guard en zelftest zijn aparte stappen (#1900); volgorde ongewijzigd.
       - name: EgressGuard — uitgaand HTTP-verkeer gedekt
-        run: |
-          bash scripts/ci/check-egressguard-dekking.sh
-          bash scripts/ci/check-egressguard-dekking.test.sh
+        run: bash scripts/ci/check-egressguard-dekking.sh
+
+      - name: EgressGuard — guard zelf getest
+        run: bash scripts/ci/check-egressguard-dekking.test.sh
 
       # #864: bewaakt de identifier-casing-conventie (docs/ARCHITECTUUR-DATABASE-TIERS.md sectie
       # 3) binnen de Postgres-migratiebestanden zelf — een ander risico dan de bestandsnaam-

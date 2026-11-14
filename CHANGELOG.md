@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- CI: de Build-job toont de duur van guard, fixturetests en mutatietests van de agentinstructies afzonderlijk, net als die van de EgressGuard-guard en zijn zelftest. Commando's en volgorde zijn gelijk gebleven (#1930).
+
 ## [3.17.0.0] — 2026-11-12
 
 - De auditregistratie van een aangemaakte clubwedstrijd legt nu het echte `PublicMatchId` van Sportlink vast in plaats van de tijdelijke waarde, op beide databasetiers. Daardoor is een latere wijziging of verwijdering aan de aanmaak te koppelen. Alleen bij een geslaagde, echte aanmaak; een fout bij het bijwerken breekt de aanmaak niet af (#1879).
