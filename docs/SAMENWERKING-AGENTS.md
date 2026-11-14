@@ -52,7 +52,7 @@ Een integratieattest bindt oude review-base/head/tree aan nieuwe base/head/tree,
 Een uitsluitend base-gerelateerde update kan de oude review behouden, maar alleen als attest bewijst
 dat de PR-bijdrage inhoudelijk gelijk bleef en alle nieuwe basiseffecten beoordeeld zijn. Een
 automatisch beperkte gelijkwaardigheid kan uitsluitend volledige boomgelijkheid of de vooraf
-begrensde negen changelogvelden plus twee gesynchroniseerde versievelden betreffen. Ieder ander
+begrensde negen csproj-versievelden plus twee OpenAPI-`info.version`-velden betreffen. Ieder ander
 verschil of conflict vereist handmatige inhoudelijke beoordeling; geen geselecteerde diffregel- of
 sorted-hashroute. Alle vereiste checks moeten daarna op de exacte geïntegreerde head groen zijn.
 Een conflict in gedrag of gedeelde contracten wordt nooit automatisch gekozen.
@@ -77,7 +77,37 @@ Bij quota, ontbrekende tool, netwerkstoring, dispatcher/store-uitval, onduidelij
 
 Activeren vereist een aparte expliciete eigenaarbeslissing en toegewezen implementatie/review. Voor omschakeling naar `ACTIVE` controleert de eigenaar minimaal: default-branch workflows en branchbescherming; elke lokale/CI/bot/owner ontwikkelbranch-writer; exclusieve dispatcher, store en herstel; fencing en crashreconciliatie; de volledige acceptatieset; changelogfragment- en versie/API-tools inclusief idempotentie; behoud van bestaande Security Gate, exacte-headchecks en eigenaargrenzen. Onbewezen onderdeel betekent SHADOW houden. Een policyversie, CI-configuratie of workflow op een featurebranch activeert het beleid niet.
 
-De taakregister-cli gebruikt alleen een absolute databasepad buiten de checkout en standaard uitvoer zonder geheimen. De changelog-/versietooling biedt preview/validatie en schrijft pas met expliciete apply; volg de actuele command-help en contracten van de scripts. Verzin geen subcommands of JSON-velden op basis van dit document.
+De taakregister-cli gebruikt alleen een absoluut databasepad buiten de checkout en standaard uitvoer zonder geheimen.
+Protocol 1 gebruikt lokaal schema-revisie 2; een oudere experimentele store wordt geweigerd en
+vereist export en handmatige reconciliatie/migratie. `init` legt één `owner_session` vast. Dit en
+alle sessie-/grantinvoer zijn lokale verklaringen: de CLI authenticeert geen mens, proces of remote
+credential en kan remote schrijvers niet blokkeren.
+
+`request-create` vereist niet-lege `required_checks` en een vooraf vastgelegde `mandatory_tasks`-lijst
+met minstens één `reviewer_verification: true`-taak van de toegewezen reviewer. Per repository/PR
+is één actieve aanvraag toegestaan; een inhoudelijke SHA kan niet via een nieuw request-ID opnieuw
+worden aangeboden. Herstel gebruikt intrekking en `reassign` van de bestaande aanvraag. `task-register`
+start zo'n taak; extra taken mogen alleen optioneel zijn. Een child levert `task-output` met exacte
+aanvraagidentiteit en resultaat. `task-complete` blijft een onafhankelijke revieweractie met
+succesvol verificatiebewijs en, bij een child, diens exacte `output_event_id`. Stale/ongeautoriseerde
+uitvoer blijft in de historie en kan geen nieuwe generatie voltooien. Een mislukte taakuitvoer
+blijft als te triëren bevinding behouden en maakt eerdere gereedheid voor die PR ongeldig. Bij `reassign` is ook de stop
+van alle actieve child-sessies expliciet vereist; taken en checks moeten opnieuw worden bewezen.
+
+`kind: integration` vereist de nieuwste schone bronaanvraag en laat de CLI de bestaande
+`integration-evidence.py` uitvoeren. Alleen exacte integratietree of gesynchroniseerde versievelden
+worden geaccepteerd. `integration-attest` vereist daarna een afzonderlijke onafhankelijke
+interactiebeoordeling die alle oude/nieuwe SHA's, trees en de bewijshash bindt. Conflicten, gewijzigd
+gedrag, onzekere vergelijking of ongeldige bronreview blokkeren; de inhoudelijke route houdt haar
+eigen limiet. Checks blijven verplicht op de nieuwe head.
+
+De lokale grantregistratie ondersteunt uitsluitend `owner_accepted` voor één bevinding op de exacte
+aanvraagtuple. Grants hebben een expliciete vervaltijd, herroeping, bronreferentie en exacte sessie;
+ze overleven geen head-, poging- of generatiewijziging. Ze geven geen merge-/releasebevoegdheid.
+Een `withdrawn` lane vereist stop-, fence- en reconciliatiebewijs en blokkeert zolang geregistreerde
+remote action-intents niet definitief zijn verzoend. De historie blijft behouden en de generatie
+wordt verhoogd. Het concrete JSON-contract staat in `DEVELOPER-SETUP.md` §9.5.
+ De changelog-/versietooling biedt preview/validatie en schrijft pas met expliciete apply; volg de actuele command-help en contracten van de scripts. Verzin geen subcommands of JSON-velden op basis van dit document.
 
 ---
 

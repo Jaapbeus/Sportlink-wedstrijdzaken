@@ -1388,6 +1388,49 @@ De opdrachtgegevens gaan als JSON via stdin. Bekijk actuele `--help` en de CLI v
 commando's en schemas; deze instructie inventeert die niet. Shadow is één lokale registratie, geen
 distributed lock en geen toestemming tot schrijven/mergen.
 
+Het lokale JSON-contract (protocol 1, schema-revisie 2):
+
+- `init`: `coordinator` en vaste `owner_session`; herinitialiseren met een andere eigenaar wordt
+  geweigerd. Oude experimentele databases eerst exporteren en handmatig migreren/reconciliëren.
+- `request-create`: de bestaande request-/repository-/issue-/PR-/branch-/SHA-/sessie-/scopevelden,
+  `kind`, niet-lege `required_checks` en `mandatory_tasks`. Elke verplichte taak bevat `task_id`,
+  `purpose`, `assigned_session`; minstens één heeft `reviewer_verification: true` en is toegewezen
+  aan `reviewer_session`. Taak-ID's zijn store-breed uniek. Het manifest staat vast vóór claim.
+  Per repository/PR is slechts één aangeboden/lopende aanvraag toegestaan. Een nieuwe inhoudelijke
+  aanvraag vereist een nieuwe SHA; herstel op dezelfde SHA verloopt via intrekking en `reassign`.
+- Alle actoracties gebruiken `identity` met `request_id`, `repository`, `pr`, `base_sha`, `head_sha`,
+  `session`, `attempt` en `generation`. `claim` ontvangt die identity rechtstreeks.
+- `task-register`: `{identity, task}`; een bestaande verplichte taak start met `task.task_id`.
+  Een extra taak vereist `classification: "optional"`, `purpose` en `assigned_session`.
+  `task-output`: `{identity, task: {task_id, evidence, result}}`, door de toegewezen child;
+  `result` is `success`, `failure`, `unknown` of `cancelled`. Alleen succesvolle actuele uitvoer
+  is bruikbaar. Mislukte uitvoer blijft als te triëren bevinding behouden en trekt eerdere
+  gereedheid voor de PR in. `task-complete`: dezelfde vorm door de reviewer, `result: "success"` en eigen
+  verificatiebewijs; bij een child ook `output_event_id`. Uitvoer ontvangen voltooit de taak niet.
+- `kind: "integration"`: aanvullend `source_request_id` (nieuwste lokale `ready`-review van die PR)
+  en absoluut `repository_path`. `status` toont het berekende bewijs onder
+  `integration.evidence.evidence`. `integration-attest`: `{identity, attestation}` met
+  `evidence_sha256` (SHA-256 van gesorteerde JSON via Python `json.dumps(evidence, sort_keys=True)`),
+  `inherited_changes_reviewed: true`, niet-lege `assessment` en `refs` met `old_base`,
+  `reviewed_head`, `new_base`, `candidate_head`, `expected_tree`, `candidate_tree`. De exacte
+  reviewer moet de volledige geërfde wijziging en interacties beoordelen; SHA/tree-gelijkheid
+  alleen voldoet niet. Handmatige conflicten of onzekere bijdrage vereisen inhoudelijke review.
+- `grant`: `grant_id`, `grantor_session` (vastgelegde eigenaar), `grantee_session`, `request_id`,
+  `action: "owner_accepted"`, `resource_id` (bevinding-ID), `authorization_ref`, `expires_at`
+  (toekomstige gehele Unix-seconden) en `scope`. Scope bevat exact `request_id`, `repository`,
+  `issue`, `pr`, `branch`, `base_sha`, `head_sha`, `attempt`, `generation`, `action`, `resource_id`,
+  `authorization_ref`. `finding-disposition` met `owner_accepted` vereist dezelfde actoridentity,
+  `grant_id` en `authorization_ref`. `grant-revoke`: `grant_id`, `grantor_session`, `reason`.
+  Verlopen/herroepen grants blokkeren ook gereedheid en nieuwe action-intents.
+- `reassign` vereist naast de bestaande stopbevestiging `stopped_sessions` voor elke actieve
+  child-sessie. Nieuwe generatie vereist opnieuw uitgevoerde taken en checks. `lane-release`
+  met `outcome: "withdrawn"` vereist `reason`, `confirmed_stopped: true`, `stop_evidence`,
+  `fence_evidence`, `reconciliation_evidence`; pending/ambiguous action-intents eerst verzoenen.
+
+Dit is registratie van expliciet vertrouwde lokale invoer, geen authenticatie van eigenaar of
+sessies en geen bewijs dat iemand met remote credentials is tegengehouden. De grantactie verleent
+uitsluitend lokale acceptatie van een bevinding, geen merge-/release-/deploybevoegdheid.
+
 De onafhankelijke worktree-preflight is:
 
 ```bash
@@ -1401,7 +1444,8 @@ python3 scripts/dev/integration-evidence.py --repo <absoluut-repo-pad> --old-bas
 ```
 
 De bewijsuitvoer is geen review of mergegoedkeuring. Alleen volledige boomgelijkheid, of precies
-de negen toegestane changelogvelden plus twee gesynchroniseerde versievelden, kan automatisch als
+de negen csproj-versievelden (`Version`, `AssemblyVersion`, `FileVersion` in drie projecten)
+plus twee OpenAPI-`info.version`-velden (YAML en JSON), kan automatisch als
 beperkte gelijkwaardigheid worden aangemerkt; conflicten of andere verschillen vragen handmatige,
 inhoudelijke beoordeling. Onzekerheid is geen gelijkwaardigheid.
 

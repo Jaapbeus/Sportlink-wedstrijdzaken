@@ -22,7 +22,7 @@ class CoordinatorTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.temp.name) / "coordinator.sqlite"
         self.db = connect(self.db_path)
-        initialize(self.db, "test-coordinator")
+        initialize(self.db, "test-coordinator", "owner-1")
         self.coordinator = Coordinator(self.db)
         self.request_id = "request-1"
         self.coordinator.create_request(self._request())
@@ -39,6 +39,9 @@ class CoordinatorTests(unittest.TestCase):
             "base_sha": BASE, "head_sha": HEAD, "merge_base_sha": MERGE,
             "implementer_session": "implementer-1", "reviewer_session": "reviewer-1",
             "scope": "isolated test scope", "kind": "substantive", "required_checks": ["CI"],
+            "mandatory_tasks": [{"task_id": "verify-" + str(overrides.get("request_id", self.request_id)),
+                "purpose": "independent behavior verification", "assigned_session": overrides.get("reviewer_session", "reviewer-1"),
+                "reviewer_verification": True}],
         }
         value.update(overrides)
         return value
@@ -54,9 +57,16 @@ class CoordinatorTests(unittest.TestCase):
 
     def _claim_and_check(self) -> None:
         self.coordinator.claim(self.identity)
+        self._verify_task()
         self.coordinator.record_check(self.identity, {
             "check_name": "CI", "head_sha": HEAD, "state": "success", "evidence": "run/1",
         })
+
+    def _verify_task(self, identity=None, task_id=None):
+        identity = identity or self.identity
+        task_id = task_id or "verify-" + self.request_id
+        self.coordinator.register_task(identity, {"task_id": task_id})
+        self.coordinator.complete_task(identity, {"task_id": task_id, "evidence": "behavior inspected and reproduced", "result": "success"})
 
     def test_concurrent_duplicate_claims_only_one_succeeds(self) -> None:
         barrier = threading.Barrier(2)
@@ -98,12 +108,11 @@ class CoordinatorTests(unittest.TestCase):
     def test_mandatory_verification_cannot_be_cancelled(self) -> None:
         self.coordinator.claim(self.identity)
         self.coordinator.register_task(self.identity, {
-            "task_id": "verify", "classification": "mandatory", "purpose": "verify behavior",
-            "assigned_session": "reviewer-1",
+            "task_id": "verify-" + self.request_id,
         })
         with self.assertRaisesRegex(StoreError, "kan niet worden geannuleerd"):
             self.coordinator.cancel_task(self.identity, {
-                "task_id": "verify", "reason": "skip", "confirmed_stopped": True,
+                "task_id": "verify-" + self.request_id, "reason": "skip", "confirmed_stopped": True,
             })
         with self.assertRaisesRegex(StoreError, "lopen nog"):
             self.coordinator.finish(self.identity)

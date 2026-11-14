@@ -18,7 +18,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--db", required=True, help="Absoluut databasepad buiten de repository.")
     parser.add_argument("command", choices=(
-        "init", "request-create", "claim", "task-register", "task-complete", "task-cancel",
+        "integration-attest", "grant", "grant-revoke", "task-output", "init", "request-create", "claim", "task-register", "task-complete", "task-cancel",
         "finding-record", "finding-disposition", "check-record", "finish", "ready",
         "reassign", "retract", "result-correct", "lane-enqueue", "lane-reserve", "lane-release",
         "action-intent", "reconcile", "status", "events",
@@ -38,8 +38,16 @@ def _read_input() -> dict[str, Any]:
 
 def dispatch(command: str, value: dict[str, Any], db: sqlite3.Connection) -> Any:
     if command == "init":
-        return initialize(db, str(value.get("coordinator", "")).strip())
+        return initialize(db, str(value.get("coordinator", "")).strip(), value.get("owner_session", ""))
     coordinator = Coordinator(db)
+    if command == "integration-attest":
+        return coordinator.attest_integration(value["identity"], value["attestation"])
+    if command == "grant":
+        return coordinator.grant(value)
+    if command == "grant-revoke":
+        return coordinator.revoke_grant(value)
+    if command == "task-output":
+        return coordinator.submit_task_output(value["identity"], value["task"])
     if command == "request-create":
         return coordinator.create_request(value)
     if command == "claim":

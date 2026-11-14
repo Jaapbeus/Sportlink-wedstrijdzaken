@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class StoreError(ValueError):
@@ -56,9 +56,14 @@ def transaction(connection: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
         connection.commit()
 
 
-def initialize(connection: sqlite3.Connection, coordinator: str) -> dict[str, Any]:
+def initialize(connection: sqlite3.Connection, coordinator: str, owner_session: str) -> dict[str, Any]:
+    if not isinstance(owner_session, str) or not owner_session.strip():
+        raise StoreError("Een vaste lokale owner_session is verplicht.")
     if not coordinator.strip():
         raise StoreError("Geef een naam op voor de coordinator.")
+    version = connection.execute("PRAGMA user_version").fetchone()[0]
+    if version not in (0, SCHEMA_VERSION):
+        raise StoreError("Incompatibele experimentele store: exporteer historie en migreer handmatig.")
     # executescript() manages its own transaction, so install idempotent DDL first.
     connection.executescript(_SCHEMA)
     with transaction(connection):
@@ -80,6 +85,8 @@ def initialize(connection: sqlite3.Connection, coordinator: str) -> dict[str, An
                 "INSERT INTO metadata(key, value) VALUES('coordinator', ?)",
                 (coordinator.strip(),),
             )
+            connection.execute("INSERT INTO metadata VALUES('owner_session', ?)", (owner_session.strip(),))
+            connection.execute("INSERT INTO metadata VALUES('schema_revision', '2')")
             append_event(
                 connection,
                 "coordinator_initialized",
@@ -93,6 +100,9 @@ def initialize(connection: sqlite3.Connection, coordinator: str) -> dict[str, An
             current = connection.execute(
                 "SELECT value FROM metadata WHERE key = 'coordinator'"
             ).fetchone()[0]
+            owner = connection.execute("SELECT value FROM metadata WHERE key='owner_session'").fetchone()
+            if owner is None or owner[0] != owner_session.strip():
+                raise StoreError("De owner_session komt niet overeen met de database.")
             if current != coordinator.strip():
                 raise StoreError("De coordinatornaam komt niet overeen met de database.")
     return {"protocol": 1, "mode": "shadow", "coordinator": coordinator.strip()}
@@ -203,6 +213,25 @@ CREATE TABLE IF NOT EXISTS tasks (
   generation INTEGER NOT NULL,
   created_event INTEGER NOT NULL,
   updated_event INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS integration_evidence (
+  request_id TEXT PRIMARY KEY REFERENCES requests(request_id),
+  source_request_id TEXT NOT NULL REFERENCES requests(request_id),
+  evidence TEXT NOT NULL,
+  attestation_event INTEGER
+);
+CREATE TABLE IF NOT EXISTS task_manifest (
+  request_id TEXT NOT NULL REFERENCES requests(request_id),
+  task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
+  verification INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS grants (
+  grant_id TEXT PRIMARY KEY,
+  grantee_session TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  revoked INTEGER NOT NULL DEFAULT 0,
+  created_event INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS findings (
   finding_id TEXT PRIMARY KEY,

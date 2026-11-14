@@ -6,7 +6,10 @@ import sqlite3
 from typing import Any
 
 from .actions import ActionCoordinator
-from .identity import finding_request
+from .identity import finding_request, exact_request, validate_assignment
+from .obligations import Obligations
+from .authority import Authority
+from .integration import Integration
 from .lane import LaneCoordinator
 from .queries import events as query_events, request_result, status as query_status
 from .store import StoreError, append_event, load_request, transaction
@@ -16,8 +19,8 @@ class Coordinator:
     def __init__(self, connection: sqlite3.Connection):
         self.db = connection
         meta = dict(connection.execute("SELECT key, value FROM metadata"))
-        if meta.get("protocol") != "1" or meta.get("mode") != "shadow":
-            raise StoreError("Initialiseer eerst protocol 1 in shadow-modus.")
+        if meta.get("protocol") != "1" or meta.get("schema_revision") != "2" or meta.get("mode") != "shadow":
+            raise StoreError("Initialiseer eerst protocol 1 schema-revisie 2 in shadow-modus.")
         self.name = meta["coordinator"]
 
     def create_request(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -29,15 +32,14 @@ class Coordinator:
         _require(data, required)
         if data["kind"] not in ("substantive", "integration"):
             raise StoreError("Soort aanvraag moet substantive of integration zijn.")
+        if any(not isinstance(data[key], str) or not data[key].strip() for key in required if key not in ("issue", "pr")):
+            raise StoreError("Aanvraagidentiteit en scope mogen niet leeg zijn.")
+        _positive_int(data["issue"], "issue")
         if data["implementer_session"] == data["reviewer_session"]:
             raise StoreError("Implementer en reviewer moeten aparte sessies zijn.")
         for field in ("base_sha", "head_sha", "merge_base_sha"):
             _full_sha(data[field], field)
-        checks = data.get("required_checks", [])
-        if not isinstance(checks, list) or any(not str(x).strip() for x in checks):
-            raise StoreError("required_checks moet een lijst met namen zijn.")
-        if len(set(checks)) != len(checks):
-            raise StoreError("Een verplichte check mag maar één keer voorkomen.")
+        checks, manifest = Obligations.validate(data)
         scope = data["scope"]
         if not isinstance(scope, str) or not scope.strip():
             raise StoreError("De scope mag niet leeg zijn.")
@@ -46,6 +48,7 @@ class Coordinator:
                 "SELECT 1 FROM requests WHERE request_id = ?", (data["request_id"],)
             ).fetchone():
                 raise StoreError("request_id bestaat al.")
+            validate_assignment(self.db, data)
             counter = self.db.execute(
                 "SELECT * FROM counters WHERE repository=? AND pr=?",
                 (data["repository"], _positive_int(data["pr"], "pr")),
@@ -60,6 +63,7 @@ class Coordinator:
                 integration += 1
                 if integration > 2:
                     raise StoreError("De limiet van twee integratiepogingen is bereikt.")
+            prepared = Integration(self.db).prepare(data) if data["kind"] == "integration" else None
             event = append_event(
                 self.db, "request_offered", data["request_id"], self.name,
                 {"request": data, "substantive_round": substantive,
@@ -79,6 +83,9 @@ class Coordinator:
                  data["reviewer_session"], scope.strip(), data["kind"], substantive,
                  integration, 1, 1, "offered", "unscoped", event),
             )
+            if prepared:
+                Integration(self.db).install(data["request_id"], prepared)
+            Obligations(self.db).install(data["request_id"], manifest, event)
             for check in checks:
                 self.db.execute(
                     "INSERT INTO required_checks(request_id,check_name,expected_sha) "
@@ -101,49 +108,30 @@ class Coordinator:
             return {"state": "claimed", "event_id": event}
 
     def register_task(self, identity: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        _require(data, ("task_id", "classification", "purpose", "assigned_session"))
-        if data["classification"] not in ("mandatory", "optional"):
-            raise StoreError("Taakclassificatie moet mandatory of optional zijn.")
         with transaction(self.db):
             request = self._identity(identity, "reviewer_session", states=("claimed", "reviewing"))
-            if not str(data["purpose"]).strip() or not str(data["assigned_session"]).strip():
-                raise StoreError("Doel en toegewezen sessie zijn verplicht.")
-            if self.db.execute("SELECT 1 FROM tasks WHERE task_id=?", (data["task_id"],)).fetchone():
-                raise StoreError("task_id bestaat al.")
-            event = append_event(
-                self.db, "task_registered", request["request_id"], identity["session"],
-                data, generation=request["generation"],
-            )
-            self.db.execute(
-                "INSERT INTO tasks(task_id,request_id,classification,purpose,assigned_session,"
-                "state,generation,created_event,updated_event) VALUES(?,?,?,?,?,'running',?,?,?)",
-                (data["task_id"], request["request_id"], data["classification"],
-                 data["purpose"].strip(), data["assigned_session"], request["generation"], event, event),
-            )
-            self.db.execute(
-                "UPDATE requests SET state='reviewing' WHERE request_id=?", (request["request_id"],)
-            )
-            return {"task_id": data["task_id"], "state": "running", "event_id": event}
+            return Obligations(self.db).start(request, identity, data)
+
+    def submit_task_output(self, identity: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+        with transaction(self.db):
+            request = self._finding_identity(identity)
+            return Obligations(self.db).output(request, identity, data)
 
     def complete_task(self, identity: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        _require(data, ("task_id", "evidence"))
-        if not str(data["evidence"]).strip():
-            raise StoreError("Bewijs mag niet leeg zijn.")
         with transaction(self.db):
             request = self._identity(identity, "reviewer_session", states=("claimed", "reviewing"))
-            task = self._task(request["request_id"], data["task_id"])
-            if task["state"] != "running" or task["generation"] != request["generation"]:
-                raise StoreError("Taak is niet actief in deze generatie.")
-            event = append_event(
-                self.db, "task_completed", request["request_id"], identity["session"],
-                {"task_id": data["task_id"], "evidence": data["evidence"]},
-                generation=request["generation"],
-            )
-            self.db.execute(
-                "UPDATE tasks SET state='completed',evidence=?,updated_event=? WHERE task_id=?",
-                (str(data["evidence"]).strip(), event, data["task_id"]),
-            )
-            return {"task_id": data["task_id"], "state": "completed", "event_id": event}
+            return Obligations(self.db).complete(request, identity, data)
+
+    def attest_integration(self, identity: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+        with transaction(self.db):
+            request = self._identity(identity, "reviewer_session", states=("claimed", "reviewing"))
+            return Integration(self.db).attest(request, identity, data)
+
+    def grant(self, data: dict[str, Any]) -> dict[str, Any]:
+        return Authority(self.db).grant(data)
+
+    def revoke_grant(self, data: dict[str, Any]) -> dict[str, Any]:
+        return Authority(self.db).revoke(data)
 
     def cancel_task(self, identity: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
         _require(data, ("task_id", "reason", "confirmed_stopped"))
@@ -224,16 +212,12 @@ class Coordinator:
                 if identity["session"] == request["implementer_session"]:
                     raise StoreError("De implementer kan een bevinding niet onafhankelijk verifiëren.")
             else:
-                grant = data.get("authorization_ref")
-                if not isinstance(grant, str) or not grant.strip():
-                    raise StoreError("Owner-acceptatie vereist een expliciete autorisatiereferentie.")
-                if data.get("actor_role") != "owner" or not str(identity.get("session", "")).strip():
-                    raise StoreError("Owner-acceptatie vereist een expliciet opgegeven owner-sessie.")
+                Authority(self.db).require(identity, request, data, "owner_accepted", data["finding_id"])
             event = append_event(
                 self.db, "finding_disposition_recorded", request["request_id"],
                 identity["session"], {"finding_id": data["finding_id"],
                 "disposition": disposition, "evidence": data["evidence"],
-                "authorization_ref": data.get("authorization_ref")},
+                "authorization_ref": data.get("authorization_ref"), "grant_id": data.get("grant_id")},
                 generation=request["generation"],
             )
             self.db.execute(
@@ -258,6 +242,8 @@ class Coordinator:
         if data["state"] not in ("success", "failure", "skipped"):
             raise StoreError("Checkstatus moet success, failure of skipped zijn.")
         _full_sha(data["head_sha"], "head_sha")
+        if not isinstance(data["evidence"], str) or not data["evidence"].strip():
+            raise StoreError("Checkbewijs mag niet leeg zijn.")
         with transaction(self.db):
             request = self._identity(identity, "reviewer_session", states=("claimed", "reviewing"))
             if data["head_sha"] != request["head_sha"]:
@@ -283,10 +269,13 @@ class Coordinator:
             return {"check_name": data["check_name"], "state": data["state"], "event_id": event}
 
     def finish(self, identity: dict[str, Any], data: dict[str, Any] | None = None) -> dict[str, Any]:
+        if (data or {}).get("result", "completed") not in ("completed", "clean"):
+            raise StoreError("Mislukte of onbekende reviewuitkomst kan niet als voltooid worden teruggegeven.")
         with transaction(self.db):
             request = self._identity(identity, "reviewer_session", states=("claimed", "reviewing"))
             self._assert_tasks_complete(request["request_id"])
             self._assert_checks_success(request["request_id"])
+            Integration(self.db).assert_valid(request)
             event = append_event(
                 self.db, "review_returned", request["request_id"], identity["session"],
                 {"result": (data or {}).get("result", "completed"),
@@ -303,6 +292,7 @@ class Coordinator:
             request = self._identity(identity, "reviewer_session", states=("review_returned",))
             self._assert_tasks_complete(request["request_id"])
             self._assert_checks_success(request["request_id"])
+            Integration(self.db).assert_valid(request)
             pending = self.db.execute(
                 "SELECT f.finding_id FROM findings f LEFT JOIN finding_dispositions d "
                 "ON d.disposition_id=(SELECT MAX(d2.disposition_id) FROM finding_dispositions d2 "
@@ -312,6 +302,7 @@ class Coordinator:
             ).fetchall()
             if pending:
                 raise StoreError("Er staan nog niet afgehandelde bevindingen open.")
+            Authority(self.db).assert_dispositions(request)
             event = append_event(
                 self.db, "request_ready", request["request_id"], identity["session"],
                 {"head_sha": request["head_sha"], "findings_reviewed": True,
@@ -335,19 +326,30 @@ class Coordinator:
                 raise StoreError("Deze aanvraag kan niet worden overgedragen.")
             if data["new_reviewer_session"] == request["implementer_session"]:
                 raise StoreError("Implementer kan geen reviewer worden.")
+            Obligations(self.db).confirm_children_stopped(request, data)
             generation = request["generation"] + 1
             attempt = request["attempt"] + 1
             event = append_event(
                 self.db, "reviewer_reassigned", request["request_id"], self.name,
                 {"old_reviewer_session": request["reviewer_session"],
                  "new_reviewer_session": data["new_reviewer_session"],
-                 "reason": data["reason"], "old_actor_stopped": True, "attempt": attempt},
+                 "reason": data["reason"], "old_actor_stopped": True, "attempt": attempt,
+                 "stopped_sessions": data.get("stopped_sessions", [])},
                 generation=generation,
             )
             self.db.execute(
                 "UPDATE requests SET reviewer_session=?,attempt=?,generation=?,state='offered' "
                 "WHERE request_id=?",
                 (data["new_reviewer_session"], attempt, generation, request["request_id"]),
+            )
+            self.db.execute(
+                "UPDATE tasks SET state='pending',evidence=NULL,generation=?,assigned_session=CASE "
+                "WHEN assigned_session=? THEN ? ELSE assigned_session END WHERE request_id=?",
+                (generation, request["reviewer_session"], data["new_reviewer_session"], request["request_id"]),
+            )
+            self.db.execute(
+                "UPDATE required_checks SET state='pending',evidence=NULL WHERE request_id=?",
+                (request["request_id"],),
             )
             return {"state": "offered", "attempt": attempt, "generation": generation,
                     "event_id": event}
@@ -410,7 +412,15 @@ class Coordinator:
         return LaneCoordinator(self.db, self.name).release(data)
 
     def action_intent(self, identity: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-        return ActionCoordinator(self.db, self.name, self._identity).intent(identity, data)
+        return ActionCoordinator(self.db, self.name, self._action_identity).intent(identity, data)
+
+    def _action_identity(self, identity, session_column, **options):
+        request = self._identity(identity, session_column, **options)
+        if identity["session"] not in (request["reviewer_session"], request["implementer_session"]):
+            raise StoreError("Actie vereist een toegewezen actor.")
+        Authority(self.db).assert_dispositions(request)
+        Integration(self.db).assert_valid(request)
+        return request
 
     def reconcile(self, data: dict[str, Any]) -> dict[str, Any]:
         return ActionCoordinator(self.db, self.name, self._identity).reconcile(data)
@@ -421,32 +431,8 @@ class Coordinator:
     def events(self, request_id: str | None) -> list[dict[str, Any]]:
         return query_events(self.db, request_id)
 
-    def _identity(
-        self,
-        identity: dict[str, Any],
-        session_column: str | None,
-        *,
-        offered: bool = False,
-        states: tuple[str, ...] | None = None,
-        request_id: str | None = None,
-    ) -> sqlite3.Row:
-        _require(identity, ("request_id", "repository", "pr", "base_sha", "head_sha",
-                            "session", "attempt", "generation"))
-        if request_id and identity["request_id"] != request_id:
-            raise StoreError("Aanvraagidentiteit komt niet overeen.")
-        request = load_request(self.db, identity["request_id"])
-        for field in ("repository", "pr", "base_sha", "head_sha"):
-            if str(identity[field]) != str(request[field]):
-                raise StoreError("Aanvraagidentiteit of aangeboden SHA komt niet overeen.")
-        if int(identity["attempt"]) != request["attempt"] or int(identity["generation"]) != request["generation"]:
-            raise StoreError("Aanvraagidentiteit is verouderd; actie geweigerd.")
-        if session_column and identity["session"] != request[session_column]:
-            raise StoreError("Sessie is niet de exact toegewezen actor.")
-        if offered and request["state"] != "offered":
-            raise StoreError("Aanvraag is niet beschikbaar om te claimen.")
-        if states and request["state"] not in states:
-            raise StoreError("Aanvraagstatus staat deze actie niet toe.")
-        return request
+    def _identity(self, identity, session_column, **options):
+        return exact_request(self.db, identity, session_column, **options)
 
     def _finding_identity(self, identity: dict[str, Any]) -> sqlite3.Row:
         return finding_request(self.db, identity)
@@ -460,8 +446,9 @@ class Coordinator:
         return task
 
     def _assert_tasks_complete(self, request_id: str) -> None:
+        Obligations(self.db).assert_manifest(request_id)
         pending = self.db.execute(
-            "SELECT task_id FROM tasks WHERE request_id=? AND (state='running' OR "
+            "SELECT task_id FROM tasks WHERE request_id=? AND (state IN ('pending','running') OR "
             "(classification='mandatory' AND state!='completed') OR "
             "(classification='optional' AND state='cancelled' AND stop_confirmed!=1))",
             (request_id,),
@@ -470,6 +457,8 @@ class Coordinator:
             raise StoreError("Verificatieblokkade: taken lopen nog of missen voltooid bewijs.")
 
     def _assert_checks_success(self, request_id: str) -> None:
+        if not self.db.execute("SELECT 1 FROM required_checks WHERE request_id=?", (request_id,)).fetchone():
+            raise StoreError("Verplichte checks ontbreken.")
         failed = self.db.execute(
             "SELECT check_name FROM required_checks WHERE request_id=? AND "
             "(state!='success' OR expected_sha!=(SELECT head_sha FROM requests WHERE request_id=?))",
@@ -486,7 +475,7 @@ def _require(data: dict[str, Any], fields: tuple[str, ...]) -> None:
 
 
 def _full_sha(value: Any, label: str) -> None:
-    if not isinstance(value, str) or len(value) != 40 or any(c not in "0123456789abcdef" for c in value.lower()):
+    if not isinstance(value, str) or len(value) != 40 or any(c not in "0123456789abcdef" for c in value):
         raise StoreError(f"{label} moet een volledige SHA-1 zijn.")
 
 

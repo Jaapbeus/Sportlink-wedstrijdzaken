@@ -92,15 +92,30 @@ class LaneCoordinator:
                 raise StoreError("Lane-identiteit is verouderd of komt niet overeen.")
             if data["outcome"] == "withdrawn" and not str(data.get("reason", "")).strip():
                 raise StoreError("Intrekken vereist een reden.")
+            if data["outcome"] == "withdrawn":
+                if data.get("confirmed_stopped") is not True or any(
+                    not isinstance(data.get(key), str) or not data[key].strip()
+                    for key in ("stop_evidence", "fence_evidence", "reconciliation_evidence")
+                ):
+                    raise StoreError("Intrekken vereist bevestigde stop, fencing en reconciliatiebewijs.")
+                unresolved = self.db.execute(
+                    "SELECT 1 FROM action_intents a JOIN requests r ON r.request_id=a.request_id "
+                    "WHERE r.repository=? AND r.pr=? AND a.state IN ('pending','ambiguous')",
+                    (entry["repository"], entry["pr"]),
+                ).fetchone()
+                if unresolved:
+                    raise StoreError("Remote action-intents moeten eerst definitief worden verzoend.")
             event = append_event(
                 self.db, "lane_reservation_released", None, data["actor_session"],
                 {"candidate_id": data["candidate_id"], "outcome": data["outcome"],
-                 "reason": data.get("reason")}, generation=entry["generation"],
+                 "reason": data.get("reason"), "stop_evidence": data.get("stop_evidence"),
+                 "fence_evidence": data.get("fence_evidence"),
+                 "reconciliation_evidence": data.get("reconciliation_evidence")}, generation=entry["generation"],
             )
             state = "completed" if data["outcome"] == "completed" else "withdrawn"
             self.db.execute(
-                "UPDATE lane_entries SET state=?,updated_event=? WHERE candidate_id=?",
-                (state, event, data["candidate_id"]),
+                "UPDATE lane_entries SET state=?,generation=?,updated_event=? WHERE candidate_id=?",
+                (state, entry["generation"] + int(data["outcome"] == "withdrawn"), event, data["candidate_id"]),
             )
             return {"candidate_id": data["candidate_id"], "state": state, "event_id": event}
 
@@ -112,5 +127,5 @@ def _require(data: dict[str, Any], fields: tuple[str, ...]) -> None:
 
 
 def _full_sha(value: Any, label: str) -> None:
-    if not isinstance(value, str) or len(value) != 40 or any(c not in "0123456789abcdef" for c in value.lower()):
+    if not isinstance(value, str) or len(value) != 40 or any(c not in "0123456789abcdef" for c in value):
         raise StoreError(f"{label} moet een volledige SHA-1 zijn.")

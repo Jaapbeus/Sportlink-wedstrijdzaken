@@ -26,7 +26,9 @@ def status(connection: sqlite3.Connection, request_id: str) -> dict[str, Any]:
         "WHERE f.repository=? AND f.pr=? ORDER BY f.created_event",
         (request["repository"], request["pr"]),
     ).fetchall()
-    return {"request": request_result(request), "tasks": [dict(x) for x in tasks],
+    integration = connection.execute("SELECT evidence,attestation_event FROM integration_evidence WHERE request_id=?", (request_id,)).fetchone()
+    return {"integration": {"evidence": decode(integration["evidence"]), "attestation_event": integration["attestation_event"]} if integration else None,
+            "request": request_result(request), "tasks": [dict(x) for x in tasks],
             "checks": [dict(x) for x in checks], "findings": [dict(x) for x in findings],
             "events": events(connection, request_id)}
 
