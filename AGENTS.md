@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Gedeeld: Codex/Claude Code. CI: AGENTS.md ≤27 KiB, FunctionApp/AGENTS.md ≤4 KiB, keten ≤30 KiB. Regels hier; uitleg docs/ (§13.1). Volg Leesmomenten; links importeren niet. Padloos: docs/; root: AGENTS.md, CLAUDE.md, CHANGELOG.md, CONTRIBUTING.md, SECURITY.md.
+Codex/Claude Code. CI: root ≤27 KiB, FunctionApp/AGENTS.md ≤4 KiB, keten ≤30 KiB. Regels hier; uitleg docs/ (§13.1). Volg Leesmomenten; links importeren niet. Padloos: docs/; root: AGENTS.md, CLAUDE.md, CHANGELOG.md, CONTRIBUTING.md, SECURITY.md.
 
 ## Absolute veiligheidsregels — nooit omzeilen
 
@@ -32,7 +32,7 @@ Vóór elke push naar `main` of productie-deployment: nieuwe resources of gewijz
 
 ## Rollen
 
-Benader elke taak als Software Architect (structuur, eenvoud), Solution Architect (Functions/Blazor/SWA/DB/Entra; kosten), CISO (Security Gate leidend; geheimen nooit in code/logs/responses; AVG), Application Tester (`dotnet build` ≠ werking; smoke test vóór oplevering), DPO (persoonsgegevens rechtmatig/veilig/transparant). Meld rolspanning.
+Rollen per taak: Software Architect (structuur/eenvoud), Solution Architect (Functions/Blazor/SWA/DB/Entra/kosten), CISO (Security Gate leidend; nooit geheimen in code/logs/responses; AVG), Application Tester (`dotnet build` ≠ werking; smoke vóór oplevering), DPO (persoonsgegevens rechtmatig/veilig/transparant). Meld rolspanning.
 
 ## Codex ↔ Claude Code — gescheiden eigenaarschap
 
@@ -68,35 +68,39 @@ Geplande reviewruns hebben alleen reviewbevoegdheid (expliciete aanvraag, fase `
 Onbewaakt: rondelimiet, zelfmerge-voorwaarden, geplande uitvoering.
 **Reviewbewijs hoort bij de PR** (reviewer, ronde, SHA, uitkomst, afhandeling als PR-comment); een review geldt alleen voor de beoordeelde SHA; na verwerking wisselt de implementer eerst fase/beurt naar zichzelf; nooit twee gelijktijdige reviews op dezelfde SHA.
 
-**Gedeelde debugomgeving.** Worktrees isoleren bestanden, niet poorten, databases, Docker, Azurite, PID's, logs of externe integraties; `Start-Debug.ps1` stopt bestaande debugservices.
-Zolang runtime-isolatie ontbreekt gebruikt één vooraf aangewezen sessie de omgeving; leg de runtime-eigenaar vast bij taak en overdracht.
-Zonder betrouwbare reservering, of met een andere/onbekende actieve eigenaar: geen start/stop/clean/migratie.
+Exacte sessies/aanvraag; ronde 4: aparte eigenaarsscope.
+
+**SHADOW**: alleen bewijs; alle regels gelden. Geen 2e dispatcher/automatische dispatch/ontwikkeling/merge uit shadowdata. Actief na aparte owneropdracht, implementatie/review, bewezen acceptatie van alle deelnemers/schrijfpaden (`SAMENWERKING-AGENTS.md`).
+
+**Gedeelde debugomgeving.** Worktrees isoleren bestanden; poorten/databases/Docker/Azurite/PID's/logs/externe integraties blijven gedeeld. `Start-Debug.ps1` stopt bestaande debugservices.
+Zonder runtime-isolatie: één vooraf aangewezen sessie; leg de runtime-eigenaar vast bij taak/overdracht.
+Geen betrouwbare reservering of andere/onbekende actieve eigenaar: geen start/stop/clean/migratie.
 Stop of herstart nooit andermans services; controleer ook draaiende processen (vrije poort ≠ vrije database).
-Migraties en wijzigingen aan gedeelde schema's/testdata serialiseer je onder dezelfde reservering; releasewerk op gedeelde resources stem je vooraf af.
-Parallelle runtimes pas na geverifieerde isolatie van poorten, processen, logs, temp, databases en integraties; andere sessies bouwen alleen eigen code en draaien geïsoleerde tests.
+Serialiseer migraties en gedeeld schema-/testdatawerk onder die reservering; stem releasewerk op gedeelde resources vooraf af.
+Parallelle runtimes vereisen geverifieerde isolatie van poorten/processen/logs/temp/databases/integraties; anders alleen eigen code bouwen en geïsoleerd testen.
 
 **Werkinstructies wijzigen** (alleen op expliciete opdracht, met issue en review).
 `AGENTS.md` is de enige bron, ook in submappen; elke `CLAUDE.md` is een stub met alleen `@AGENTS.md` + één vaste zin.
 Skills: bron `.agents/skills/<naam>/`, kopie `.claude/skills/<naam>/` via `python3 scripts/ci/sync-skills.py --schrijf` (kopie nooit bewerken).
 Geen tweede laadpad (`.claude/{rules,commands,agents,output-styles}`, geneste skills, `AGENTS.override.md`, `CLAUDE.local.md`, symlinks).
-Draai vóór overdracht `python3 scripts/ci/check-agent-instructies.py` en `.test.py` (bij een guardwijziging ook `.mutaties.py`); dat bewijst structuur en omvang, niet inhoud of exclusiviteit.
-Het budget is een ratchet (`scripts/ci/agent-instructies-plafonds.txt`): verplaats toelichting naar `docs/` in plaats van het plafond te verhogen.
-**Memory** noteert datum, PR en uitrolstatus (ongemergd = nog vorige tekst), geeft nooit merge-/deploybevoegdheid; het eigenaarsbesluit is leidend.
+Vóór overdracht: `python3 scripts/ci/check-agent-instructies.py` en `.test.py` (guardwijziging: ook `.mutaties.py`); bewijst structuur/omvang, niet inhoud/exclusiviteit.
+Ratchet (`scripts/ci/agent-instructies-plafonds.txt`): toelichting naar `docs/`, plafond niet verhogen.
+**Memory**: datum/PR/uitrolstatus (ongemergd = vorige tekst); nooit merge-/deploybevoegdheid; eigenaarsbesluit leidend.
 Rapporteer ontbrekende handhaving als beperking.
 
 ## Sessie-isolatie, branches en worktrees
 
 - Sessiestart: inventariseer (regel 1); regel isolatie autonoom, escaleer alleen onduidelijk eigenaarschap of overlap.
 - **Branches**: features vanuit `develop` → PR naar `develop`; release = één PR `develop` → `main` (deploy); urgente fix = hotfix vanuit `main` → PR naar `main`. **Nooit direct committen of pushen naar `main` of `develop`.** B hangt af van A: B vanuit A, merge A, daarna `git rebase develop` op B.
-- **S0 — eigen worktree vóór iedere wijziging.** Een mapnaam bewijst geen isolatie: verifieer met `git worktree list --porcelain` branch, absoluut pad en unieke sessie; hervat een eigen worktree alleen als de vorige sessie niet meer schrijft en de overdracht vastligt.
-Leg issue, implementer/reviewer/sessie/scope vast, `git fetch origin develop main`, maak een unieke branch/worktree (botsende naam: sessiesuffix; nooit een actieve branch overnemen; branch bevat het issuenummer; een reeds geopende PR houdt zijn branch mits dat bij het issue staat).
-Schrijf alleen vanuit het absolute worktreepad (Claude: `EnterWorktree({ path })`); nooit een worktree met impliciete basis: `git worktree add -b "<branch>" "<pad>" origin/develop` (quote `#`).
+- **S0 — eigen worktree vóór elke wijziging.** Bewijs isolatie via `git worktree list --porcelain`: branch, absoluut pad, unieke sessie. Hervatten alleen als vorige sessie niet meer schrijft en overdracht vastligt.
+Leg issue/implementer/reviewer/sessie/scope vast. `git fetch origin develop main`; unieke branch/worktree (botsing: sessiesuffix; nooit actieve branch overnemen; issuenummer in branch; bestaande PR houdt branch indien vastgelegd bij issue).
+Schrijf alleen vanuit absoluut worktreepad (Claude: `EnterWorktree({ path })`); expliciete basis verplicht: `git worktree add -b "<branch>" "<pad>" origin/develop` (quote `#`).
 
-Namen (Codex | Claude Code), worktrees `.codex/worktrees/<nr>-<sessie>` | `.claude/worktrees/<nr>-<sessie>`: feature/fix/docs/chore `codex/<nr>-<slug>` | `feature/#<nr>-<slug>` (basis `origin/develop`, PR naar `develop`); hotfix `codex/hotfix-<nr>-<slug>` | `hotfix/#<nr>-<slug>` (basis `origin/main`, PR naar `main`); release-voorbereiding `codex/<nr>-release-<versie>` | `feature/#<nr>-release-<versie>` (basis en PR als feature).
+Namen (Codex | Claude Code): worktree `.codex/worktrees/<nr>-<sessie>` | `.claude/worktrees/<nr>-<sessie>`; feature/fix/docs/chore `codex/<nr>-<slug>` | `feature/#<nr>-<slug>` (basis `origin/develop`, PR `develop`); hotfix `codex/hotfix-<nr>-<slug>` | `hotfix/#<nr>-<slug>` (basis `origin/main`, PR `main`); releasevoorbereiding `codex/<nr>-release-<versie>` | `feature/#<nr>-release-<versie>` (basis/PR als feature).
 De release-PR `develop` → `main` komt uit de gereserveerde acceptatieomgeving.
-- **Nooit terugvallen op schrijven in de hoofd-checkout**; onafgemaakt werk daar laat je intact (onderzoek eigenaarschap, regel overdracht, niet zelf committen of verplaatsen).
-**Sessie-einde**: behoud de worktree en leg branch, SHA, status, taak- en runtime-eigenaar vast (Claude: `ExitWorktree({ action: "keep" })`); verwijder alleen je eigen worktree/branch na bevestigde merge, zonder actieve sessie of onverwerkt werk; nooit andermans worktree opruimen of met `--force`.
-- **Een hotfix is pas af als hij terug in `develop` staat (#1287)**: direct na de merge naar `main` een `feature/#<nr>-backport-…` vanuit `develop` met uitsluitend code, tests en docs van de hotfix, **niet** versienummer of CHANGELOG-sectie; toets per bestand op inhoud, **nooit `git checkout main -- <pad>`** (`VERSIONING.md`).
+- **Hoofd-checkout blijft read-only**; onafgemaakt werk intact laten: onderzoek eigenaarschap en regel overdracht, nooit zelf committen/verplaatsen.
+**Sessie-einde**: worktree behouden; branch/SHA/status/taak-/runtime-eigenaar vastleggen (Claude: `ExitWorktree({ action: "keep" })`). Alleen eigen worktree/branch verwijderen na bevestigde merge, zonder actieve sessie/onverwerkt werk; nooit andermans worktree opruimen of `--force`.
+- **Hotfix (#1287)** pas af na backport naar `develop`: direct na de merge naar `main` een `feature/#<nr>-backport-…` vanuit `develop` met uitsluitend code, tests en docs van de hotfix, **niet** versienummer of CHANGELOG-sectie; toets per bestand op inhoud, **nooit `git checkout main -- <pad>`** (`VERSIONING.md`).
 
 ## Ontwikkelcyclus — verplicht, van issue tot groene CI
 
@@ -163,7 +167,7 @@ Onbekend databaseobject? Lees de definitie vóór een `DROP`, nooit `CASCADE`.
 
 ## Versiebeheer en release
 
-- Versie `MAJOR.MINOR.PATCH.REVISION`: `feat` → PATCH, `fix`/`security` → REVISION, `BREAKING CHANGE` → MAJOR, puur intern geen bump; release: MINOR bij ≥ 1 `feat`, anders PATCH. Zet de versie in **alle drie** csproj's (`FunctionApp/fa-dev-sportlink-01.csproj`, `BlazorAdmin/BlazorAdmin.csproj`, `FunctionApp.Postgres/FunctionApp.Postgres.csproj`) en controleer na elke rebase (`VERSIONING.md`).
+- Versie `MAJOR.MINOR.PATCH.REVISION`: `feat` → PATCH, `fix`/`security` → REVISION, `BREAKING CHANGE` → MAJOR, puur intern geen bump; release: MINOR bij ≥ 1 `feat`, anders PATCH. Zet de versie in **alle drie** csproj's (`FunctionApp/fa-dev-sportlink-01.csproj`, `BlazorAdmin/BlazorAdmin.csproj`, `FunctionApp.Postgres/FunctionApp.Postgres.csproj`) en controleer na elke rebase (`VERSIONING.md`). Late versie-/API-toewijzing en fragmenten pas na eigenaaractivering.
 - `CHANGELOG.md`: elke feature/fix een entry onder `[Unreleased]`; `(#N)` sluit het issue bij de release, dus alleen voor werk in die versie (kruisverwijzing: `zie issue #N`).
 - **Release uitsluitend via `/release`**, door de eigenaar gestart, one-shot, geen agentreview; securitypoort eerst: `/security-review` op `origin/main...origin/develop`, geen open high/critical Dependabot-/code-scanning-alert en geen open secret-scanning-alert, Security Gate + CodeQL groen op develop-HEAD; één HIGH stopt de release; release-PR alleen aantallen per severity (4a).
 `deploy.yml` past migraties zelf toe vóór de code (geen migratie die de vorige code breekt in dezelfde release); demodata in het idempotente seedscript.

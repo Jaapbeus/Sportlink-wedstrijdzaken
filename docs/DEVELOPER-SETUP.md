@@ -197,6 +197,11 @@ Configureer `sensitive-patterns.txt` volgens je lokale omgeving. Dit bestand is 
 
 Bij een update van `.githooks/sensitive-patterns.template.txt`: neem gewijzigde generieke
 patronen over in je bestaande lokale bestand, zonder eigen patronen te overschrijven.
+In iedere werkboom moet het genegeerde `.githooks/sensitive-patterns.txt` bestaan en ten minste
+één geldig lokaal patroon bevatten. Een gitignored bestand wordt niet automatisch naar een nieuwe
+worktree gekopieerd: stel die daar lokaal opnieuw in vanuit de template en controleer
+`git check-ignore .githooks/sensitive-patterns.txt`. Ontbreekt het bestand, herstel de configuratie;
+schakel hooks niet uit en forceer geen commit/push.
 Verifieer de GitHub-installatietokenpatronen met
 `python3 scripts/ci/test-github-token-formats.py` (Gitleaks op PATH vereist). De test gebruikt
 uitsluitend onbruikbare synthetische waarden in geheugen en controleert ook dat teruggezette
@@ -1365,6 +1370,101 @@ gh run view <run-id> --json jobs --jq '.jobs[] | {name: .name, conclusion: .conc
 ```
 
 ### 9.5 Automatische issue-beurt (Claude Code in GitHub Actions)
+
+De hierna beschreven workflows documenteren de bestaande issue-turn/reviewroute. Protocol v1 in
+`docs/SAMENWERKING-AGENTS.md` staat SHADOW: het is geen vervanging voor deze exacte-SHA-aanvraag,
+reviewpublicatie, huidige labels of Build/Security Gate. Een claim/comment maakt geen lock en de
+shadowregistratie verleent geen bevoegdheid. Expliciet via protocol v1 gerouteerde aanvragen worden
+door CI geweigerd; gebruik shadowregistratie uitsluitend voor de toegewezen lokale proef.
+
+Voor shadowregistratie gebruikt de lokale CLI een absolute statusdatabase buiten de checkout;
+commit of synchroniseer die database niet. Interfacevorm:
+
+```bash
+python3 -m scripts.samenwerking --db <absoluut-pad-buiten-checkout> <command>
+```
+
+De opdrachtgegevens gaan als JSON via stdin. Bekijk actuele `--help` en de CLI voor beschikbare
+commando's en schemas; deze instructie inventeert die niet. Shadow is één lokale registratie, geen
+distributed lock en geen toestemming tot schrijven/mergen.
+
+Het lokale JSON-contract (protocol 1, schema-revisie 2):
+
+- `init`: `coordinator` en vaste `owner_session`; herinitialiseren met een andere eigenaar wordt
+  geweigerd. Oude experimentele databases eerst exporteren en handmatig migreren/reconciliëren.
+- `request-create`: de bestaande request-/repository-/issue-/PR-/branch-/SHA-/sessie-/scopevelden,
+  `kind`, niet-lege `required_checks` en `mandatory_tasks`. Elke verplichte taak bevat `task_id`,
+  `purpose`, `assigned_session`; minstens één heeft `reviewer_verification: true` en is toegewezen
+  aan `reviewer_session`. Taak-ID's zijn store-breed uniek. Het manifest staat vast vóór claim.
+  Per repository/PR is slechts één aangeboden/lopende aanvraag toegestaan. Een nieuwe inhoudelijke
+  aanvraag vereist een nieuwe SHA; herstel op dezelfde SHA verloopt via intrekking en `reassign`.
+- Alle actoracties gebruiken `identity` met `request_id`, `repository`, `pr`, `base_sha`, `head_sha`,
+  `session`, `attempt` en `generation`. `claim` ontvangt die identity rechtstreeks.
+- `task-register`: `{identity, task}`; een bestaande verplichte taak start met `task.task_id`.
+  Een extra taak vereist `classification: "optional"`, `purpose` en `assigned_session`.
+  `task-output`: `{identity, task: {task_id, evidence, result}}`, door de toegewezen child;
+  `result` is `success`, `failure`, `unknown` of `cancelled`. Alleen succesvolle actuele uitvoer
+  is bruikbaar. Mislukte uitvoer blijft als te triëren bevinding behouden en trekt eerdere
+  gereedheid voor de PR in. `task-complete`: dezelfde vorm door de reviewer, `result: "success"` en eigen
+  verificatiebewijs; bij een child ook `output_event_id`. Uitvoer ontvangen voltooit de taak niet.
+- `kind: "integration"`: aanvullend `source_request_id` (nieuwste lokale `ready`-review van die PR)
+  en absoluut `repository_path`. `status` toont het berekende bewijs onder
+  `integration.evidence.evidence`. `integration-attest`: `{identity, attestation}` met
+  `evidence_sha256` (SHA-256 van gesorteerde JSON via Python `json.dumps(evidence, sort_keys=True)`),
+  `inherited_changes_reviewed: true`, niet-lege `assessment` en `refs` met `old_base`,
+  `reviewed_head`, `new_base`, `candidate_head`, `expected_tree`, `candidate_tree`. De exacte
+  reviewer moet de volledige geërfde wijziging en interacties beoordelen; SHA/tree-gelijkheid
+  alleen voldoet niet. Handmatige conflicten of onzekere bijdrage vereisen inhoudelijke review.
+- `grant`: `grant_id`, `grantor_session` (vastgelegde eigenaar), `grantee_session`, `request_id`,
+  `action: "owner_accepted"`, `resource_id` (bevinding-ID), `authorization_ref`, `expires_at`
+  (toekomstige gehele Unix-seconden) en `scope`. Scope bevat exact `request_id`, `repository`,
+  `issue`, `pr`, `branch`, `base_sha`, `head_sha`, `attempt`, `generation`, `action`, `resource_id`,
+  `authorization_ref`. `finding-disposition` met `owner_accepted` vereist dezelfde actoridentity,
+  `grant_id` en `authorization_ref`. `grant-revoke`: `grant_id`, `grantor_session`, `reason`.
+  Verlopen/herroepen grants blokkeren ook gereedheid en nieuwe action-intents.
+- `finding-disposition` met `verified`: `{identity, disposition}` met `finding_id`, `disposition:
+  "verified"`, niet-leeg `evidence`, volledige `fix_commit`, `verification_sha` en
+  `verification_request_id`. Identity hoort bij de actieve nieuwe reviewaanvraag van dezelfde PR;
+  verificatie-SHA en -aanvraag moeten daarmee overeenkomen. De onafhankelijke reviewer controleert
+  de fixcommit op die head en verklaart dit in `evidence`; Git-ancestry wordt niet door de CLI
+  bewezen. De oude aanvraag/head kan de fix niet verifiëren. Iedere volgende aanvraag/generatie
+  vereist nieuwe verificatie van bestaande bevindingen. Oude ongebonden disposities blijven
+  bewaard maar blokkeren gereedheid en action-intents; events bevatten de nieuwe bindingen.
+- `finish`: `{identity, result: {result: "clean"}}`. `clean` weigert onopgeloste PR-bevindingen;
+  `completed` behoudt de bestaande taak-/checkvoorwaarden. Bij rode/ontbrekende checks of onafgeronde taken:
+  `{identity, result: {result: "blocked", reason, reviewer_stopped: true, stop_evidence, fence_evidence,
+  stopped_sessions: [...]}}`. Alle teksten zijn niet-leeg; de lijst noemt elke actieve child-sessie.
+  Dit bewaart taken/checks/bevindingen, registreert teruggave, verhoogt generation en zet de aanvraag
+  op `invalidated`, nooit op `ready`. Nieuwe aanvraag op een nieuwe SHA is vervolgens mogelijk;
+  herstel op dezelfde SHA gebruikt `reassign`. Late bevindingen blijven ook na fencing behouden.
+- Een late `finding-record` invalideert alle teruggegeven/gereedstaande aanvragen van dezelfde PR.
+  `action-intent` controleert open bevindingen en actuele fixbindingen nogmaals binnen de transactie.
+- `reassign` vereist naast de bestaande stopbevestiging `stopped_sessions` voor elke actieve
+  child-sessie. Nieuwe generatie vereist opnieuw uitgevoerde taken en checks. `lane-release`
+  met `outcome: "withdrawn"` vereist `reason`, `confirmed_stopped: true`, `stop_evidence`,
+  `fence_evidence`, `reconciliation_evidence`; pending/ambiguous action-intents eerst verzoenen.
+
+Dit is registratie van expliciet vertrouwde lokale invoer, geen authenticatie van eigenaar of
+sessies en geen bewijs dat iemand met remote credentials is tegengehouden. De grantactie verleent
+uitsluitend lokale acceptatie van een bevinding, geen merge-/release-/deploybevoegdheid.
+
+De onafhankelijke worktree-preflight is:
+
+```bash
+python3 scripts/dev/check-worktree-preflight.py --worktree <absoluut-pad> --branch <branch>
+```
+
+Een integratiebewijs kan worden opgebouwd met:
+
+```bash
+python3 scripts/dev/integration-evidence.py --repo <absoluut-repo-pad> --old-base <sha> --reviewed-head <sha> --new-base <sha> --candidate-head <sha>
+```
+
+De bewijsuitvoer is geen review of mergegoedkeuring. Alleen volledige boomgelijkheid, of precies
+de negen csproj-versievelden (`Version`, `AssemblyVersion`, `FileVersion` in drie projecten)
+plus twee OpenAPI-`info.version`-velden (YAML en JSON), kan automatisch als
+beperkte gelijkwaardigheid worden aangemerkt; conflicten of andere verschillen vragen handmatige,
+inhoudelijke beoordeling. Onzekerheid is geen gelijkwaardigheid.
 
 Het label `turn: claude-code` op een issue start de workflow `.github/workflows/claude-issue-turn.yml`. Die implementeert het issue op `feature/#<nr>-<slug>` vanaf `develop` en opent een **draft**-PR (#1601). Vraagt Codex om een review, dan beoordeelt de workflow de Codex-PR read-only (#1727).
 

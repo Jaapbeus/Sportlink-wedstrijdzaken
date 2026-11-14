@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Samenwerking tussen ontwikkelagents krijgt een expliciete reviewroute, vooraf verplichte verificatie en een blijvend bevindingenregister dat ook latere rondes blokkeert bij open punten. Releasevoorbereiding is herstelbaar en herhaalbaar; invoering begint in schaduwmodus met behoud van bestaande waarborgen (#1940).
+
 - De kop van de veldbezetting op Planning toont het aantal wedstrijden. De lijst sorteert op aanvangstijd en daarna op basisveld en subpositie (#1952).
 - Nooit gestarte sync-jobs krijgen na de hersteltermijn op beide databasetiers de eindstatus `failed` met een vaste melding en UTC-eindtijd. Ze worden niet opnieuw ingepland; late queueberichten kunnen niets uitvoeren of overschrijven (#1912).
 

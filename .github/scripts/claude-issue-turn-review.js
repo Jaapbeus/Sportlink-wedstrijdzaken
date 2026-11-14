@@ -24,6 +24,8 @@ const {
 } = require('./claude-issue-turn-gate.js');
 const { applyEndLabel } = require('./claude-issue-turn-eindlabel.js');
 
+const { ciBlock } = require('./samenwerking-poort.js');
+
 const PRIORITEITEN = ['P1', 'P2', 'P3'];
 const UITKOMSTEN = ['geen bevindingen', 'bevindingen'];
 const MAX_BEVINDINGEN = 20;
@@ -183,6 +185,8 @@ function scanPublicText(text) {
  */
 async function checkRequest({ github, context, issueNumber, prNumber, sha, expected }) {
   const request = await findReviewRequest({ github, context, issueNumber });
+  const routeStop = ciBlock(request);
+  if (routeStop) return routeStop;
   if (!request || request.prNumber !== prNumber || request.sha !== sha) {
     return 'de reviewaanvraag is ingetrokken of vervangen (nieuwste fasecomment)';
   }

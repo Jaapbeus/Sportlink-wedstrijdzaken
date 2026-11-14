@@ -327,10 +327,19 @@ release naar `main`; tot die tijd is de overdrachtsvolgorde hierboven niet autom
 
 ### Parallelle agentorkestratie (#1860)
 
-Controleer bij elk orkestratiepunt de live agentbezetting en geef elke vrije runtimeslot een veilige,
-afgebakende taak uit de al toegestane scope. Reken de orkestrator mee in de runtimelimiet. Hergebruik
-voltooide agents meteen en controleer dat zij hun volgende taak hebben aanvaard voordat je een slot als
-actief meldt.
+De bestaande review- en mergevoorwaarden in `AGENTS.md` blijven leidend. Het nieuwe protocol v1
+staat standaard in SHADOW: het registreert sessies, bevindingen en integratiebewijs, maar vervangt
+geen exacte-head-review of CI-gate en geeft geen bevoegdheden. Een issuecomment/claim of `turn:`-label
+is nooit een lock. De volledige staatsovergangen, verplichte join van verificaties, quota, herstel en
+toekomstige activeringsvoorwaarden staan in [SAMENWERKING-AGENTS.md](docs/SAMENWERKING-AGENTS.md).
+
+In shadow is er geen exclusieve technische lane of lock voor alle `develop`-schrijvers. Doe geen
+parallelle develop-integraties op grond van een registratie. Een latere actieve fase vereist dat
+iedere lokale, CI-, bot- en eigenaarsschrijver dezelfde lane kan gebruiken of aantoonbaar is gestopt.
+
+Controleer bij elk orkestratiepunt de live agentbezetting en geef alleen veilige, vooraf toegewezen
+scopes uit. Reken de orkestrator mee in de runtimelimiet. Verifieer acceptatie voordat je een slot als
+actief meldt; annuleer geen verplichte verificatie om een review af te ronden.
 
 Controleer vóór toewijzing de issue-eigenaar, reviewer, fase, beurt, worktree-eigenaar, afhankelijkheden
 en grenzen tussen bestanden, API-contracten, schema's en gedeelde logica. Laat schrijvers niet overlappen
@@ -340,10 +349,11 @@ eigenaarschapscontrole bij uitbreiding en vóór commit of PR.
 Een tekstverschil of aparte bestandslijst bewijst geen functionele isolatie; controleer ook gedeelde
 aanroepers, contracten en gegevensstromen.
 
-Is er geen veilige codetaak, wijs dan onafhankelijke, alleen-lezen status- of CI-controles toe, of een
-exacte-SHA-review als fase en reviewprotocol dat toestaan. Een review blijft alleen-lezen en bevroren op
-de aangeboden SHA. Volg CI en reviewreacties; meld een slot pas bezet nadat de taak aantoonbaar actief is.
-Rapporteer per agent de concrete taak en het bewijs, en vermeld als geen taak veilig beschikbaar is.
+Is er geen veilige codetaak, doe alleen geautoriseerde status-/CI-controle of exacte-SHA-review. Per
+reviewaanvraag is er één benoemde reviewer-sessie. Bewaar alle bevindingen, ook onverwachte; een
+schone review wist geen eerdere finding. Na ronde drie gaat dispositie eerst naar implementer en dan
+naar de eigenaar. Een base-update vraagt een apart integratieattest; dat attest vervangt geen nieuwe
+inhoudelijke review bij gewijzigde/onzekere bijdrage. Rapporteer taak, sessie en bewijs.
 
 ### Security Gate
 

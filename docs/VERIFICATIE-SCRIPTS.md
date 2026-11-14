@@ -197,6 +197,28 @@ bij een echte merge of release blijken. Om dezelfde reden draaien daar ook
 `node .github/scripts/issue-router.test.js` (routetabel, structuur van `issue-router.yml` en `claude-issue-turn.yml`, guard tegen `checks: write`, #1721) en
 `node .github/scripts/claude-issue-turn-ledger.test.js` (rondeteller op ID's, fail-closed, #1721).
 
+Protocol v1 heeft daarnaast een lokale SHADOW-registratie en preview-/validatietooling. Die registratie
+is geen distributieve lock en bewijst niet dat alle CI-, bot-, owner- en lokale schrijvers meedoen.
+De bestaande exacte-head-, `Build (PR)`- en Security Gate-controles blijven leidend. Een protocolrecord
+kan geen ontbrekende check, onvoltooide verplichte verificatie of finding/dispositie vervangen. De
+acceptatie- en activeringsvoorwaarden staan in `docs/SAMENWERKING-AGENTS.md`; voer geen actieve lane
+of writer-exclusiviteit op basis van shadowbewijs op.
+
+De nieuwe `scripts/dev/check-worktree-preflight.py` valideert de opgegeven absolute worktree en
+branch vóór werk; `scripts/dev/integration-evidence.py` maakt een bewijsrapport voor de oude review,
+nieuwe base en kandidaat-head. Het rapporteert uitsluitend een exacte volledige integratietree of
+wijzigingen aan de elf gesynchroniseerde versievelden: `Version`, `AssemblyVersion` en `FileVersion`
+in elk van de drie applicatieprojecten, plus `info.version` in OpenAPI YAML en JSON. Alleen die
+scalaire versiewaarden mogen veranderen; overige tekst blijft bytegelijk. Dubbele JSON-sleutels,
+onduidelijke YAML-scopes en niet-ondersteunde of voorwaardelijke XML-versievelden krijgen geen
+versie-uitzondering. CHANGELOG-wijzigingen vallen buiten deze normalisatie.
+
+Conflicten, extra bestanden, moduswijzigingen en andere inhoud vragen gewone inhoudelijke of
+handmatige beoordeling. Het rapport behoudt de volledige tree-ID's, verschilpaden, geordende
+diff-hashes en overgeërfde commits. Ook bij een exacte tree of alleen versievelden blijft een
+onafhankelijke interactiereview verplicht; het rapport autoriseert geen reviewovername of merge.
+Controleer commandoreferentie en code bij wijzigingen.
+
 ### BlazorAdmin-build wordt overgeslagen bij een draaiende dev server
 
 Draait er iets op poort 5242, dan slaat sectie 3 de BlazorAdmin-build over. Een tweede
