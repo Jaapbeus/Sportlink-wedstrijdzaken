@@ -317,6 +317,12 @@ public static class SportlinkEndpointCore
     /// tierwissel een ander aantal wedstrijden voorgeladen krijgt.</summary>
     public const int WarmupVooruitkijkDagen = 2;
 
+    /// <summary>
+    /// Aantal dagen vooruit dat de timer die de veldplanner-blokken en wedstrijdnummers vooraf vastlegt (#1917) kijkt: vandaag
+    /// tot en met vandaag + dit aantal (eigenaarsbesluit: 4 weken). Gedeeld door beide tiers.
+    /// </summary>
+    public const int VeldplannerVoorbereidDagen = 28;
+
     /// <summary>Throttle-sleutel van de contract-check-noodmail.</summary>
     public const string ContractCheckNoodmailSleutel = "sportlink-contract-noodmail";
 

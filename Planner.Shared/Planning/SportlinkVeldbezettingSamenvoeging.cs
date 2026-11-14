@@ -42,7 +42,7 @@ public static class SportlinkVeldbezettingSamenvoeging
 
     /// <param name="eigen">De wedstrijden uit onze database voor die dag.</param>
     /// <param name="blokken">De Sportlink-veldplanner voor die dag, of <c>null</c> bij een terugval.</param>
-    /// <param name="sleutel">Het teamlabel "Thuis - Uit" en de starttijd van een eigen regel.</param>
+    /// <param name="sleutel">De sleutels van een eigen regel (<c>PublicMatchId</c>, <c>wedstrijdnummer</c>) — nooit zijn naam (#1915).</param>
     /// <param name="overschrijf">Neemt de gegevens van een Sportlink-blok over in een eigen regel.</param>
     /// <param name="nieuw">Maakt een regel van een Sportlink-blok dat geen eigen regel heeft.</param>
     /// <param name="nietInSportlink">Markeert een eigen regel die Sportlink niet kent.</param>
@@ -51,7 +51,7 @@ public static class SportlinkVeldbezettingSamenvoeging
     /// Zonder blokken (terugval) blijven de regels dezelfde instantie en zijn alle aantallen nul.</returns>
     public static Samengevoegd<T> Voeg<T>(
         IReadOnlyList<T> eigen, IReadOnlyList<SportlinkVeldplannerBlok>? blokken,
-        Func<T, (string Label, string? Starttijd)> sleutel,
+        Func<T, EigenSleutel> sleutel,
         Func<T, SportlinkVeldplannerBlok, T> overschrijf,
         Func<SportlinkVeldplannerBlok, T> nieuw,
         Func<T, T> nietInSportlink,

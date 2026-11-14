@@ -69,72 +69,75 @@ public class SportlinkVeldplannerTests
         act.Should().Throw<System.Text.Json.JsonException>();
     }
 
-    private static SportlinkVeldplannerBlok Blok(string label, string start, int duur = 75)
-        => new(label, "veld 1", start, 1m, duur, null);
+    private static SportlinkVeldplannerBlok Blok(string? publicId, long? externId = null, string label = "Thuis - Uit", string start = "09:00")
+        => new(label, "veld 1", start, 1m, 75, publicId, externId);
+
+    private static EigenSleutel Eigen(string? publicId = null, long? nummer = null) => new(publicId, nummer);
 
     [Fact]
-    public void Koppel_ZelfdeLabel_ZonderLeestekensEnHoofdletters()
-    {
-        var res = SportlinkVeldplannerKoppeling.Koppel(
-            new[] { ("Thuis 5 - Voorbeeld '46 8", (string?)"14:30") }, new[] { Blok("Thuis 5 - Voorbeeld 46 8", "14:30") });
+    public void Koppel_OpPublicMatchId_OngeachtDeNaamEnDeStarttijd()
+        => SportlinkVeldplannerKoppeling.Koppel(
+                new[] { Eigen("M1") }, new[] { Blok("M1", label: "Heel Andere Naam - Nog Anders", start: "17:00") })
+            .Should().ContainKey(0, "de koppeling kijkt nooit naar naam of tijd (#1915)");
 
-        res.Should().ContainKey(0);
+    [Fact]
+    public void Koppel_ZelfdeNaamMaarAnderPublicMatchId_KoppeltNiet()
+        => SportlinkVeldplannerKoppeling.Koppel(
+                new[] { Eigen("M1") }, new[] { Blok("M2", label: "Thuis - Uit") })
+            .Should().BeEmpty("een naam is geen identiteit");
+
+    [Fact]
+    public void Koppel_ZonderEnigeSleutel_KoppeltNooit()
+        => SportlinkVeldplannerKoppeling.Koppel(
+                new[] { Eigen() }, new[] { Blok(null, label: "Thuis - Uit") })
+            .Should().BeEmpty();
+
+    [Fact]
+    public void Koppel_ElkBlokHooguitEenmaal()
+    {
+        var res = SportlinkVeldplannerKoppeling.Koppel(new[] { Eigen("M1"), Eigen("M1") }, new[] { Blok("M1") });
+
+        res.Should().ContainSingle().Which.Key.Should().Be(0);
     }
 
     [Fact]
-    public void Koppel_VerouderdeStarttijd_KoppeltToch()
+    public void Koppel_RondeTwee_Wedstrijdnummer_AlsPublicMatchIdOntbreekt()
         => SportlinkVeldplannerKoppeling.Koppel(
-                new[] { ("JO13-2 - JO13-2", (string?)"10:15") }, new[] { Blok("JO13-2 - JO13-2", "09:00") })
-            .Should().ContainKey(0, "Sportlink is leidend, ook als onze starttijd achterloopt");
+                new[] { Eigen(null, 101066) }, new[] { Blok("M9", externId: 101066) })
+            .Should().ContainKey(0, "wedstrijdnummer = ExternalMatchId");
 
     [Fact]
-    public void Koppel_TweeBlokkenZelfdeLabel_DichtstbijzijndeStarttijdEnElkBlokEenmaal()
+    public void Koppel_RondeTwee_NummerDubbelBijEigenRegels_KoppeltNiet()
+        => SportlinkVeldplannerKoppeling.Koppel(
+                new[] { Eigen(null, 1), Eigen(null, 1) }, new[] { Blok("M9", externId: 1) })
+            .Should().BeEmpty("een clubwedstrijd heeft vaak nummer 1; dat is niet eenduidig");
+
+    [Fact]
+    public void Koppel_RondeTwee_NummerDubbelBijBlokken_KoppeltNiet()
+        => SportlinkVeldplannerKoppeling.Koppel(
+                new[] { Eigen(null, 7) }, new[] { Blok("M8", externId: 7), Blok("M9", externId: 7) })
+            .Should().BeEmpty();
+
+    [Fact]
+    public void Koppel_RondeTwee_NeemtGeenBlokDatRondeEenAlHeeft()
     {
-        var blokken = new[] { Blok("A - B", "09:00"), Blok("A - B", "13:00") };
         var res = SportlinkVeldplannerKoppeling.Koppel(
-            new[] { ("A - B", (string?)"13:10"), ("A - B", (string?)"09:05") }, blokken);
+            new[] { Eigen(null, 5), Eigen("M1", 5) }, new[] { Blok("M1", externId: 5) });
+
+        res.Should().ContainSingle().Which.Key.Should().Be(1, "het PublicMatchId gaat voor");
+    }
+
+    [Fact]
+    public void Koppel_OnbekendNummerBijBlok_KoppeltNiet()
+        => SportlinkVeldplannerKoppeling.Koppel(new[] { Eigen(null, 5) }, new[] { Blok("M1", externId: null) }).Should().BeEmpty();
+
+    [Fact]
+    public void Koppel_TweeWedstrijdenMetEigenSleutel_KoppelenElkAanHunEigenBlok()
+    {
+        var res = SportlinkVeldplannerKoppeling.Koppel(
+            new[] { Eigen("M2"), Eigen("M1") }, new[] { Blok("M1", start: "09:00"), Blok("M2", start: "13:00") });
 
         res[0].StartTijd.Should().Be("13:00");
         res[1].StartTijd.Should().Be("09:00");
     }
-
-    [Fact]
-    public void Koppel_PloegnaamMetVoorvoegsel_KoppeltInRondeTwee()
-        => SportlinkVeldplannerKoppeling.Koppel(
-                new[] { ("Thuis 35+2 - v.v. Uit 35+2", (string?)"21:00") },
-                new[] { Blok("Thuis 35+2 - Uit 35+2", "21:00", 30) })
-            .Should().ContainKey(0);
-
-    [Fact]
-    public void Koppel_AndereWedstrijd_KoppeltNiet()
-        => SportlinkVeldplannerKoppeling.Koppel(
-                new[] { ("Thuis 1 - Uit", (string?)"14:00") }, new[] { Blok("Thuis 2 - Uit", "14:00") })
-            .Should().BeEmpty("een wedstrijd die Sportlink niet kent behoudt de eigen berekening");
-
-    [Fact]
-    public void Koppel_RondeTweeNeemtGeenBlokDatRondeEenAlHeeft()
-    {
-        var blokken = new[] { Blok("Thuis 1 - Uit", "14:00") };
-        var res = SportlinkVeldplannerKoppeling.Koppel(
-            new[] { ("Thuis 1 - v.v. Uit", (string?)"14:00"), ("Thuis 1 - Uit", (string?)"14:00") }, blokken);
-
-        res.Should().ContainSingle().Which.Key.Should().Be(1, "het exacte label gaat voor");
-    }
-
-    [Theory]
-    [InlineData("Thuis JO13-1 - Uit JO13-1", "Thuis JO13-10 - Uit JO13-10")]
-    [InlineData("Thuis 1 - Uit 1", "Thuis 10 - Uit 10")]
-    [InlineData("Thuis O13-1 - Uit O13-1", "Thuis O15-1 - Uit O15-1")]
-    [InlineData("Thuis JO13-1 - Uit JO13-1", "Thuis MO13-1 - Uit MO13-1")]
-    public void Koppel_VerschillendTeamnummerOfCategorie_KoppeltNooit(string eigenLabel, string sportlinkLabel)
-        => SportlinkVeldplannerKoppeling.Koppel(
-                new[] { (eigenLabel, (string?)"09:00") }, new[] { Blok(sportlinkLabel, "09:00") })
-            .Should().BeEmpty("bij twijfel behoudt de Planning de eigen gegevens (R1-F1)");
-
-    [Fact]
-    public void Koppel_VoorvoegselMagVerschillen_MaarTeamnummerMoetExactKloppen()
-        => SportlinkVeldplannerKoppeling.Koppel(
-                new[] { ("v.v. Thuis JO13-1 - Uit JO13-1", (string?)"09:00") },
-                new[] { Blok("Thuis JO13-10 - Uit JO13-10", "09:00"), Blok("Thuis JO13-1 - Uit JO13-1", "13:00") })
-            .Should().ContainKey(0).WhoseValue.StartTijd.Should().Be("13:00");
 }

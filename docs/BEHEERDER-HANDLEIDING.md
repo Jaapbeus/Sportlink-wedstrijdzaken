@@ -124,7 +124,7 @@ hieronder — zie hoofdstuk 19 voor de Sportlink Web Extension zelf.
 wedstrijd die daar op uw park staat, ook van een andere club, staat ook in de tabel en de tijdlijn (met het label *Alleen in
 Sportlink*). Een wedstrijd uit onze eigen gegevens die Sportlink niet kent blijft zichtbaar met het label *Niet in Sportlink*,
 en boven de tabel staat dan een melding: controleer in Sportlink of de wedstrijd is verwijderd of verplaatst, en voer zo nodig een
-synchronisatie uit. Is Sportlink niet bereikbaar, dan toont de Planning onze eigen gegevens zoals voorheen. De kolom
+synchronisatie uit. Een wedstrijd wordt aan Sportlink gekoppeld via het ID dat Sportlink zelf aan de wedstrijd geeft, nooit via de teamnaam: een andere schrijfwijze van een club geeft dus geen dubbele regel meer. Is Sportlink niet bereikbaar, dan toont de Planning onze eigen gegevens zoals voorheen. De kolom
 **Tegenstander** toont de andere ploeg van de wedstrijd, ook bij een uitwedstrijd.
 
 **Sportlink is leidend (#1547, #1563).** De tijdlijn toont elke wedstrijd zoals de veldplanner in
