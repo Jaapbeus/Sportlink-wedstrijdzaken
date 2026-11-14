@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Het clubneutrale seizoensschema van vóór de seizoensstartmaand per club is opgeruimd (#1747): `public.season` (migratie 051) en op SQL Server `dbo.Season` en `dbo.sp_UpdateSeasonTable`. De seizoenen staan al sinds #1715 per club in `public.clubseason` / `dbo.ClubSeason`; geen gedragswijziging, wel een schemawijziging op beide databasetiers.
+- **E-mailclassificatiebatch gedeeld** (#1925): batchafhandeling staat eenmalig in `Planner.Endpoints`; SQL Server en Postgres behouden hun eigen body- en datumvalidatie-adapter.
 - CI: de Build-job toont de duur van guard, fixturetests en mutatietests van de agentinstructies afzonderlijk, net als die van de EgressGuard-guard en zijn zelftest. Commando's en volgorde zijn gelijk gebleven (#1930).
 
 ## [3.17.0.0] — 2026-11-12
