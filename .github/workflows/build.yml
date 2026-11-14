@@ -59,6 +59,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: TIJDELIJK rood-bewijs #1942 — falende guard
+        run: exit 1
 
       # #825: bewaakt dat elke padverwijzing in ps1/psm1/md/yml/yaml/csproj-bestanden exact
       # (case-sensitief) overeenkomt met het daadwerkelijke getrackte bestand. Git's
@@ -438,6 +440,7 @@ jobs:
 
   guard-zelftests-overig:
     name: Guard-zelftests — schrijven tijdelijk in de werkboom
+    if: false  # TIJDELIJK rood-bewijs #1942
     runs-on: ubuntu-latest
     # Deze twee zelftests wijzigen tijdelijk bestanden in de checkout (EgressGuard zet een
     # Proef.cs in FunctionApp*/, check-codekwaliteit.test.sh doet `git checkout --`). Daarom een
