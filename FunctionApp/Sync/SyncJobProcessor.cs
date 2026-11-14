@@ -9,12 +9,13 @@ namespace SportlinkFunction;
 
 /// <summary>
 /// Verwerkt berichten van de <see cref="SyncJobsQueue.QueueName"/>-queue (#1138) — de opvolger van
-/// de fire-and-forget <c>Task.Run</c> in <c>AdminSyncFunction.Trigger</c>. Eén poging per bericht:
-/// een mislukking wordt in <c>dbo.SyncJobs</c> vastgelegd als <c>failed</c> en niet opnieuw
-/// geprobeerd door de queue zelf (geen rethrow) — de sync-pipeline heeft al eigen retry-logica
-/// voor databaseverbindingen, en een tweede, automatische queue-retry zou een gedeeltelijk
-/// geslaagde merge riskeren te herhalen. Een beheerder die het opnieuw wil proberen klikt gewoon
-/// nogmaals op de sync-knop, wat een nieuwe job aanmaakt.
+/// de fire-and-forget <c>Task.Run</c> in <c>AdminSyncFunction.Trigger</c>. Een normale mislukking
+/// (fout of gedeeltelijk mislukt) wordt vastgelegd als <c>failed</c> en niet door de queue herhaald
+/// (geen rethrow): een tweede queue-retry zou een gedeeltelijk geslaagde merge riskeren te herhalen.
+/// Alleen een onderbroken job (30 minuten op <c>running</c>, bv. een gecrashte host) wordt door
+/// <see cref="SyncJobsRepository.HerstelOnderbrokenAsync"/> begrensd opnieuw aangeboden (#1839, hoogstens 2 keer; het herstel loopt mee met een sync-start, een statusaanvraag en de geplande sync); elke
+/// afronding is aan het pogingnummer van de claim gebonden zodat een verouderde poging een
+/// herstarte niet overschrijft.
 /// </summary>
 public static class SyncJobProcessor
 {
@@ -43,19 +44,19 @@ public static class SyncJobProcessor
 
         using var traceScope = log.BeginScope(new Dictionary<string, object> { ["SyncJobId"] = job.JobId });
         if (!await SyncJobClaimCore.ExecuteIfClaimedAsync(
-                job.JobId, SyncJobsRepository.TryClaimPendingAsync, () => ProcessClaimedSqlServerJobAsync(job, log)))
+                () => SyncJobsRepository.TryClaimAttemptAsync(SystemUtilities.DatabaseConfig.ConnectionString, job.JobId), attempt => ProcessClaimedSqlServerJobAsync(job, attempt, log)))
         {
             log.LogInformation("SyncJobProcessor: SQL Server-job {JobId} is niet meer pending en wordt overgeslagen", job.JobId);
         }
     }
 
-    private static async Task ProcessClaimedSqlServerJobAsync(SyncJobMessage job, ILogger log)
+    private static async Task ProcessClaimedSqlServerJobAsync(SyncJobMessage job, int attempt, ILogger log)
     {
-        log.LogInformation("SyncJobProcessor: SQL Server job {JobId} claimed, range {From} .. {To}", job.JobId, job.WeekOffsetFrom, job.WeekOffsetTo);
+        log.LogInformation("SyncJobProcessor: SQL Server job {JobId} claimed (poging {Attempt}), range {From} .. {To}", job.JobId, attempt, job.WeekOffsetFrom, job.WeekOffsetTo);
         try
         {
             if (await BlokkeerBuitenProductieAsync(
-                    job, log, EgressGuard.ExternalIntegrationsAllowed, SyncJobsRepository.MarkCompletedAsync))
+                    job, log, EgressGuard.ExternalIntegrationsAllowed, (id, ok, msg) => SyncJobsRepository.MarkCompletedAsync(id, ok, msg, attempt)))
                 return;
 
             await WaitForDatabaseAsync(log);
@@ -68,18 +69,18 @@ public static class SyncJobProcessor
             {
                 log.LogWarning("SyncJobProcessor: job {JobId} gedeeltelijk mislukt", job.JobId);
                 await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                    errorMessage: uitkomst.JobFoutmelding());
+                    errorMessage: uitkomst.JobFoutmelding(), attempt);
                 return;
             }
 
-            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: true, errorMessage: null);
+            await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: true, errorMessage: null, attempt);
             log.LogInformation("SyncJobProcessor: job {JobId} voltooid", job.JobId);
         }
         catch (Exception ex)
         {
             log.LogError(ex, "SyncJobProcessor: job {JobId} mislukt", job.JobId);
             await SyncJobsRepository.MarkCompletedAsync(job.JobId, succeeded: false,
-                errorMessage: FoutmeldingVoorStatus(ex));
+                errorMessage: FoutmeldingVoorStatus(ex), attempt);
         }
     }
 

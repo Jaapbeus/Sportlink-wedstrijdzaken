@@ -13,15 +13,6 @@ public class SyncJobTransitionsTests
         => SyncJobTransitions.CompletionStatus(succeeded).Should().Be(expected);
 
     [Fact]
-    public void IsClaimGranted_ReturnsTrueOnlyWhenDatabaseReturnedTheJobId()
-    {
-        SyncJobTransitions.IsClaimGranted(Guid.NewGuid()).Should().BeTrue();
-        SyncJobTransitions.IsClaimGranted(null).Should().BeFalse();
-        SyncJobTransitions.IsClaimGranted(DBNull.Value).Should().BeFalse();
-        SyncJobTransitions.IsClaimGranted(1).Should().BeFalse();
-    }
-
-    [Fact]
     public void TruncateError_NullStaysNull_ShortStaysUntouched_LongIsCut()
     {
         SyncJobTransitions.TruncateError(null).Should().BeNull();
@@ -32,5 +23,16 @@ public class SyncJobTransitionsTests
 
         var long1 = new string('y', SyncJobTransitions.MaxErrorMessageLength + 5);
         SyncJobTransitions.TruncateError(long1).Should().HaveLength(1000).And.Be(long1[..1000]);
+    }
+
+    [Fact]
+    public void ReadClaimedAttempt_AlleenEenPositiefGeheelGetalIsEenClaim()
+    {
+        SyncJobTransitions.ReadClaimedAttempt(1).Should().Be(1);
+        SyncJobTransitions.ReadClaimedAttempt(3).Should().Be(3);
+        SyncJobTransitions.ReadClaimedAttempt(0).Should().BeNull();
+        SyncJobTransitions.ReadClaimedAttempt(null).Should().BeNull();
+        SyncJobTransitions.ReadClaimedAttempt(DBNull.Value).Should().BeNull();
+        SyncJobTransitions.ReadClaimedAttempt(Guid.NewGuid()).Should().BeNull();
     }
 }
