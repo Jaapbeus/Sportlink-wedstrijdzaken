@@ -6,9 +6,8 @@ namespace Database.Postgres.Tests;
 
 /// <summary>
 /// Bewijst dat <see cref="PostgresSeasonProcedures.EnsureSeasonsAsync"/> het gat dicht dat §21
-/// beschreef: migratie 008 zaait <c>public.season</c> één keer, maar er was op deze tier geen
-/// equivalent van de doorrol die <c>sp_UpdateSeasonTable</c> op de SQL Server-tier bij elke deploy
-/// uitvoert.
+/// beschreef: migratie 008 zaaide de (inmiddels verwijderde, #1747) tabel <c>public.season</c> één keer, maar er was op deze tier geen
+/// equivalent van de doorrol die de SQL Server-tier bij elke deploy uitvoert.
 ///
 /// <para>
 /// <b>Waarom deze tests een expliciete datum meegeven.</b> De doorrol-tak vuurt alleen vanaf twee
@@ -244,46 +243,49 @@ public class PostgresSeasonProceduresIntegrationTests
     }
 
     /// <summary>
-    /// P1, overgang: de vorige codeversie schrijft tijdens de deploy nog met haar eigen statement in
-    /// <c>public.season</c> (letterlijk overgenomen uit origin/main, <c>PostgresSeasonProcedures.VoegSeizoenToeAsync</c>
-    /// vóór #1715). Na migratie 043 moet dat blijven werken, de nieuwe code moet daarna haar eigen tabel vullen,
-    /// en een herhaalde uitvoering van de migratie mag niets veranderen.
+    /// Contract-stap (#1747): migratie 051 verwijdert <c>public.season</c>, maar weigert dat zolang die tabel rijen
+    /// heeft en <c>public.clubseason</c> helemaal leeg is (dan is de vulling van migratie 043 niet gedraaid).
+    /// Elke tak draait in een eigen transactie die wordt teruggedraaid; DDL is in Postgres transactioneel, dus de
+    /// gedeelde testdatabase blijft ongemoeid.
     /// </summary>
     [PostgresFact]
-    public async Task Overgang_VorigeCodeSchrijftNogInPublicSeason_NieuweCodeEnHerhaaldeMigratieWerken()
+    public async Task Migratie051_WeigertBijRijenZonderClubseason_VerwijdertAnders_EnIsHerhaalbaar()
     {
-        const string VorigeWriter = @"
-            INSERT INTO public.season (name, datefrom, dateuntil)
-            VALUES (@name, @datefrom, @dateuntil)
-            ON CONFLICT (name) DO NOTHING";
-        await using var conn = await OpenSchoonAsync(9);
-        await using (var leeg = new NpgsqlCommand("DELETE FROM public.season", conn))
-            await leeg.ExecuteNonQueryAsync();
+        await using var conn = await OpenSchoonAsync();
+        var sql = await LeesMigratie051Async();
 
-        // 1. Vorige code op het schema van deze PR: een insert en een herhaling (conflict) slagen allebei.
-        for (var i = 0; i < 2; i++)
+        // 1. Oude tabel met rijen, clubseason leeg: de migratie stopt en laat de tabel staan.
+        await using (var tx = await conn.BeginTransactionAsync())
         {
-            await using var oud = new NpgsqlCommand(VorigeWriter, conn);
-            oud.Parameters.AddWithValue("name", "2025-2026");
-            oud.Parameters.AddWithValue("datefrom", new DateTime(2025, 7, 1));
-            oud.Parameters.AddWithValue("dateuntil", new DateTime(2026, 6, 30));
-            (await oud.ExecuteNonQueryAsync()).Should().Be(i == 0 ? 1 : 0);
+            await ZaaiOudeTabelAsync(conn, tx);
+            var fout = await Assert.ThrowsAsync<PostgresException>(async () =>
+            {
+                await using var cmd = new NpgsqlCommand(sql, conn, tx);
+                await cmd.ExecuteNonQueryAsync();
+            });
+            fout.MessageText.Should().Contain("clubseason is leeg");
+            await tx.RollbackAsync();
         }
 
-        // 2. Herhaalde migratie op een database met clubloze rijen: de club zonder rijen krijgt ze per eigen maand.
-        await VoerMigratie043UitAsync(conn);
-        (await GrenzenAsync(conn, "2025-2026")).Should().Be((new DateTime(2025, 9, 1), new DateTime(2026, 8, 31)));
-
-        // 3. Nieuwe code: vult de eigen tabel aan, raakt public.season niet.
-        await PostgresSeasonProcedures.EnsureSeasonsAsync(conn, new DateOnly(2026, 10, 13));
-        (await NamenAsync(conn)).Should().Equal("2025-2026", "2026-2027");
-        await using (var oudTelling = new NpgsqlCommand("SELECT COUNT(*) FROM public.season", conn))
-            ((long)(await oudTelling.ExecuteScalarAsync())!).Should().Be(1, "de nieuwe code schrijft niet meer in de oude tabel");
-
-        // 4. Nog een keer de migratie: de club heeft rijen, dus niets verandert (ook niet na een herbouw).
-        var voor = await NamenAsync(conn);
-        await VoerMigratie043UitAsync(conn);
-        (await NamenAsync(conn)).Should().Equal(voor);
+        // 2. Clubseason gevuld: de tabel verdwijnt; een tweede uitvoering (geen tabel meer) slaagt ook.
+        await using (var tx = await conn.BeginTransactionAsync())
+        {
+            await ZaaiOudeTabelAsync(conn, tx);
+            await using (var vul = new NpgsqlCommand(
+                "INSERT INTO public.clubseason (clubcode, name, datefrom, dateuntil) VALUES (@c, '2025-2026', '2025-07-01', '2026-06-30')", conn, tx))
+            {
+                vul.Parameters.AddWithValue("c", Club);
+                await vul.ExecuteNonQueryAsync();
+            }
+            for (var i = 0; i < 2; i++)
+            {
+                await using var cmd = new NpgsqlCommand(sql, conn, tx);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            await using var bestaat = new NpgsqlCommand("SELECT to_regclass('public.season') IS NULL", conn, tx);
+            ((bool)(await bestaat.ExecuteScalarAsync())!).Should().BeTrue("de oude tabel is verwijderd");
+            await tx.RollbackAsync();
+        }
     }
 
     /// <summary>
@@ -355,15 +357,23 @@ public class PostgresSeasonProceduresIntegrationTests
         await cmd.ExecuteNonQueryAsync();
     }
 
-    /// <summary>Voert het migratiebestand 043 letterlijk opnieuw uit (zoals een herhaalde deploy zonder ledger).</summary>
-    private static async Task VoerMigratie043UitAsync(NpgsqlConnection conn)
+    private static async Task<string> LeesMigratie051Async()
     {
         var map = new DirectoryInfo(AppContext.BaseDirectory);
         while (map is not null && !File.Exists(Path.Combine(map.FullName, "AGENTS.md")))
             map = map.Parent;
         var pad = Path.Combine(map?.FullName ?? throw new InvalidOperationException("Repositorywortel niet gevonden."),
-            "Database.Postgres", "migrations", "043_clubseason.sql");
-        await using var cmd = new NpgsqlCommand(await File.ReadAllTextAsync(pad), conn);
+            "Database.Postgres", "migrations", "051_drop_season.sql");
+        return await File.ReadAllTextAsync(pad);
+    }
+
+    /// <summary>Maakt (binnen de transactie) de oude tabel opnieuw aan zoals migratie 008 haar definieerde, met één rij.</summary>
+    private static async Task ZaaiOudeTabelAsync(NpgsqlConnection conn, NpgsqlTransaction tx)
+    {
+        await using var cmd = new NpgsqlCommand(
+            "DROP TABLE IF EXISTS public.season; " +
+            "CREATE TABLE public.season (name VARCHAR(9) NOT NULL, datefrom DATE NULL, dateuntil DATE NULL, CONSTRAINT ux_season_name UNIQUE (name)); " +
+            "INSERT INTO public.season (name, datefrom, dateuntil) VALUES ('2025-2026', '2025-07-01', '2026-06-30');", conn, tx);
         await cmd.ExecuteNonQueryAsync();
     }
 

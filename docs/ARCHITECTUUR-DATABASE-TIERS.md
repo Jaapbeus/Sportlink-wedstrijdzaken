@@ -4950,7 +4950,7 @@ de vorige codeversie draait even op het nieuwe schema. Die schrijft op Postgres 
 `public.clubseason` / `dbo.ClubSeason` (sleutel `(clubcode, name)`, RLS aan in dezelfde migratie), eenmalig per
 club gevuld uit de oude tabel. `public.season`, `dbo.Season` en `dbo.sp_UpdateSeasonTable` blijven in deze release
 ongewijzigd staan en worden door de nieuwe code niet meer gelezen of geschreven; `Script.PostDeployment1.sql` roept
-de oude procedure (met `MIN()` over clubs) niet meer aan. Opruimen is de contract-stap in een latere release (#1747).
+de oude procedure (met `MIN()` over clubs) niet meer aan. Opruimen was de contract-stap in een latere release (#1747, hieronder).
 
 | Onderdeel | Postgres | SQL Server |
 |---|---|---|
@@ -4987,6 +4987,21 @@ nieuwe schema, daarna de nieuwe code en een herhaalde migratie), de verse PostDe
 PostDeployment-basis → deze PR op een bestaande database (job `fresh-db`), en sinds deze PR ook de
 SQL Server-integratietests (`SQLSERVER_TEST_CONNECTION_STRING` in `fresh-db`). Niet in CI: de browser-rendercheck
 van `/instellingen`.
+
+**Contract-stap (#1747).** Zodra de release met #1715 live is en de vorige codeversie dus niet meer draait, zijn de
+oude objecten verwijderd:
+
+| | Postgres | SQL Server |
+|---|---|---|
+| Verwijderd | migratie `051_drop_season.sql`: `DROP TABLE IF EXISTS public.season` (zonder `CASCADE`; index en RLS gaan mee) | `dbo.Season` en `dbo.sp_UpdateSeasonTable`: idempotent `DROP` in `Script.PostDeployment1.sql`, bronbestanden `Season.sql` en `sp_UpdateSeasonTable.sql` en hun regels in het `.sqlproj` weg; de #631-opschoning en de eenmalige vulling van `dbo.ClubSeason` uit `dbo.Season` vervallen |
+| Veiligheid | de migratie stopt als `public.season` rijen heeft terwijl `public.clubseason` leeg is (vulling van 043 niet gedraaid) | een object dat nog naar de tabel verwijst laat de deploy falen (geen `CASCADE`) |
+| Opruiming rondom | `SqlServerToPostgresCopy` kopieert `Season` niet meer; test van de oude schrijver vervangen door een test van migratie 051 | uitzondering voor `dbo.sp_UpdateSeasonTable` uit `check-postgres-procedure-view-coverage.sh` weg; overgangsstap in `build.yml` meet nu dat `dbo.Season` verdwijnt en `dbo.ClubSeason` ongewijzigd blijft |
+
+Migraties 008, 021 en 043 blijven bevroren (checksum, #821): een verse database maakt `public.season` nog aan en
+051 verwijdert haar direct daarna. **Gevolg voor een omgeving die releases oversloeg:** een database die van vóór
+#1715 rechtstreeks naar deze versie gaat, krijgt geen eenmalige vulling van `ClubSeason` uit de oude tabel meer; de
+doorrol zaait dan het huidige en aankomende seizoen met de eigen startmaand van de club. Op Postgres geldt dit niet:
+migratie 043 loopt daar vóór 051 en vult `clubseason` nog uit de oude tabel. Een SQL Server-omgeving die deze stap overslaat, moet eerst de release met #1715 draaien.
 
 ## 85. Teamcategorie (KNVB A/B) voorbereid: één additieve kolom op beide tiers (#1787)
 
