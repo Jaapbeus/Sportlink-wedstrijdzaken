@@ -20,6 +20,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 - Het resultaatpaneel van **Wedstrijd aanmaken** toont nu het thuis- en uitteam zoals die naar Sportlink zijn gestuurd, met erbij of het uitteam aan een team is gekoppeld. Na een echte aanmaak leest de app de wedstrijd bij Sportlink terug en waarschuwt als Sportlink een ander uitteam toont dan opgegeven; een dry-run of een mislukte teruglezing geeft geen waarschuwing. Op beide databasetiers. Vervolg op #1871 (#1892).
 - Het clubneutrale seizoensschema van vóór de seizoensstartmaand per club is opgeruimd (#1747): `public.season` (migratie 051) en op SQL Server `dbo.Season` en `dbo.sp_UpdateSeasonTable`. De seizoenen staan al sinds #1715 per club in `public.clubseason` / `dbo.ClubSeason`; geen gedragswijziging, wel een schemawijziging op beide databasetiers.
+
+- De e-mailbatchfilters delen nu `EmailBatchFilterKern` in `Planner.Shared`; beide tieromhulsels leveren hun eigen berichtheaders en Graph-adapter aan. Filtervolgorde, acties en foutafhandeling blijven gelijk (zie issue #1927).
+
 - **E-mailclassificatiebatch gedeeld** (#1925): batchafhandeling staat eenmalig in `Planner.Endpoints`; SQL Server en Postgres behouden hun eigen body- en datumvalidatie-adapter.
 
 ## [3.17.0.0] — 2026-11-12

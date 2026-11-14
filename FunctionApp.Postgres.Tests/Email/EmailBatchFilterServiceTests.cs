@@ -75,6 +75,25 @@ public class EmailBatchFilterServiceTests
     }
 
     [Fact]
+    public async Task PreFilterLeestTierheadersVoorAutomatischeAfzenders()
+    {
+        var graph = new FakeEmailGraphService();
+        var email = new InkomendBericht
+        {
+            MessageId = "automatic",
+            Afzender = "trainer@voorbeeld.nl",
+            InternetHeaders = [new(AutomatischeAfzenderHerkenning.AutoSubmitted, "auto-replied")]
+        };
+
+        var result = await new EmailBatchFilterService().PreFilterVoorClassificatieAsync(
+            [email], "mailbox@allstars-fc.test", new HashSet<string>(), graph, NullLogger.Instance);
+
+        result.Should().BeEmpty();
+        graph.MarkedAsReadIds.Should().ContainSingle("automatic");
+        graph.CategoryUpdates.Should().ContainSingle().Which.MessageId.Should().Be("automatic");
+    }
+
+    [Fact]
     public void FilterUitgeslotenAdressen_VerwijdertAlleGeblokkeerdeAfzenders()
     {
         var service = new EmailBatchFilterService();

@@ -3150,9 +3150,10 @@ De klassekop van `BerichtAiService` beweerde tot deze fix nog dat de few-shot-`v
 `BepaalVerwerkingIdAsync`/`RegistreerClassificatieFoutAsync`/`HandelBuitenScopeAsync` — die staan
 daarom als `[PostgresFact]`-integratietests tegen een echte database
 (`EmailProcessorFunctionIntegrationTests`, `EmailReplyPolicyServiceIntegrationTests`), zelfde patroon
-als `PostgresEmailPersistenceIntegrationTests`. Pure logica (`ReplyPolicy`, `EmailBatchFilterService`,
-`EmailClassificationService`, `UitsluitingslijstCache`, de noodmail-throttle-tests) blijft
-fake-gebaseerd en woordelijk gelijk aan de SQL Server-tier se testsuite.
+als `PostgresEmailPersistenceIntegrationTests`. Pure logica (`ReplyPolicy`, de gedeelde
+`EmailBatchFilterKern` (#1716 slice 11), `EmailClassificationBatchProcessor` (#1716 slice 10),
+`UitsluitingslijstCache` en de noodmail-throttle-tests) blijft fake-gebaseerd; de tieromhulsels en
+hun karakterisatie blijven per tier getest.
 
 **Vereist handmatige verificatie na deploy:** `EMAIL_POLL_SCHEDULE` en `EmailProcessorEnabled` als
 Function App-instelling op de productie-resource — die stonden er vóór de tier-cutover al voor de
