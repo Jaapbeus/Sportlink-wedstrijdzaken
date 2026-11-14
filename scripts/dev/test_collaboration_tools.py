@@ -126,6 +126,7 @@ class IntegrationTests(unittest.TestCase):
         self.write('.githooks/sensitive-patterns.txt', 'synthetisch-patroon\n')
         self.assertEqual(preflight.inspect(self.repo, 'feature'), [])
         self.assertTrue(preflight.inspect(self.repo, 'andere-branch'))
+        self.assertTrue(preflight.inspect(Path('.'), 'feature'))
 
 
 if __name__ == '__main__':

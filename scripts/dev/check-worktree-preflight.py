@@ -12,6 +12,8 @@ def git(root, *args):
 
 
 def inspect(root, branch):
+    if not root.is_absolute():
+        return ['Het worktreepad moet absoluut zijn.']
     root = root.resolve()
     errors = []
     if Path(git(root, 'rev-parse', '--show-toplevel')).resolve() != root:
