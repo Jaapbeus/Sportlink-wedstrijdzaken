@@ -1,0 +1,6 @@
+# Mutanten voor #1716 slice 13: gedeelde e-mailrecords zonder gedragswijziging.
+# Kolommen (tab-gescheiden): id, omschrijving, bestand, exacte oude tekst, nieuwe tekst, testproject, dotnet-test-filter.
+S13M1	Club-instellingenparameter wordt niet meer nullable	Planner.Shared/Email/ClubAppSettingsSnapshot.cs	string? PlannerAfzenderNaam	string PlannerAfzenderNaam	Planner.Shared.Tests/Planner.Shared.Tests.csproj	FullyQualifiedName~Planner.Shared.Tests.Email.EmailRecordContractTests
+S13M2	KNVB-bijlage krijgt een andere standaardwaarde	Planner.Shared/Email/ClubAppSettingsSnapshot.cs	bool? KnvbPdfBijlageIngeschakeld = null	bool? KnvbPdfBijlageIngeschakeld = false	Planner.Shared.Tests/Planner.Shared.Tests.csproj	FullyQualifiedName~Planner.Shared.Tests.Email.EmailRecordContractTests
+S13M3	sjabloonrecord wordt sealed	Planner.Shared/Email/EmailTemplate.cs	public record EmailTemplate	public sealed record EmailTemplate	Planner.Shared.Tests/Planner.Shared.Tests.csproj	FullyQualifiedName~Planner.Shared.Tests.Email.EmailRecordContractTests
+S13M4	verzendpoging krijgt een andere standaardwaarde	Planner.Shared/Email/EmailVerwerkingStand.cs	bool VerzendPogingOnbeslist = false	bool VerzendPogingOnbeslist = true	Planner.Shared.Tests/Planner.Shared.Tests.csproj	FullyQualifiedName~Planner.Shared.Tests.Email.EmailRecordContractTests
