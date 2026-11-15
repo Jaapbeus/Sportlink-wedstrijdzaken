@@ -30,6 +30,13 @@ SET wedstrijdtotaal = wedstrijdhelften * wedstrijdhelft + wedstrijdrust
 WHERE wedstrijdhelft > 0
   AND wedstrijdtotaal <> wedstrijdhelften * wedstrijdhelft + wedstrijdrust;
 
+-- Expressie-index voor de hoofdletterongevoelige categorie per club (AGENTS.md: een LOWER()-vergelijking krijgt een
+-- index op dezelfde uitdrukking; review #1966 R2-F1). Dient de aanvulling hieronder en de bestaande LOWER()-lookups in
+-- AdminSpeeltijdenRepository (#956). Bewust niet UNIQUE: een fork met al twee schrijfwijzen van één categorie zou de
+-- migratie dan laten falen; productie heeft er geen.
+CREATE INDEX IF NOT EXISTS ix_speeltijden_clubcode_lower_leeftijd
+    ON public.speeltijden (clubcode, LOWER(leeftijd));
+
 INSERT INTO public.speeltijden
     (leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust, wedstrijdhelften,
      standaardvoorkeurtijd, clubcode)

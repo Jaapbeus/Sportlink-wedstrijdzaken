@@ -62,7 +62,29 @@ public class Migratie054SpeeltijdenIntegrationTests
         (await TelAsync(conn, tx, ClubZonderSpeeltijden, "35+")).Should().Be(0);
         (await TelAsync(conn, tx, ClubZonderSpeeltijden, "vr30+")).Should().Be(0);
 
+        // De LOWER()-vergelijking gebruikt de expressie-index (review R2-F1). Op een kleine tabel kiest de planner
+        // anders een sequential scan; met enable_seqscan uit blijkt of de index de vergelijking kan bedienen.
+        (await TelIndexAsync(conn, tx)).Should().Be(1, "migratie 054 maakt de expressie-index, ook na herhaling één keer");
+        await VoerUitAsync(conn, tx, "SET LOCAL enable_seqscan = off;");
+        await using (var explain = new NpgsqlCommand(
+            "EXPLAIN SELECT 1 FROM public.speeltijden t WHERE LOWER(t.leeftijd) = LOWER('VR30+') AND t.clubcode = 'mig054a'",
+            conn, tx))
+        await using (var plan = await explain.ExecuteReaderAsync())
+        {
+            var regels = new List<string>();
+            while (await plan.ReadAsync()) regels.Add(plan.GetString(0));
+            string.Join("\n", regels).Should().Contain("ix_speeltijden_clubcode_lower_leeftijd");
+        }
+
         await tx.RollbackAsync();
+    }
+
+    private static async Task<long> TelIndexAsync(NpgsqlConnection conn, NpgsqlTransaction tx)
+    {
+        await using var cmd = new NpgsqlCommand(
+            "SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public' AND indexname = 'ix_speeltijden_clubcode_lower_leeftijd'",
+            conn, tx);
+        return (long)(await cmd.ExecuteScalarAsync())!;
     }
 
     private static async Task VoerUitAsync(NpgsqlConnection conn, NpgsqlTransaction tx, string sql)
