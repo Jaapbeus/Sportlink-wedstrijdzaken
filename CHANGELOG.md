@@ -18,6 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Vastgelegd als architectuurbesluit WZ-ADR-014: de Planning toont Sportlink zoals het is, Veld optimalisatie rekent alleen met de eigen instellingen (speeltijden, buffer van de pagina, teamregels, voorkeurstijden, velden). Vervangt #1559 voor de optimalisatie; de uitvoering volgt in #1960 en #1962. Alleen documentatie en werkinstructies, geen gedragswijziging (#1961).
 - De e-mailtester en andere AI-aanroepen falen niet meer met "Dry-run mislukt" als bij een model met reasoning (zoals `gpt-6-luna`) de instelling `AiReasoningEffort` ontbreekt: dan geldt automatisch `none` (#1958).
 
 ## [3.18.0.0] — 2026-11-14

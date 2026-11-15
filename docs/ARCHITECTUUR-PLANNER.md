@@ -54,7 +54,8 @@ Veld 5 wordt alleen toegewezen als veld 1–4 volledig bezet zijn in het gevraag
 ## Planningsregels
 
 ### Buffer tussen wedstrijden
-- **Standaard buffer:** 15 minuten tussen opeenvolgende wedstrijden op hetzelfde veld
+- **Standaard buffer:** 15 minuten tussen opeenvolgende wedstrijden op hetzelfde veld. In Veld optimalisatie is
+  het de waarde in het veld **Buffer (min)** op de pagina en geldt hij voor elke wedstrijd (WZ-ADR-014)
 - **Uitzondering:** 10 minuten voor overvolle programma's (configureerbaar via `dbo.AppSettings` of API parameter)
 - **Dynamische buffer:** bij optimalisatie wordt resterende ruimte tot de gewenste eindtijd (16:15) verdeeld als extra buffer (max 30 min)
 - **Team-specifieke buffers:** Configureerbaar via `dbo.TeamRegels` tabel
@@ -213,7 +214,8 @@ kwartveldwedstrijd bewust op `A2` gezet kan worden in plaats van op de eerste vr
 | 1-99 | 1.00 | **115** | 45 | 15 |
 
 De senioren staan op 115 minuten (2×45 + 15 rust + 10 buffer) sinds #291; datzelfde issue vulde
-JO6 en de ontbrekende MO-categorieën aan.
+JO6 en de ontbrekende MO-categorieën aan. **Wordt vervangen door #1962 (WZ-ADR-014):** het totaal wordt
+helften × helftduur + rust zonder buffer (senioren 105), en 35+ en VR30+ krijgen 1 × 20 minuten zonder rust.
 
 ---
 
@@ -601,34 +603,37 @@ prioriteit 10.
    en de 60-minutenregel van een eerste elftal simpelweg werd overgeslagen. Dat viel pas op toen dat pad
    door de precedence-wijziging de normale route werd.
 
-### Duurbron: Sportlink is leidend, Speeltijden alleen als terugval (#1559, #1560)
+### Bronnen van de optimalisatie: alleen app-instellingen (WZ-ADR-014)
 
-Eigenaarsbesluit #1559 (2026-10-12): wedstrijden die al in Sportlink staan zijn leidend en houden geen
-rekening met app-instellingen (speeltijd en buffer tussen wedstrijden). Speeltijden en buffer gelden alleen
-als Sportlink niet voorziet, dus voor een planning of wedstrijd die vanuit de app wordt aangemaakt.
+Eigenaarsbesluit 2026-11-14, vastgelegd als **WZ-ADR-014** in [ARCHITECTUUR.md](ARCHITECTUUR.md) §9.
+Veld optimalisatie is een rekenmodel van de club en staat los van de Planning. De Planning laat zien hoe
+het in Sportlink staat (WZ-ADR-013, §8.8); de optimalisatie stelt voor hoe het beter kan.
 
-Gevolg voor de duur: de Planning én **Veld optimalisatie** (`AutoPlanService` op beide tiers, via
-`FieldScheduler`) bepalen de blokduur met `VeldbezettingDuur.Bepaal`: de netto speelduur uit Sportlink
-plus 15 minuten (zoals #1547 de Sportlink-veldplanner nameet), en pas als Sportlink geen speelduur kent de
-`WedstrijdTotaal` uit de speeltijdentabel (besluit #291). De Sportlink-duur geldt ook zonder
-speeltijdenrij voor de leeftijdscategorie: alleen een wedstrijd zonder Sportlink-duur én zonder
-speeltijdenrij blijft `onbekend-team`.
+| Wat | Bron in de optimalisatie |
+|---|---|
+| Welke wedstrijden, huidig veld en huidige tijd | Sportlink (via de synchronisatie); alleen voor het tabblad "Huidig" en als startpunt |
+| Duur van een wedstrijd | **Speeltijden** (WZ Instellingen → Speeltijden): helften × helftduur + rust |
+| Buffer tussen wedstrijden | Het veld **Buffer (min)** op de pagina, altijd, voor elke wedstrijd |
+| Teambuffers en voorkeursveld | Teamregels (`BufferVoor`, `BufferNa`, `VoorkeurVeld`), altijd |
+| Streeftijd | Voorkeurstijden van het team, anders de standaardtijd van de leeftijdscategorie |
+| Velden en openingstijden | WZ Instellingen → Velden en de veldbeschikbaarheid |
 
-Beperking: de gelijkheid van beide schermen geldt voor deze `Bepaal`-regel (dataservice-duur + 15).
-De Planning kan bij een actieve `VeldbezettingSportlinkOverlay` de exacte blokduur uit de
-Sportlink-veldplanner overnemen; de optimalisatie gebruikt die overlay niet en rekent altijd met
-dataservice-duur + 15. Bij een actieve overlay is gelijkheid dus niet bewezen: daarvoor is de
-blokvergelijking uit #1560 (vijf zaterdagen, blok voor blok) nodig.
+Sportlinks speelduur, de "+ 15" van de Sportlink-veldplanner en de veldplanner-overlay worden in de
+optimalisatie **niet** gebruikt. De speeltijd bevat geen buffer; de buffer staat alleen op de pagina.
 
-Gevolg voor de buffer: een wedstrijd met een Sportlink-speelduur (`VeldbezettingDuur.IsSportlinkLeidend`)
-wordt in de optimalisatie met een buffer van 0 minuten geplaatst, zowel vóór als ná: geen clubbuffer en
-geen teamregel (`BufferVoor`/`BufferNa`). De buffer is **per slot**, niet per team: `IngeplandSlot.SportlinkLeidend`
-laat een Sportlink-slot zijn eigen 0-buffer dragen, zodat een app-wedstrijd die naast een Sportlink-wedstrijd
-komt alleen zijn eigen buffer eist. Wedstrijden zonder Sportlink-duur (app-eigen, of Sportlink kent ze niet)
-behouden speeltijdentabel en club-/teambuffer. De rekenregels blijven in `PlanningBufferRegels`; de
-handmatige conflictcontrole in de Admin GUI gebruikt sinds #1814 hetzelfde per-slot-kenmerk
-`sportlinkLeidend` uit het auto-plancontract: aansluitende bronwedstrijden geven geen valse
-buffermelding, maar echte overlap blijft een conflict.
+**Volgorde.** Harde grenzen gaan voor: veldbeschikbaarheid, paginabuffer, `BufferVoor`/`BufferNa` en
+geen team dubbel geboekt. Daarna bepaalt de rangorde hierboven de streeftijd (laag 0 teamregel, laag 1
+teamvoorkeurstijd, laag 2 standaardtijd, laag 3 eerste vrije slot), binnen een laag op `Prioriteit`.
+
+**Uitvoering.** #1960 (duur, buffer en teamregels los van Sportlink, één teamsleutel, CI-guard) en
+#1962 (speeltijden met aantal helften, totaal zonder buffer, 35+ en VR30+). Tot die gemerged zijn,
+rekent de code nog volgens het vervangen besluit #1559: wedstrijden met een Sportlink-speelduur krijgen
+die duur + 15 en buffer 0.
+
+### Bezettingsduur bij de beschikbaarheidscontrole (#1814)
+
+Dit gaat over het inplannen van een nieuwe wedstrijd naast de bestaande bezetting, niet over de
+optimalisatie en niet over de Planning.
 
 Ontbreekt in de databasebezetting zowel een positieve Sportlink-duur als een speeltijdenrij,
 dan blijft de bronwedstrijd in de bezettingsview met een onbekende eindtijd. De lezers blokkeren
@@ -639,14 +644,6 @@ de trace wordt altijd bewaard, de verwerking krijgt status `Fout` en blijft voor
 begrensde retry beschikbaar. Er gaat geen beschikbaarheidsantwoord, generiek foutantwoord of
 vervolgnotificatie uit; een verzendintentie en gelezen-markering worden niet gezet. De regressies
 voor beide concrete tiers gebruiken een echte bronwedstrijd zonder beide duurbronnen.
-
-Nog open: of "speelduur + 15" voor korte toernooivormen (bijvoorbeeld 20 minuten) klopt is niet
-bevestigd (#1560, punt 2).
-
-Open verificatiepunten (#1560), alleen met Sportlink Club zelf te beantwoorden: bestaan clubwedstrijden
-zonder tegenstander (thuis- gelijk aan uitteam) in Sportlink Club en moeten ze in de Planning; hoe tekent
-de Sportlink-veldplanner blokken van één periode met toernooivorm; en na een productie-deploy vijf
-opeenvolgende zaterdagen blok voor blok vergelijken (veld, tijd, duur, beide teams).
 
 ### Handmatig verslepen in de tijdlijn
 
@@ -1049,4 +1046,7 @@ precies die som is `DuurMinuten`, en de starttijd schuift met het inloopdeel mee
   een dag worden 60 seconden onthouden. Het FacilityId staat nergens in code of configuratie.
 - **Bekende grens:** Sportlinks veldplanner toont ook wedstrijden tussen andere clubs op uw accommodatie. Die staan niet in onze
   database en worden niet toegevoegd; dat is een afzonderlijk productbesluit.
-- **Veld optimalisatie** (`FieldScheduler`) gebruikt voor bestaande wedstrijden dezelfde duurregel; zie "Duurbron" (#1559).
+- **Veld optimalisatie** gebruikt deze regels niet: die rekent alleen met app-instellingen (WZ-ADR-014); zie "Bronnen van de optimalisatie".
+- **Besloten, nog niet uitgevoerd (WZ-ADR-014):** is Sportlink onbereikbaar, dan blijft de Planning staan zoals hij is, kan er niets
+  aangepast worden en toont de pagina "Synchronisatie mislukt - planning mogelijk niet actueel"; geen terugval op app-tabellen. Vraagt
+  een eigen issue; de reeks #1960/#1962 raakt de Planning niet.
