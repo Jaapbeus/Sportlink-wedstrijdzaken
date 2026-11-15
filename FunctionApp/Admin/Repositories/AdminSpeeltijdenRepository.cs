@@ -4,7 +4,7 @@ namespace SportlinkFunction.Admin;
 
 internal record SpeeltijdInput(
     string Leeftijd, decimal Veldafmeting,
-    int WedstrijdTotaal, int WedstrijdHelft, int WedstrijdRust,
+    int WedstrijdTotaal, int WedstrijdHelft, int WedstrijdRust, int WedstrijdHelften,
     // Standaard voorkeurstijd voor deze leeftijdscategorie (#666). null = geen streeftijd.
     TimeOnly? StandaardVoorkeurTijd);
 
@@ -15,7 +15,7 @@ internal static class AdminSpeeltijdenRepository
         using var conn = await AdminRepositoryHelpers.OpenConnectionAsync(cs);
         using var cmd = new SqlCommand(@"
             SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust],
-                   CONVERT(VARCHAR(5), [StandaardVoorkeurTijd]) AS [StandaardVoorkeurTijd]
+                   CONVERT(VARCHAR(5), [StandaardVoorkeurTijd]) AS [StandaardVoorkeurTijd], [WedstrijdHelften]
             FROM [dbo].[Speeltijden]
             WHERE [ClubCode] = @ClubCode
             ORDER BY
@@ -33,7 +33,8 @@ internal static class AdminSpeeltijdenRepository
             {
                 Leeftijd = r.GetString(0), Veldafmeting = r.GetDecimal(1),
                 WedstrijdTotaal = r.GetInt32(2), WedstrijdHelft = r.GetInt32(3), WedstrijdRust = r.GetInt32(4),
-                StandaardVoorkeurTijd = r.IsDBNull(5) ? null : r.GetString(5)
+                StandaardVoorkeurTijd = r.IsDBNull(5) ? null : r.GetString(5),
+                WedstrijdHelften = r.GetInt32(6)
             });
         return list;
     }
@@ -44,13 +45,14 @@ internal static class AdminSpeeltijdenRepository
         using var cmd = new SqlCommand(@"
             INSERT INTO [dbo].[Speeltijden]
                 ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust],
-                 [StandaardVoorkeurTijd], [ClubCode])
-            VALUES (@L, @Vf, @Wt, @Wh, @Wr, @Svt, @Cc)", conn);
+                 [WedstrijdHelften], [StandaardVoorkeurTijd], [ClubCode])
+            VALUES (@L, @Vf, @Wt, @Wh, @Wr, @Whn, @Svt, @Cc)", conn);
         cmd.Parameters.AddWithValue("@L",  i.Leeftijd.Trim());
         cmd.Parameters.AddWithValue("@Vf", i.Veldafmeting);
         cmd.Parameters.AddWithValue("@Wt", i.WedstrijdTotaal);
         cmd.Parameters.AddWithValue("@Wh", i.WedstrijdHelft);
         cmd.Parameters.AddWithValue("@Wr", i.WedstrijdRust);
+        cmd.Parameters.AddWithValue("@Whn", i.WedstrijdHelften);
         cmd.Parameters.AddWithValue("@Svt", i.StandaardVoorkeurTijd.HasValue
             ? i.StandaardVoorkeurTijd.Value.ToTimeSpan() : (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@Cc", clubCode);
@@ -63,13 +65,14 @@ internal static class AdminSpeeltijdenRepository
         using var cmd = new SqlCommand(@"
             UPDATE [dbo].[Speeltijden]
             SET [Veldafmeting] = @Vf, [WedstrijdTotaal] = @Wt, [WedstrijdHelft] = @Wh, [WedstrijdRust] = @Wr,
-                [StandaardVoorkeurTijd] = @Svt
+                [WedstrijdHelften] = @Whn, [StandaardVoorkeurTijd] = @Svt
             WHERE [Leeftijd] = @L AND [ClubCode] = @Cc", conn);
         cmd.Parameters.AddWithValue("@L",  leeftijd);
         cmd.Parameters.AddWithValue("@Vf", i.Veldafmeting);
         cmd.Parameters.AddWithValue("@Wt", i.WedstrijdTotaal);
         cmd.Parameters.AddWithValue("@Wh", i.WedstrijdHelft);
         cmd.Parameters.AddWithValue("@Wr", i.WedstrijdRust);
+        cmd.Parameters.AddWithValue("@Whn", i.WedstrijdHelften);
         cmd.Parameters.AddWithValue("@Svt", i.StandaardVoorkeurTijd.HasValue
             ? i.StandaardVoorkeurTijd.Value.ToTimeSpan() : (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@Cc", clubCode);

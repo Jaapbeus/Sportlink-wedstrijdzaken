@@ -28,7 +28,7 @@ public class AdminSpeeltijdenRepositoryCasingIntegrationTests
 
         var rows = await AdminSpeeltijdenRepository.UpdateAsync(
             "jo9", // opgeslagen als "JO9"
-            new SpeeltijdInput("jo9", 1.00m, 70, 30, 10, null),
+            new SpeeltijdInput("jo9", 1.00m, 70, 30, 10, 2, null),
             ClubCode, ConnectionString);
 
         rows.Should().Be(1, "de lookup moet de rij vinden ongeacht hoofdlettering");

@@ -59,6 +59,21 @@ public static class AutoPlanRegels
     }
 
     /// <summary>
+    /// Speeltijdsleutel in de optimalisatie (#1962, WZ-ADR-014): een 35+- of VR30+-team krijgt de speeltijd van
+    /// die KNVB-categorie (1 × 20 minuten) zolang de club die met duur &gt; 0 heeft; Sportlink levert deze teams
+    /// als "Senioren" aan. Anders <see cref="SpeeltijdSleutelVoorWedstrijd"/>. De Planning gebruikt dit niet.
+    /// </summary>
+    public static string OptimalisatieSpeeltijdSleutel(
+        string? teamNaam, string? leeftijdsCategorie, bool isAllstars, IReadOnlyDictionary<string, Speeltijd> speeltijden)
+    {
+        ArgumentNullException.ThrowIfNull(speeltijden);
+        var veteranen = TeamNaamNormalisatie.VeteranenSpeeltijdSleutel(teamNaam);
+        if (veteranen != null && speeltijden.TryGetValue(veteranen, out var st) && st.WedstrijdTotaal > 0)
+            return veteranen;
+        return SpeeltijdSleutelVoorWedstrijd(teamNaam, leeftijdsCategorie, isAllstars, speeltijden);
+    }
+
+    /// <summary>
     /// Speeltijdsleutel van één wedstrijd, gedeeld door de automatische planning en de veldbezetting van
     /// beide tiers: de bron-categorie (of in demomodus de leeftijd uit de teamnaam), waarbij een O23-team de
     /// <c>JO23</c>-speeltijd krijgt zolang die met duur &gt; 0 bestaat (#1863, <see cref="LeeftijdNormalisatie.SpeeltijdSleutel"/>).
@@ -90,7 +105,7 @@ public static class AutoPlanRegels
         Dictionary<string, Speeltijd> speeltijden,
         string? clubPrefix = null)
     {
-        var leeftijd = SpeeltijdSleutelVoorWedstrijd(teamNaam, leeftijdsCategorie, isAllstars, speeltijden);
+        var leeftijd = OptimalisatieSpeeltijdSleutel(teamNaam, leeftijdsCategorie, isAllstars, speeltijden);
 
         // Laag 2 — default per leeftijdscategorie (mag null zijn: dan géén streeftijd)
         TimeOnly? defaultTijd = null;

@@ -71,6 +71,16 @@ public class SpeeltijdDto
     public int WedstrijdHelft { get; set; }
     public int WedstrijdRust { get; set; }
 
+    /// <summary>Aantal helften (#1962): 2, of 1 voor toernooivormen zoals 35+ en VR30+.</summary>
+    public int WedstrijdHelften { get; set; } = 2;
+
+    /// <summary>
+    /// Totaal zoals de server het opslaat (#1962, WZ-ADR-014): helften × helft + rust, zonder buffer. Dezelfde
+    /// regel als <c>Planner.Shared.SpeeltijdBerekening.Totaal</c>; de server rekent het zelf na.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int BerekendTotaal => WedstrijdHelften * WedstrijdHelft + WedstrijdRust;
+
     /// <summary>
     /// Standaard voorkeurstijd "HH:mm" voor deze leeftijdscategorie (#666). Leeg = geen streeftijd;
     /// de planner gebruikt deze tijd voor teams zonder eigen rij in de voorkeurstijden.

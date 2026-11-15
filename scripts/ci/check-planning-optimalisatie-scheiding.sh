@@ -25,7 +25,7 @@ repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
 SPORTLINK_DUUR='VeldbezettingDuur|SportlinkSpeelduur|IsSportlinkLeidend|SportlinkLeidend|VeldplannerOverlay|VeldbezettingSportlinkOverlay|SportlinkVeldbezettingSamenvoeging'
-OPTIMALISATIE='FieldScheduler|PlanningBufferRegels|PlanningConflictDetectie|AutoPlanExactApply|TeamBuffersVoorWedstrijden|BepaalPlanDoel'
+OPTIMALISATIE='FieldScheduler|PlanningBufferRegels|PlanningConflictDetectie|AutoPlanExactApply|TeamBuffersVoorWedstrijden|BepaalPlanDoel|OptimalisatieSpeeltijdSleutel|VeteranenSpeeltijdSleutel'
 PLANNING_METHODE='VeldbezettingAsync'
 
 OPTIMALISATIE_BESTANDEN="

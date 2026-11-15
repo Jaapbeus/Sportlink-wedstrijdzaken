@@ -199,6 +199,31 @@ public static class TeamNaamNormalisatie
     public static bool IsO23Team(string? teamNaam)
         => !string.IsNullOrWhiteSpace(teamNaam) && O23Team.IsMatch(teamNaam);
 
+    // #1962: KNVB-toernooivormen op vrijdagavond. Het team heet "[club] 35+1" of "[club] VR30+2"; Sportlink levert
+    // ze aan als "Senioren" en "Senioren Vrouwen". Een niet-alfanumeriek teken (of het begin) vóór de aanduiding
+    // en een teamnummer erna, zodat "135+1" of "35+" zonder nummer niet meedoen.
+    private static readonly Regex Team35Plus = new(@"(?<![A-Za-z0-9])35\+\d+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex TeamVr30Plus = new(@"(?<![A-Za-z0-9])VR30\+\d+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    /// <summary>Speeltijdsleutel van de KNVB-categorie 35+.</summary>
+    public const string Sleutel35Plus = "35+";
+
+    /// <summary>Speeltijdsleutel van de KNVB-categorie VR30+.</summary>
+    public const string SleutelVr30Plus = "VR30+";
+
+    /// <summary>
+    /// De speeltijdsleutel van een 35+- of VR30+-team (<see cref="Sleutel35Plus"/>, <see cref="SleutelVr30Plus"/>),
+    /// of <c>null</c> voor elk ander team (#1962). Alleen de optimalisatie gebruikt dit (WZ-ADR-014).
+    /// </summary>
+    public static string? VeteranenSpeeltijdSleutel(string? teamNaam)
+    {
+        if (string.IsNullOrWhiteSpace(teamNaam)) return null;
+        var naam = teamNaam.Trim();
+        if (TeamVr30Plus.IsMatch(naam)) return SleutelVr30Plus;
+        if (Team35Plus.IsMatch(naam)) return Sleutel35Plus;
+        return null;
+    }
+
     /// <summary>
     /// Vult een ontbrekende leeftijdscategorie aan uit het herkende eigen team (#1545). De AI laat de
     /// categorie terecht leeg bij "14-2" (geen J/M-prefix raden), maar zodra <c>TeamResolver</c> dat

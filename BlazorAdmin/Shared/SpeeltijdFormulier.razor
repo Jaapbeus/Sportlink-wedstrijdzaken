@@ -2,7 +2,8 @@
 
 <h5 class="mt-1 speeltijd-formulier-kop">@(Sessie.IsNieuw ? "Nieuwe leeftijdscategorie" : $"Bewerken: {Sessie.Model.Leeftijd}")</h5>
 <p class="text-muted small">
-    WedstrijdTotaal = speeltijd + rust. Voorbeeld senioren: 2×45 + 15 rust + 10 buffer = 115.<br />
+    Totaal = helften × helft + rust, zonder buffer; de buffer stelt u in bij Veld optimalisatie. Voorbeeld senioren:
+    2 × 45 + 15 rust = 105. Een toernooivorm zoals 35+ speelt 1 helft zonder rust.<br />
     <strong>Standaard voorkeurstijd</strong> geldt voor teams in deze categorie die géén eigen
     voorkeurstijd hebben onder WZ Instellingen → Team voorkeurstijden. Laat leeg om geen streeftijd te
     gebruiken; de planner kiest dan het eerst beschikbare tijdslot.
@@ -20,8 +21,11 @@
                    @bind="Sessie.Model.Veldafmeting" />
         </div>
         <div>
-            <label class="form-label" for="@Id("totaal")">Totaal (min) <small class="text-muted">incl. rust</small></label>
-            <input id="@Id("totaal")" class="form-control" type="number" min="1" @bind="Sessie.Model.WedstrijdTotaal" />
+            <label class="form-label" for="@Id("helften")">Helften</label>
+            <select id="@Id("helften")" class="form-select" @bind="Sessie.Model.WedstrijdHelften">
+                <option value="2">2</option>
+                <option value="1">1</option>
+            </select>
         </div>
         <div>
             <label class="form-label" for="@Id("helft")">Helft (min)</label>
@@ -30,6 +34,10 @@
         <div>
             <label class="form-label" for="@Id("rust")">Rust (min)</label>
             <input id="@Id("rust")" class="form-control" type="number" min="0" @bind="Sessie.Model.WedstrijdRust" />
+        </div>
+        <div>
+            <label class="form-label" for="@Id("totaal")">Totaal (min)</label>
+            <output id="@Id("totaal")" class="form-control-plaintext"><strong>@Sessie.Model.BerekendTotaal</strong></output>
         </div>
         <div>
             <label class="form-label" for="@Id("voorkeurstijd")">Standaard voorkeurstijd</label>

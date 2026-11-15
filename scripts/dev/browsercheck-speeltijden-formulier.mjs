@@ -97,7 +97,7 @@ const geenFouten = (errors, label) => ok(errors.length === 0, `${label}: geen pa
   const { ctx, page, api, errors, netlog } = await open();
   // 1. vertraagde FOUT voor A (JO10), intussen gewisseld naar B (JO11)
   await row(page, 'JO10').getByRole('button', { name: 'Bewerken' }).click();
-  await page.getByLabel('Totaal (min)').fill('66');
+  await page.getByLabel('Helft (min)').fill('25');
   let release = holdNext(api, 500, 'serverfout-A');
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click();
   await page.waitForFunction(() => document.querySelector('tr.speeltijd-formulierrij button[type=submit]')?.disabled === true);
@@ -114,8 +114,8 @@ const geenFouten = (errors, label) => ok(errors.length === 0, `${label}: geen pa
   ok(await page.locator('text=Opslaan van JO10').count() === 0, '#1552 paginamelding is te sluiten');
 
   // 2. vertraagd SUCCES voor B, gewisseld naar C (JO12) → C blijft open mét invoer, lijst ververst
-  await page.getByLabel('Totaal (min)').fill('77');
-  await page.getByLabel('Totaal (min)').press('Tab');
+  await page.getByLabel('Helft (min)').fill('31');
+  await page.getByLabel('Helft (min)').press('Tab');
   release = holdNext(api, 200);
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click();
   await row(page, 'JO12').getByRole('button', { name: 'Bewerken' }).click();
@@ -127,7 +127,7 @@ const geenFouten = (errors, label) => ok(errors.length === 0, `${label}: geen pa
   ok(await page.locator('.alert-danger[role=alert]').count() === 0, '#1552 succes-variant: geen melding');
 
   // 3. vertraagde fout, dan Nieuwe categorie
-  await page.getByLabel('Totaal (min)').fill('88');
+  await page.getByLabel('Helft (min)').fill('36');
   release = holdNext(api, 500, 'x');
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click();
   await page.getByRole('button', { name: 'Nieuwe categorie' }).click();
@@ -150,7 +150,7 @@ const geenFouten = (errors, label) => ok(errors.length === 0, `${label}: geen pa
 
   // 5. vertraagd succes, annuleren, dezelfde categorie heropenen
   await row(page, 'JO14').getByRole('button', { name: 'Bewerken' }).click();
-  await page.getByLabel('Totaal (min)').fill('90');
+  await page.getByLabel('Helft (min)').fill('37');
   release = holdNext(api, 200);
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click();
   await formRows(page).getByRole('button', { name: 'Annuleer' }).click();
@@ -159,9 +159,9 @@ const geenFouten = (errors, label) => ok(errors.length === 0, `${label}: geen pa
   ok(!(await row(page, 'JO15').getByRole('button', { name: 'Bewerken' }).isDisabled()), '#1552 heropen-variant: andere regel (JO15) blijft bewerkbaar');
   release(); await settle(page);
   ok(!(await row(page, 'JO14').getByRole('button', { name: 'Bewerken' }).isDisabled()), '#1552 heropen-variant: na afronding is JO14 weer bewerkbaar');
-  ok(await totaalVan(page, 'JO14') === '90', '#1552 heropen-variant: lijst toont de opgeslagen waarde (90)');
+  ok(await totaalVan(page, 'JO14') === '89', '#1552 heropen-variant: lijst toont de opgeslagen waarde (89)');
   await row(page, 'JO14').getByRole('button', { name: 'Bewerken' }).click();
-  ok(await nextIsForm(page, 'JO14') && await page.getByLabel('Totaal (min)').inputValue() === '90', '#1552 heropen-variant: heropend formulier toont de opgeslagen waarde, niet de oude');
+  ok(await nextIsForm(page, 'JO14') && await page.getByLabel('Helft (min)').inputValue() === '37', '#1552 heropen-variant: heropend formulier toont de opgeslagen waarde, niet de oude');
   ok(await formRows(page).locator('.alert-danger').count() === 0 && await page.locator('.alert-danger[role=alert]').count() === 0, '#1552 heropen-variant: geen fout en geen melding');
 
   // 6. normale fout blijft bij eigen formulier; normaal succes sluit
@@ -170,17 +170,17 @@ const geenFouten = (errors, label) => ok(errors.length === 0, `${label}: geen pa
   ok(await formRows(page).locator('.alert-danger').count() === 1 && await page.locator('.alert-danger[role=alert]').count() === 1, '#1552 directe fout staat uitsluitend in het eigen formulier');
   await page.getByLabel('Rust (min)').fill('14');
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
-  ok(await formRows(page).count() === 0 && (await row(page, 'JO14').locator('td').nth(4).textContent()).trim() === '14', '#1552 direct succes sluit het formulier en ververst de regel');
+  ok(await formRows(page).count() === 0 && (await row(page, 'JO14').locator('td').nth(5).textContent()).trim() === '14', '#1552 direct succes sluit het formulier en ververst de regel');
   // 7. Codex-reproductie (PR #1557 ronde 1, P2): PUT en GET afzonderlijk vertraagd, tussentijdse render,
   //    heropenen van dezelfde categorie, tweede opslag die een ander veld wijzigt
   await row(page, 'JO16').getByRole('button', { name: 'Bewerken' }).click();
-  await page.getByLabel('Totaal (min)').fill('90');
+  await page.getByLabel('Helft (min)').fill('37');
   const releasePut = holdNext(api, 200);
   const releaseGet = holdGet(api);
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click();
   await formRows(page).getByRole('button', { name: 'Annuleer' }).click();        // annuleren tijdens de PUT
   releasePut(); await settle(page);                                               // PUT geslaagd, GET hangt
-  ok(await totaalVan(page, 'JO16') === '90', '#1552 P2-regressie: regel toont de opgeslagen waarde al vóór de GET (lokaal bijgewerkt)');
+  ok(await totaalVan(page, 'JO16') === '89', '#1552 P2-regressie: regel toont de opgeslagen waarde al vóór de GET (lokaal bijgewerkt)');
   await page.getByRole('button', { name: 'Nieuwe categorie' }).click();          // tussentijdse render
   ok(await row(page, 'JO16').getByRole('button', { name: 'Bewerken' }).isDisabled(), '#1552 P2-regressie: Bewerken van JO16 blijft uitgeschakeld zolang de GET loopt');
   ok((await row(page, 'JO16').getByRole('status').textContent()).includes('Opslaan…'), '#1552 P2-regressie: status "Opslaan…" blijft staan tot de lijst actueel is');
@@ -188,17 +188,17 @@ const geenFouten = (errors, label) => ok(errors.length === 0, `${label}: geen pa
   releaseGet(); await settle(page);
   ok(!(await row(page, 'JO16').getByRole('button', { name: 'Bewerken' }).isDisabled()), '#1552 P2-regressie: na de GET is JO16 weer bewerkbaar');
   await row(page, 'JO16').getByRole('button', { name: 'Bewerken' }).click();
-  ok(await page.getByLabel('Totaal (min)').inputValue() === '90', '#1552 P2-regressie: heropend formulier toont 90, niet de oude 75');
+  ok(await page.getByLabel('Helft (min)').inputValue() === '37', '#1552 P2-regressie: heropend formulier toont helft 37, niet de oude 30');
   await page.getByLabel('Rust (min)').fill('13');
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
   const laatstePut = api.puts.at(-1);
   const totaalInBody = Number(laatstePut.body.wedstrijdTotaal ?? laatstePut.body.WedstrijdTotaal);
   const rustInBody = Number(laatstePut.body.wedstrijdRust ?? laatstePut.body.WedstrijdRust);
-  ok(laatstePut.key === 'JO16' && totaalInBody === 90 && rustInBody === 13, `#1552 P2-regressie: tweede opslag schrijft totaal 90 en rust 13 (geen lost update; body totaal=${totaalInBody})`);
+  ok(laatstePut.key === 'JO16' && totaalInBody === 87 && rustInBody === 13, `#1552 P2-regressie: tweede opslag schrijft totaal 87 (2 × 37 + 13) en rust 13 (geen lost update; body totaal=${totaalInBody})`);
 
   // 8. geslaagde PUT, mislukte GET erna: regel toont de opgeslagen waarde, waarschuwing boven de tabel, regel komt vrij
   await row(page, 'JO17').getByRole('button', { name: 'Bewerken' }).click();
-  await page.getByLabel('Totaal (min)').fill('91');
+  await page.getByLabel('Helft (min)').fill('38');
   api.failGetNext = true;
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
   const waarschuwing = page.locator('.alert-warning[role=alert]');
@@ -206,7 +206,7 @@ const geenFouten = (errors, label) => ok(errors.length === 0, `${label}: geen pa
   ok(await totaalVan(page, 'JO17') === '91', '#1552 mislukte refresh: regel toont de opgeslagen waarde (91)');
   ok(!(await row(page, 'JO17').getByRole('button', { name: 'Bewerken' }).isDisabled()), '#1552 mislukte refresh: regel blijft niet eeuwig geblokkeerd');
   await row(page, 'JO17').getByRole('button', { name: 'Bewerken' }).click();
-  ok(await page.getByLabel('Totaal (min)').inputValue() === '91', '#1552 mislukte refresh: heropend formulier toont 91');
+  ok(await page.getByLabel('Helft (min)').inputValue() === '38', '#1552 mislukte refresh: heropend formulier toont 91');
   await formRows(page).getByRole('button', { name: 'Annuleer' }).click();
   await waarschuwing.getByRole('button', { name: 'Sluiten' }).click();
   ok(await page.locator('.alert-warning[role=alert]').count() === 0, '#1552 mislukte refresh: waarschuwing is te sluiten');
@@ -214,36 +214,36 @@ const geenFouten = (errors, label) => ok(errors.length === 0, `${label}: geen pa
   // 9. Codex-reproductie (PR #1557 ronde 2, P2): twee overlappende opslagen; de GET van A is een oudere momentopname
   //    en komt ná de GET van B binnen — B mag niet terugspringen
   await row(page, 'JO18').getByRole('button', { name: 'Bewerken' }).click();
-  await page.getByLabel('Totaal (min)').fill('90');
+  await page.getByLabel('Helft (min)').fill('37');
   const releaseGetA = holdGet(api);                                               // PUT van A direct ok; zijn GET (A=90, B=75) blijft hangen
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
   ok(await row(page, 'JO18').getByRole('button', { name: 'Bewerken' }).isDisabled(), '#1552 P2-r2: A (JO18) is geblokkeerd zolang zijn GET loopt');
   await row(page, 'JO19').getByRole('button', { name: 'Bewerken' }).click();
-  await page.getByLabel('Totaal (min)').fill('91');
+  await page.getByLabel('Helft (min)').fill('38');
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);   // PUT en GET van B voltooien (A=90, B=91)
   ok(await totaalVan(page, 'JO19') === '91' && !(await row(page, 'JO19').getByRole('button', { name: 'Bewerken' }).isDisabled()), '#1552 P2-r2: B (JO19) toont 91 en is vrijgegeven');
   releaseGetA(); await settle(page);                                              // oudere momentopname komt nu binnen
   ok(await totaalVan(page, 'JO19') === '91', '#1552 P2-r2: B blijft 91 na de oudere GET-respons van A (niet teruggezet naar 75)');
-  ok(await totaalVan(page, 'JO18') === '90' && !(await row(page, 'JO18').getByRole('button', { name: 'Bewerken' }).isDisabled()), '#1552 P2-r2: A toont 90 en is vrijgegeven');
+  ok(await totaalVan(page, 'JO18') === '89' && !(await row(page, 'JO18').getByRole('button', { name: 'Bewerken' }).isDisabled()), '#1552 P2-r2: A toont 89 en is vrijgegeven');
   await row(page, 'JO19').getByRole('button', { name: 'Bewerken' }).click();
-  ok(await page.getByLabel('Totaal (min)').inputValue() === '91', '#1552 P2-r2: heropend B toont 91');
+  ok(await page.getByLabel('Helft (min)').inputValue() === '38', '#1552 P2-r2: heropend B toont 91');
   await page.getByLabel('Rust (min)').fill('13');
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
   const putB2 = api.puts.at(-1);
-  ok(putB2.key === 'JO19' && Number(putB2.body.wedstrijdTotaal ?? putB2.body.WedstrijdTotaal) === 91, `#1552 P2-r2: tweede opslag van B stuurt totaal 91 (body totaal=${Number(putB2.body.wedstrijdTotaal ?? putB2.body.WedstrijdTotaal)})`);
+  ok(putB2.key === 'JO19' && Number(putB2.body.wedstrijdTotaal ?? putB2.body.WedstrijdTotaal) === 89, `#1552 P2-r2: tweede opslag van B stuurt totaal 89 (2 × 38 + 13) (body totaal=${Number(putB2.body.wedstrijdTotaal ?? putB2.body.WedstrijdTotaal)})`);
 
   // 10. idem, maar de nieuwste verversing (van B) mislukt: lokale waarden blijven, de oudere respons van A wordt genegeerd
   await row(page, 'MO11').getByRole('button', { name: 'Bewerken' }).click();
-  await page.getByLabel('Totaal (min)').fill('92');
+  await page.getByLabel('Helft (min)').fill('38');
   const releaseGetA2 = holdGet(api);
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
   await row(page, 'MO12').getByRole('button', { name: 'Bewerken' }).click();
-  await page.getByLabel('Totaal (min)').fill('93');
+  await page.getByLabel('Helft (min)').fill('39');
   api.failGetNext = true;
   await formRows(page).getByRole('button', { name: 'Opslaan' }).click(); await settle(page);
   ok(await page.locator('.alert-warning[role=alert]').count() === 1 && await totaalVan(page, 'MO12') === '93', '#1552 P2-r2 + mislukte refresh: waarschuwing zichtbaar, B (MO12) toont lokaal 93');
   releaseGetA2(); await settle(page);
-  ok(await totaalVan(page, 'MO12') === '93' && await totaalVan(page, 'MO11') === '92', '#1552 P2-r2 + mislukte refresh: oudere respons van A genegeerd, beide regels houden de opgeslagen waarden');
+  ok(await totaalVan(page, 'MO12') === '93' && await totaalVan(page, 'MO11') === '91', '#1552 P2-r2 + mislukte refresh: oudere respons van A genegeerd, beide regels houden de opgeslagen waarden');
   ok(await page.locator('.alert-warning[role=alert]').count() === 1, '#1552 P2-r2 + mislukte refresh: waarschuwing blijft staan');
   await page.locator('.alert-warning[role=alert]').getByRole('button', { name: 'Sluiten' }).click();
 
@@ -306,13 +306,13 @@ for (const w of [320, 375, 768, 1400]) {
 // ===== #1554 — labels =====
 {
   const { ctx, page, api, errors } = await open();
-  const velden = [['Leeftijd', 'textbox'], ['Veldafmeting', 'spinbutton'], ['Totaal (min) incl. rust', 'spinbutton'], ['Helft (min)', 'spinbutton'], ['Rust (min)', 'spinbutton'], ['Standaard voorkeurstijd', 'textbox']];
+  const velden = [['Leeftijd', 'textbox'], ['Veldafmeting', 'spinbutton'], ['Helften', 'combobox'], ['Helft (min)', 'spinbutton'], ['Rust (min)', 'spinbutton'], ['Standaard voorkeurstijd', 'textbox']];
   for (const modus of ['bewerken', 'nieuw']) {
     if (modus === 'bewerken') await row(page, 'JO9').getByRole('button', { name: 'Bewerken' }).click();
     else { await formRows(page).getByRole('button', { name: 'Annuleer' }).click(); await page.getByRole('button', { name: 'Nieuwe categorie' }).click(); }
     const form = formRows(page);
-    const labels = await form.locator('input').evaluateAll(ins => ins.map(i => ({ id: i.id, n: i.labels.length, forOk: i.labels[0]?.htmlFor === i.id })));
-    ok(labels.length === 6 && labels.every(l => l.id && l.n === 1 && l.forOk), `#1554 ${modus}: alle 6 inputs hebben precies één label met for=id`);
+    const labels = await form.locator('input, select').evaluateAll(ins => ins.map(i => ({ id: i.id, n: i.labels.length, forOk: i.labels[0]?.htmlFor === i.id })));
+    ok(labels.length === 6 && labels.every(l => l.id && l.n === 1 && l.forOk), `#1554 ${modus}: alle 6 invoervelden hebben precies één label met for=id`);
     ok(new Set(labels.map(l => l.id)).size === 6, `#1554 ${modus}: ids uniek binnen het formulier`);
     for (const [naam, rol] of velden) {
       const el = form.getByRole(rol, { name: naam, exact: true });
@@ -325,7 +325,7 @@ for (const w of [320, 375, 768, 1400]) {
     const volgorde = [];
     await form.locator('input:not([disabled])').first().focus();
     for (let i = 0; i < 8; i++) { volgorde.push(await page.evaluate(() => document.activeElement.id || document.activeElement.textContent.trim())); await page.keyboard.press('Tab'); }
-    const verwacht = (modus === 'nieuw' ? ['leeftijd'] : []).concat(['veldafmeting', 'totaal', 'helft', 'rust', 'voorkeurstijd', 'Opslaan', 'Annuleer']);
+    const verwacht = (modus === 'nieuw' ? ['leeftijd'] : []).concat(['veldafmeting', 'helften', 'helft', 'rust', 'voorkeurstijd', 'Opslaan', 'Annuleer']);
     ok(verwacht.every((v, i) => volgorde[i].endsWith(v)), `#1554 ${modus}: tabvolgorde ${volgorde.slice(0, verwacht.length).map(v => v.replace(/^speeltijd-\d+-/, '')).join(' → ')}`);
   }
   // twee formulieren na elkaar krijgen verschillende ids (geen botsing met een eerder gerenderd formulier)
@@ -335,7 +335,7 @@ for (const w of [320, 375, 768, 1400]) {
   const idsBewerk = await formRows(page).locator('input').evaluateAll(ins => ins.map(i => i.id));
   ok(idsNieuw.every(id => !idsBewerk.includes(id)), '#1554 opeenvolgende formulieren gebruiken verschillende id-reeksen');
   await page.getByLabel('Rust (min)').fill('12'); await page.getByLabel('Rust (min)').press('Enter'); await settle(page);
-  ok(await formRows(page).count() === 0 && (await row(page, 'JO9').locator('td').nth(4).textContent()).trim() === '12', '#1554 Enter in een veld slaat op (toetsenbordbediening)');
+  ok(await formRows(page).count() === 0 && (await row(page, 'JO9').locator('td').nth(5).textContent()).trim() === '12', '#1554 Enter in een veld slaat op (toetsenbordbediening)');
   geenFouten(errors, '#1554');
   await ctx.close();
 }
