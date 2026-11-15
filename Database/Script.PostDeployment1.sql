@@ -106,6 +106,15 @@ BEGIN
     );
 END
 GO
+-- #1962: kolom vóór de seeds en de democlub-kopie, zodat die hem op een bestaande database al kunnen gebruiken.
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Speeltijden') AND name = 'WedstrijdHelften')
+    ALTER TABLE [dbo].[Speeltijden]
+        ADD [WedstrijdHelften] INT NOT NULL CONSTRAINT [DF_Speeltijden_WedstrijdHelften] DEFAULT 2;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_Speeltijden_WedstrijdHelften')
+    ALTER TABLE [dbo].[Speeltijden]
+        ADD CONSTRAINT [CK_Speeltijden_WedstrijdHelften] CHECK ([WedstrijdHelften] IN (1, 2));
+GO
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE object_id = OBJECT_ID('dbo.TeamRegels'))
 BEGIN
     CREATE TABLE [dbo].[TeamRegels] (
@@ -3254,8 +3263,8 @@ BEGIN
     -- (inclusief de correcties uit #291).
     IF NOT EXISTS (SELECT 1 FROM [dbo].[Speeltijden] WHERE [ClubCode] = @DemoClub)
         INSERT INTO [dbo].[Speeltijden]
-            ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust], [ClubCode])
-        SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust], @DemoClub
+            ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust], [WedstrijdHelften], [ClubCode])
+        SELECT [Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust], [WedstrijdHelften], @DemoClub
         FROM [dbo].[Speeltijden]
         WHERE [ClubCode] = (SELECT MIN([ClubCode]) FROM [dbo].[AppSettings] WHERE [ClubCode] <> @DemoClub);
 
@@ -3330,17 +3339,10 @@ GO
 --   1. [WedstrijdHelften] (1 of 2, standaard 2). Toernooivormen zoals 35+ en VR30+ spelen één helft.
 --   2. [WedstrijdTotaal] = helften × helft + rust, zonder buffer; de buffer staat op de optimalisatiepagina.
 --      Rijen zonder helftduur (0) blijven ongemoeid. Idempotent: alleen afwijkende rijen.
---   3. 35+ en VR30+ voor elke club in dbo.AppSettings, ook de democlub: 1 × 20 min, geen rust, half veld,
---      standaard voorkeurstijd 20:00. Een club die de categorie al heeft, houdt zijn eigen rij.
+--   3. 35+ en VR30+ voor elke club die al speeltijden heeft (ook de democlub, die hierboven zijn kopie kreeg):
+--      1 × 20 min, geen rust, half veld, standaard voorkeurstijd 20:00. Een club die de categorie al heeft, houdt
+--      zijn eigen rij. De kolom zelf wordt direct na CREATE TABLE dbo.Speeltijden toegevoegd.
 -- ============================================================
-IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Speeltijden') AND name = 'WedstrijdHelften')
-    ALTER TABLE [dbo].[Speeltijden]
-        ADD [WedstrijdHelften] INT NOT NULL CONSTRAINT [DF_Speeltijden_WedstrijdHelften] DEFAULT 2;
-GO
-IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_Speeltijden_WedstrijdHelften')
-    ALTER TABLE [dbo].[Speeltijden]
-        ADD CONSTRAINT [CK_Speeltijden_WedstrijdHelften] CHECK ([WedstrijdHelften] IN (1, 2));
-GO
 UPDATE [dbo].[Speeltijden]
 SET [WedstrijdTotaal] = [WedstrijdHelften] * [WedstrijdHelft] + [WedstrijdRust]
 WHERE [WedstrijdHelft] > 0
@@ -3351,7 +3353,7 @@ INSERT INTO [dbo].[Speeltijden]
      [StandaardVoorkeurTijd], [ClubCode])
 SELECT v.[Leeftijd], 0.50, 20, 20, 0, 1, CAST('20:00' AS TIME), a.[ClubCode]
 FROM (VALUES ('35+'), ('VR30+')) AS v([Leeftijd])
-CROSS JOIN (SELECT DISTINCT [ClubCode] FROM [dbo].[AppSettings]) AS a
+CROSS JOIN (SELECT DISTINCT [ClubCode] FROM [dbo].[Speeltijden]) AS a
 WHERE NOT EXISTS (
     SELECT 1 FROM [dbo].[Speeltijden] t WHERE t.[Leeftijd] = v.[Leeftijd] AND t.[ClubCode] = a.[ClubCode]);
 GO

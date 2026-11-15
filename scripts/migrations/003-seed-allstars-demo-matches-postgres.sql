@@ -66,9 +66,9 @@ BEGIN
         ELSE
             INSERT INTO public.speeltijden
                 (leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust,
-                 standaardvoorkeurtijd, clubcode)
+                 wedstrijdhelften, standaardvoorkeurtijd, clubcode)
             SELECT leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust,
-                   standaardvoorkeurtijd, demo_club
+                   wedstrijdhelften, standaardvoorkeurtijd, demo_club
             FROM public.speeltijden
             WHERE clubcode = bron_club;
         END IF;

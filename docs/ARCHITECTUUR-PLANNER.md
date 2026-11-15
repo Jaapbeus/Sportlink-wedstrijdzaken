@@ -218,7 +218,8 @@ kwartveldwedstrijd bewust op `A2` gezet kan worden in plaats van op de eerste vr
 **Totaal = helften × helft + rust, zonder buffer** (#1962, WZ-ADR-014). De server berekent het totaal bij elke
 opslag (`Planner.Shared.SpeeltijdBerekening`); de buffer staat op de optimalisatiepagina. 35+ en VR30+ zijn
 KNVB-toernooivormen op vrijdagavond (1 × 20 minuten, half veld, standaard voorkeurstijd 20:00); migratie 054 en de
-SQL Server-PostDeployment voegen ze voor elke club toe. Sportlink levert deze teams als "Senioren"/"Senioren
+SQL Server-PostDeployment voegen ze toe voor elke club die al speeltijden heeft (de democlub krijgt ze via zijn kopie van
+de primaire club). Sportlink levert deze teams als "Senioren"/"Senioren
 Vrouwen" aan; de optimalisatie herkent ze aan de teamnaam (`TeamNaamNormalisatie.VeteranenSpeeltijdSleutel`,
 `AutoPlanRegels.OptimalisatieSpeeltijdSleutel`). Tot #1962 telden de senioren 10 minuten buffer mee (115, #291).
 

@@ -6,8 +6,11 @@
 -- 2. wedstrijdtotaal = wedstrijdhelften × wedstrijdhelft + wedstrijdrust, zonder buffer. De buffer staat op de
 --    optimalisatiepagina; tot nu toe telden de senioren 10 minuten buffer mee (115 in plaats van 105, #291).
 --    Rijen zonder helftduur (wedstrijdhelft = 0, oude data van vóór 003) blijven ongemoeid.
--- 3. 35+ en VR30+ voor elke club in public.appsettings, ook de democlub: 1 × 20 minuten, geen rust,
---    half veld, standaard voorkeurstijd 20:00. Een club die de categorie al heeft, houdt zijn eigen rij.
+-- 3. 35+ en VR30+ voor elke club die al speeltijden heeft: 1 × 20 minuten, geen rust, half veld, standaard
+--    voorkeurstijd 20:00. Een club die de categorie al heeft, houdt zijn eigen rij. Zoals de #291-aanvulling
+--    alleen voor clubs mét speeltijden: een democlub zonder rijen krijgt zijn volledige set (inclusief deze twee)
+--    als kopie van de primaire club via scripts/migrations/003-seed-allstars-demo-matches-postgres.sql. Een rij
+--    hier zou die kopie blokkeren (die draait alleen voor een democlub zonder speeltijden, #1246).
 --
 -- Geen nieuwe tabel, dus geen RLS-wijziging (public.speeltijden heeft RLS sinds 021).
 
@@ -32,5 +35,5 @@ INSERT INTO public.speeltijden
      standaardvoorkeurtijd, clubcode)
 SELECT v.leeftijd, 0.50, 20, 20, 0, 1, TIME '20:00', a.clubcode
 FROM (VALUES ('35+'), ('VR30+')) AS v(leeftijd)
-CROSS JOIN (SELECT DISTINCT clubcode FROM public.appsettings) a
+CROSS JOIN (SELECT DISTINCT clubcode FROM public.speeltijden) a
 ON CONFLICT (leeftijd, clubcode) DO NOTHING;
