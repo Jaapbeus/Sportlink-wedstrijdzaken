@@ -36,4 +36,10 @@ INSERT INTO public.speeltijden
 SELECT v.leeftijd, 0.50, 20, 20, 0, 1, TIME '20:00', a.clubcode
 FROM (VALUES ('35+'), ('VR30+')) AS v(leeftijd)
 CROSS JOIN (SELECT DISTINCT clubcode FROM public.speeltijden) a
+-- Hoofdletterongevoelig per club (review #1966 R1-F2): een bestaande 'vr30+' is dezelfde categorie. De primary
+-- key is hoofdlettergevoelig, dus ON CONFLICT alleen zou er een tweede rij 'VR30+' naast zetten; de planner leest
+-- de speeltijden in een hoofdletterongevoelige lookup en dan wint willekeurig één van beide.
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.speeltijden t
+    WHERE LOWER(t.leeftijd) = LOWER(v.leeftijd) AND t.clubcode = a.clubcode)
 ON CONFLICT (leeftijd, clubcode) DO NOTHING;

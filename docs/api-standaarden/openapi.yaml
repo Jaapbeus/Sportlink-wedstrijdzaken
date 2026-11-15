@@ -2847,11 +2847,13 @@ components:
         wedstrijdHelft:
           type: integer
           minimum: 1
+          maximum: 1440
           example: 35
         wedstrijdRust:
           type: integer
           minimum: 0
-          description: Rustduur in minuten; 0 bij één helft
+          maximum: 1440
+          description: Rustduur in minuten; 0 bij één helft. Het berekende totaal mag hoogstens 1440 minuten zijn.
           example: 5
         wedstrijdHelften:
           type: integer

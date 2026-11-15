@@ -1,3 +1,4 @@
+using Planner.Endpoints.Admin;
 using Planner.Shared;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -35,8 +36,7 @@ public static class AdminSpeeltijdenFunction
             {
                 if (dto == null || string.IsNullOrWhiteSpace(dto.Leeftijd))
                     return new BadRequestObjectResult(new { error = "Leeftijd is vereist" });
-                var (helften, totaal, fout) = SpeeltijdBerekening.Bereken(dto.WedstrijdHelften, dto.WedstrijdHelft, dto.WedstrijdRust);
-                if (fout != null) return new BadRequestObjectResult(new { error = fout });
+                if (SpeeltijdenValidatieCore.Valideer(dto.WedstrijdHelften, dto.WedstrijdHelft, dto.WedstrijdRust, out var helften, out var totaal) is { } fout) return fout;
 
                 try
                 {
@@ -62,8 +62,7 @@ public static class AdminSpeeltijdenFunction
             {
                 if (dto == null)
                     return new BadRequestObjectResult(new { error = "Ongeldige request body" });
-                var (helften, totaal, fout) = SpeeltijdBerekening.Bereken(dto.WedstrijdHelften, dto.WedstrijdHelft, dto.WedstrijdRust);
-                if (fout != null) return new BadRequestObjectResult(new { error = fout });
+                if (SpeeltijdenValidatieCore.Valideer(dto.WedstrijdHelften, dto.WedstrijdHelft, dto.WedstrijdRust, out var helften, out var totaal) is { } fout) return fout;
 
                 var rows = await AdminSpeeltijdenRepository.UpdateAsync(
                     leeftijd,

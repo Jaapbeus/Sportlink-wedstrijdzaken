@@ -27,6 +27,40 @@ public class SpeeltijdHelftenTests
         SpeeltijdBerekening.Valideer(helften, helft, rust).Should().NotBeNull();
 
     [Theory]
+    [InlineData(2, int.MaxValue, 0)]          // vermenigvuldiging zou overlopen
+    [InlineData(2, 1_073_741_824, 0)]         // 2 × 2^30 = 2^31: precies één voorbij int.MaxValue
+    [InlineData(1, 20, int.MaxValue)]         // optelling zou overlopen (en rust bij één helft)
+    [InlineData(2, 20, int.MaxValue)]         // optelling zou overlopen
+    [InlineData(2, 1440, 0)]                  // totaal 2880 > één dag
+    [InlineData(2, 700, 41)]                  // totaal 1441
+    public void Valideer_WeigertTotaalBovenEenDagEnOverflow(int helften, int helft, int rust)
+    {
+        SpeeltijdBerekening.Valideer(helften, helft, rust).Should().NotBeNull();
+        var (_, totaal, fout) = SpeeltijdBerekening.Bereken(helften, helft, rust);
+        fout.Should().NotBeNull();
+        totaal.Should().Be(0, "bij een validatiefout wordt geen (overgelopen) totaal berekend");
+    }
+
+    [Fact]
+    public void Valideer_AccepteertPreciesEenDag()
+    {
+        SpeeltijdBerekening.Valideer(2, 700, 40).Should().BeNull();
+        SpeeltijdBerekening.Bereken(2, 700, 40).Totaal.Should().Be(1440);
+    }
+
+    [Fact]
+    public void Bereken_ZonderHelften_GebruiktTweeHelften()
+    {
+        var (helften, totaal, fout) = SpeeltijdBerekening.Bereken(null, 45, 15);
+        (helften, totaal, fout).Should().Be((2, 105, (string?)null));
+    }
+
+    [Fact]
+    public void Totaal_LooptNooitStilOver() =>
+        FluentActions.Invoking(() => SpeeltijdBerekening.Totaal(2, int.MaxValue, 0))
+            .Should().Throw<OverflowException>();
+
+    [Theory]
     [InlineData(2, 45, 15)]
     [InlineData(1, 20, 0)]
     public void Valideer_AccepteertGeldigeInvoer(int helften, int helft, int rust) =>
