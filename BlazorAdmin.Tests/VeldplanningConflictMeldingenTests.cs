@@ -39,16 +39,16 @@ public class VeldplanningConflictMeldingenTests
     }
 
     [Fact]
-    public void SportlinkLeidendeAansluitendeWedstrijden_GevenGeenValseBufferMelding()
+    public void AansluitendeWedstrijden_GevenEenBufferMelding()
     {
-        var eerste = Item("A", "Veld 1", "Veld 1", "10:00");
-        var tweede = Item("B", "Veld 1", "Veld 1", "11:00");
-        eerste.SportlinkLeidend = tweede.SportlinkLeidend = true;
+        // WZ-ADR-014 (#1960): de buffer van de pagina geldt voor elke wedstrijd, ook na handmatig slepen.
+        var meldingen = VeldplanningConflictMeldingen.Bepaal(
+        [
+            Item("A", "Veld 1", "Veld 1", "10:00"),
+            Item("B", "Veld 1", "Veld 1", "11:00"),
+        ], algemeneBuffer: 10);
 
-        VeldplanningConflictMeldingen.Bepaal([eerste, tweede], algemeneBuffer: 10).Should().BeEmpty();
-        tweede.OptimaalTijd = "10:59";
-        VeldplanningConflictMeldingen.Bepaal([eerste, tweede], algemeneBuffer: 10)
-            .Should().ContainSingle(m => m.Contains("dezelfde tijd"));
+        meldingen.Should().ContainSingle();
     }
 
     [Fact]

@@ -18,6 +18,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- **Veld optimalisatie rekent weer met de buffer en de teamregels** (#1960). De buffer op de pagina en de teamregels (`BufferVoor`, `BufferNa`) gelden voor elke wedstrijd; sinds #1559 kreeg elke wedstrijd met een Sportlink-speelduur buffer 0, waardoor de bufferinstelling en de teamregels niets meer deden. De duur komt alleen uit de speeltijden van de club, niet meer uit Sportlink (WZ-ADR-014). Teambuffers zoeken het team nu op dezelfde manier als voorkeursveld en voorkeurstijd, dus een regel op `1` geldt ook voor `[club] 1`. Het veld `sportlinkLeidend` is uit het auto-plancontract verwijderd. Een nieuwe CI-guard bewaakt dat de optimalisatie geen Sportlink-duur gebruikt en de Planning geen optimalisatieregels. De Planning is niet gewijzigd. Beide databasetiers.
 - Vastgelegd als architectuurbesluit WZ-ADR-014: de Planning toont Sportlink zoals het is, Veld optimalisatie rekent alleen met de eigen instellingen (speeltijden, buffer van de pagina, teamregels, voorkeurstijden, velden). Vervangt #1559 voor de optimalisatie; de uitvoering volgt in #1960 en #1962. Alleen documentatie en werkinstructies, geen gedragswijziging (#1961).
 - De e-mailtester en andere AI-aanroepen falen niet meer met "Dry-run mislukt" als bij een model met reasoning (zoals `gpt-6-luna`) de instelling `AiReasoningEffort` ontbreekt: dan geldt automatisch `none` (#1958).
 

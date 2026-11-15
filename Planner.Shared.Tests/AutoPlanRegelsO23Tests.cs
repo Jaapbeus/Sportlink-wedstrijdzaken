@@ -80,8 +80,8 @@ public class AutoPlanRegelsO23Tests
         };
         AutoPlanApplySource[] bronnen =
         [
-            new(1, null, null, "ALLSTARS O23-1", "1-99", null),
-            new(2, null, null, "ALLSTARS JO13-1", "JO13", null),
+            new(1, null, null, "ALLSTARS O23-1", "1-99"),
+            new(2, null, null, "ALLSTARS JO13-1", "JO13"),
         ];
         AutoPlanApplyChoice[] keuzes =
         [

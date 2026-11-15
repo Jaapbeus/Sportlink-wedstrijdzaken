@@ -951,8 +951,7 @@ eerste claimt. `BufferVoor`/`BufferNa` zijn geen laag maar gelden altijd.
       "voorkeurVeldNummer": null,
       "voorkeurVeldToegepast": null,
       "teamBufferVoor": null,
-      "teamBufferNa": 60,
-      "sportlinkLeidend": true
+      "teamBufferNa": 60
     }
   ],
   "huidigeHtml": "<html>...</html>",
@@ -980,9 +979,9 @@ algemene buffer, en tussen twee opeenvolgende wedstrijden telt de grootste van d
 voorganger en de `BufferVoor` van de opvolger. De Admin GUI gebruikt ze om na handmatig verslepen exact
 dezelfde regel toe te passen als de planner.
 
-`sportlinkLeidend` (#1814) is `true` wanneer de planner de Sportlink-speelduur gebruikt. Rond dat
-slot geldt geen appbuffer; overlap blijft altijd een conflict. De handmatige conflictcontrole
-gebruikt deze waarde ook na het verslepen.
+De optimalisatie rekent alleen met de speeltijden van de club, de meegegeven `bufferMinuten` en de
+teamregels, nooit met Sportlinks speelduur (WZ-ADR-014, #1960). Het veld `sportlinkLeidend` (#1814) is
+daarom vervallen: de buffer geldt voor elke wedstrijd, ook in de handmatige conflictcontrole.
 
 > **`nietInplanbaaarReden` — let op de dubbele `a`.** De veldnaam bevat een typefout die in het
 > wire-contract zit (`AutoPlanWedstrijdItem` op beide tiers). Hij is gevuld bij

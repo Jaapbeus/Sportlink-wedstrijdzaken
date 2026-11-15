@@ -625,10 +625,14 @@ optimalisatie **niet** gebruikt. De speeltijd bevat geen buffer; de buffer staat
 geen team dubbel geboekt. Daarna bepaalt de rangorde hierboven de streeftijd (laag 0 teamregel, laag 1
 teamvoorkeurstijd, laag 2 standaardtijd, laag 3 eerste vrije slot), binnen een laag op `Prioriteit`.
 
-**Uitvoering.** #1960 (duur, buffer en teamregels los van Sportlink, één teamsleutel, CI-guard) en
-#1962 (speeltijden met aantal helften, totaal zonder buffer, 35+ en VR30+). Tot die gemerged zijn,
-rekent de code nog volgens het vervangen besluit #1559: wedstrijden met een Sportlink-speelduur krijgen
-die duur + 15 en buffer 0.
+**Uitvoering.** #1960: duur alleen uit de speeltijden, paginabuffer en teamregels voor elke wedstrijd,
+teambuffers via `TeamSleutelLookup` (`AutoPlanRegels.TeamBuffersVoorWedstrijden`), en de CI-guard
+`check-planning-optimalisatie-scheiding.sh`. Nog open: #1962 (speeltijden met aantal helften, totaal zonder
+buffer, 35+ en VR30+); tot dan bevat het seniorentotaal nog 10 minuten buffer (#291).
+
+**Teamsleutel.** Alle teamregels (voorkeursveld, voorkeurstijd, `BufferVoor`/`BufferNa`) vinden het team via
+`TeamSleutelLookup`: een regel op "1" geldt ook voor "[club] 1". Vóór #1960 zochten de buffers op de exacte
+schrijfwijze.
 
 ### Bezettingsduur bij de beschikbaarheidscontrole (#1814)
 
