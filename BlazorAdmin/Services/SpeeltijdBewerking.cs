@@ -192,6 +192,7 @@ public sealed class SpeeltijdBewerking
         WedstrijdTotaal = bron.WedstrijdTotaal,
         WedstrijdHelft = bron.WedstrijdHelft,
         WedstrijdRust = bron.WedstrijdRust,
+        WedstrijdHelften = bron.WedstrijdHelften,
         StandaardVoorkeurTijd = bron.StandaardVoorkeurTijd
     };
 

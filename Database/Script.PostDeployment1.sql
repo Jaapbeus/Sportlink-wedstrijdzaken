@@ -98,9 +98,11 @@ BEGIN
         [WedstrijdTotaal]       INT           NOT NULL,
         [WedstrijdHelft]        INT           NOT NULL,
         [WedstrijdRust]         INT           NOT NULL,
+        [WedstrijdHelften]      INT           NOT NULL CONSTRAINT [DF_Speeltijden_WedstrijdHelften] DEFAULT 2,
         [StandaardVoorkeurTijd] TIME          NULL,
         [ClubCode]              NVARCHAR(20)  NOT NULL,
-        CONSTRAINT [PK_Speeltijden] PRIMARY KEY CLUSTERED ([Leeftijd] ASC, [ClubCode] ASC)
+        CONSTRAINT [PK_Speeltijden] PRIMARY KEY CLUSTERED ([Leeftijd] ASC, [ClubCode] ASC),
+        CONSTRAINT [CK_Speeltijden_WedstrijdHelften] CHECK ([WedstrijdHelften] IN (1, 2))
     );
 END
 GO
@@ -270,9 +272,9 @@ IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Speeltijde
         (''MO17'', 1.00, 95,  40, 15),
         (''MO19'', 1.00, 105, 45, 15),
         (''MO20'', 1.00, 105, 45, 15),
-        (''VR'',   1.00, 115, 45, 15),
+        (''VR'',   1.00, 105, 45, 15),
         (''G'',    0.50, 75,  30, 15),
-        (''1-99'', 1.00, 115, 45, 15)
+        (''1-99'', 1.00, 105, 45, 15)
     ) AS v([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust])
     CROSS JOIN (
         SELECT s.[ClubCode]
@@ -1461,17 +1463,11 @@ IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('avg.Teambe
 GO
 
 -- ============================================================
--- #291: Speeltijden correcties en ontbrekende categorieën
--- Senioren (1-99, VR) = 115 min (2x45 + 15 rust + 10 buffer)
--- JO6 = 40 min; ontbrekende MO-categorieën = equivalent JO
--- Idempotent: UPDATE voor bestaande rijen, MERGE voor ontbrekende
+-- #291: ontbrekende categorieën (JO6 = 40 min; ontbrekende MO-categorieën = equivalent JO)
+-- Idempotent: MERGE voor ontbrekende rijen.
+-- De seniorencorrectie van #291 (105 → 115, inclusief 10 minuten buffer) is vervallen door #1962
+-- (WZ-ADR-014): het totaal bevat geen buffer meer en wordt onderaan dit script herberekend.
 -- ============================================================
-
--- Senioren correctie: 105 → 115
-UPDATE [dbo].[Speeltijden]
-SET [WedstrijdTotaal] = 115, [WedstrijdHelft] = 45, [WedstrijdRust] = 15
-WHERE [Leeftijd] IN ('1-99', 'VR') AND [WedstrijdTotaal] < 115;
-GO
 
 -- Ontbrekende categorieën aanvullen.
 --
@@ -3326,6 +3322,38 @@ BEGIN
     ) AS d([Leeftijd], [Tijd]) ON d.[Leeftijd] = s.[Leeftijd]
     WHERE s.[StandaardVoorkeurTijd] IS NULL;
 END
+GO
+
+-- ============================================================
+-- #1962 (WZ-ADR-014): aantal helften, totaal zonder buffer, en de KNVB-categorieën 35+ en VR30+.
+-- Postgres-tegenhanger: Database.Postgres/migrations/054_speeltijden_helften.sql.
+--   1. [WedstrijdHelften] (1 of 2, standaard 2). Toernooivormen zoals 35+ en VR30+ spelen één helft.
+--   2. [WedstrijdTotaal] = helften × helft + rust, zonder buffer; de buffer staat op de optimalisatiepagina.
+--      Rijen zonder helftduur (0) blijven ongemoeid. Idempotent: alleen afwijkende rijen.
+--   3. 35+ en VR30+ voor elke club in dbo.AppSettings, ook de democlub: 1 × 20 min, geen rust, half veld,
+--      standaard voorkeurstijd 20:00. Een club die de categorie al heeft, houdt zijn eigen rij.
+-- ============================================================
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Speeltijden') AND name = 'WedstrijdHelften')
+    ALTER TABLE [dbo].[Speeltijden]
+        ADD [WedstrijdHelften] INT NOT NULL CONSTRAINT [DF_Speeltijden_WedstrijdHelften] DEFAULT 2;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_Speeltijden_WedstrijdHelften')
+    ALTER TABLE [dbo].[Speeltijden]
+        ADD CONSTRAINT [CK_Speeltijden_WedstrijdHelften] CHECK ([WedstrijdHelften] IN (1, 2));
+GO
+UPDATE [dbo].[Speeltijden]
+SET [WedstrijdTotaal] = [WedstrijdHelften] * [WedstrijdHelft] + [WedstrijdRust]
+WHERE [WedstrijdHelft] > 0
+  AND [WedstrijdTotaal] <> [WedstrijdHelften] * [WedstrijdHelft] + [WedstrijdRust];
+GO
+INSERT INTO [dbo].[Speeltijden]
+    ([Leeftijd], [Veldafmeting], [WedstrijdTotaal], [WedstrijdHelft], [WedstrijdRust], [WedstrijdHelften],
+     [StandaardVoorkeurTijd], [ClubCode])
+SELECT v.[Leeftijd], 0.50, 20, 20, 0, 1, CAST('20:00' AS TIME), a.[ClubCode]
+FROM (VALUES ('35+'), ('VR30+')) AS v([Leeftijd])
+CROSS JOIN (SELECT DISTINCT [ClubCode] FROM [dbo].[AppSettings]) AS a
+WHERE NOT EXISTS (
+    SELECT 1 FROM [dbo].[Speeltijden] t WHERE t.[Leeftijd] = v.[Leeftijd] AND t.[ClubCode] = a.[ClubCode]);
 GO
 
 -- #692/#696: canonieke teamidentiteit + aliassen voor de teamnaam-naar-ID vertaallaag.

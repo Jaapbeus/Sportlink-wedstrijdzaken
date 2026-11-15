@@ -192,30 +192,35 @@ kwartveldwedstrijd bewust op `A2` gezet kan worden in plaats van op de eerste vr
 > `Database/Script.PostDeployment1.sql` (`dbo.Speeltijden`); elke club past ze aan via
 > **WZ Instellingen → Speeltijden**. Ze staan hier zodat het algoritme hieronder leesbaar is.
 
-| Categorie | Veldafmeting | Totaal (min) | Helft (min) | Rust (min) |
-|-----------|-------------|-------------|-------------|------------|
-| JO6 | 0.25 | 40 | 15 | 10 |
-| JO7 / JO8 / JO9 | 0.25 | 50 | 20 | 10 |
-| MO7 / MO8 / MO9 | 0.25 | 50 | 20 | 10 |
-| JO10 | 0.25 | 65 | 25 | 15 |
-| MO10 | 0.25 | 65 | 25 | 15 |
-| JO11 / JO12 | 0.50 | 75 | 30 | 15 |
-| MO11 / MO12 | 0.50 | 75 | 30 | 15 |
-| JO13 | 1.00 | 75 | 30 | 15 |
-| MO13 | 1.00 | 75 | 30 | 15 |
-| JO14 / JO15 | 1.00 | 85 | 35 | 15 |
-| MO14 / MO15 | 1.00 | 85 | 35 | 15 |
-| JO16 / JO17 | 1.00 | 95 | 40 | 15 |
-| MO16 / MO17 | 1.00 | 95 | 40 | 15 |
-| JO18 / JO19 / JO23 | 1.00 | 105 | 45 | 15 |
-| MO18 / MO19 / MO20 / MO23 | 1.00 | 105 | 45 | 15 |
-| G | 0.50 | 75 | 30 | 15 |
-| VR | 1.00 | **115** | 45 | 15 |
-| 1-99 | 1.00 | **115** | 45 | 15 |
+| Categorie | Veldafmeting | Helften | Helft (min) | Rust (min) | Totaal (min) |
+|-----------|-------------|---------|-------------|------------|-------------|
+| JO6 | 0.25 | 2 | 15 | 10 | 40 |
+| JO7 / JO8 / JO9 | 0.25 | 2 | 20 | 10 | 50 |
+| MO7 / MO8 / MO9 | 0.25 | 2 | 20 | 10 | 50 |
+| JO10 | 0.25 | 2 | 25 | 15 | 65 |
+| MO10 | 0.25 | 2 | 25 | 15 | 65 |
+| JO11 / JO12 | 0.50 | 2 | 30 | 15 | 75 |
+| MO11 / MO12 | 0.50 | 2 | 30 | 15 | 75 |
+| JO13 | 1.00 | 2 | 30 | 15 | 75 |
+| MO13 | 1.00 | 2 | 30 | 15 | 75 |
+| JO14 / JO15 | 1.00 | 2 | 35 | 15 | 85 |
+| MO14 / MO15 | 1.00 | 2 | 35 | 15 | 85 |
+| JO16 / JO17 | 1.00 | 2 | 40 | 15 | 95 |
+| MO16 / MO17 | 1.00 | 2 | 40 | 15 | 95 |
+| JO18 / JO19 / JO23 | 1.00 | 2 | 45 | 15 | 105 |
+| MO18 / MO19 / MO20 / MO23 | 1.00 | 2 | 45 | 15 | 105 |
+| G | 0.50 | 2 | 30 | 15 | 75 |
+| VR | 1.00 | 2 | 45 | 15 | 105 |
+| 1-99 | 1.00 | 2 | 45 | 15 | 105 |
+| 35+ | 0.50 | 1 | 20 | 0 | 20 |
+| VR30+ | 0.50 | 1 | 20 | 0 | 20 |
 
-De senioren staan op 115 minuten (2×45 + 15 rust + 10 buffer) sinds #291; datzelfde issue vulde
-JO6 en de ontbrekende MO-categorieën aan. **Wordt vervangen door #1962 (WZ-ADR-014):** het totaal wordt
-helften × helftduur + rust zonder buffer (senioren 105), en 35+ en VR30+ krijgen 1 × 20 minuten zonder rust.
+**Totaal = helften × helft + rust, zonder buffer** (#1962, WZ-ADR-014). De server berekent het totaal bij elke
+opslag (`Planner.Shared.SpeeltijdBerekening`); de buffer staat op de optimalisatiepagina. 35+ en VR30+ zijn
+KNVB-toernooivormen op vrijdagavond (1 × 20 minuten, half veld, standaard voorkeurstijd 20:00); migratie 054 en de
+SQL Server-PostDeployment voegen ze voor elke club toe. Sportlink levert deze teams als "Senioren"/"Senioren
+Vrouwen" aan; de optimalisatie herkent ze aan de teamnaam (`TeamNaamNormalisatie.VeteranenSpeeltijdSleutel`,
+`AutoPlanRegels.OptimalisatieSpeeltijdSleutel`). Tot #1962 telden de senioren 10 minuten buffer mee (115, #291).
 
 ---
 
@@ -627,8 +632,8 @@ teamvoorkeurstijd, laag 2 standaardtijd, laag 3 eerste vrije slot), binnen een l
 
 **Uitvoering.** #1960: duur alleen uit de speeltijden, paginabuffer en teamregels voor elke wedstrijd,
 teambuffers via `TeamSleutelLookup` (`AutoPlanRegels.TeamBuffersVoorWedstrijden`), en de CI-guard
-`check-planning-optimalisatie-scheiding.sh`. Nog open: #1962 (speeltijden met aantal helften, totaal zonder
-buffer, 35+ en VR30+); tot dan bevat het seniorentotaal nog 10 minuten buffer (#291).
+`check-planning-optimalisatie-scheiding.sh`. #1962: speeltijden met aantal helften, totaal zonder buffer, en
+35+/VR30+ met hun eigen speeltijd (zie "Speeltijden per leeftijdscategorie").
 
 **Teamsleutel.** Alle teamregels (voorkeursveld, voorkeurstijd, `BufferVoor`/`BufferNa`) vinden het team via
 `TeamSleutelLookup`: een regel op "1" geldt ook voor "[club] 1". Vóór #1960 zochten de buffers op de exacte

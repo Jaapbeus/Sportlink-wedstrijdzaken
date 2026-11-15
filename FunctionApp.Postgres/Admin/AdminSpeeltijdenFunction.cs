@@ -1,3 +1,4 @@
+using Planner.Shared;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -34,14 +35,14 @@ public static class AdminSpeeltijdenFunction
             {
                 if (dto == null || string.IsNullOrWhiteSpace(dto.Leeftijd))
                     return new BadRequestObjectResult(new { error = "Leeftijd is vereist" });
-                if (dto.WedstrijdTotaal <= 0)
-                    return new BadRequestObjectResult(new { error = "WedstrijdTotaal moet groter zijn dan 0" });
+                var (helften, totaal, fout) = SpeeltijdBerekening.Bereken(dto.WedstrijdHelften, dto.WedstrijdHelft, dto.WedstrijdRust);
+                if (fout != null) return new BadRequestObjectResult(new { error = fout });
 
                 try
                 {
                     await AdminSpeeltijdenRepository.InsertAsync(
-                        new SpeeltijdInput(dto.Leeftijd, dto.Veldafmeting, dto.WedstrijdTotaal,
-                            dto.WedstrijdHelft, dto.WedstrijdRust, ParseTijd(dto.StandaardVoorkeurTijd)),
+                        new SpeeltijdInput(dto.Leeftijd, dto.Veldafmeting, totaal,
+                            dto.WedstrijdHelft, dto.WedstrijdRust, helften, ParseTijd(dto.StandaardVoorkeurTijd)),
                         clubCode, PostgresDatabaseConfig.ConnectionString);
                     return new CreatedResult("/api/beheer/speeltijden", new { Leeftijd = dto.Leeftijd });
                 }
@@ -61,13 +62,13 @@ public static class AdminSpeeltijdenFunction
             {
                 if (dto == null)
                     return new BadRequestObjectResult(new { error = "Ongeldige request body" });
-                if (dto.WedstrijdTotaal <= 0)
-                    return new BadRequestObjectResult(new { error = "WedstrijdTotaal moet groter zijn dan 0" });
+                var (helften, totaal, fout) = SpeeltijdBerekening.Bereken(dto.WedstrijdHelften, dto.WedstrijdHelft, dto.WedstrijdRust);
+                if (fout != null) return new BadRequestObjectResult(new { error = fout });
 
                 var rows = await AdminSpeeltijdenRepository.UpdateAsync(
                     leeftijd,
-                    new SpeeltijdInput(leeftijd, dto.Veldafmeting, dto.WedstrijdTotaal,
-                        dto.WedstrijdHelft, dto.WedstrijdRust, ParseTijd(dto.StandaardVoorkeurTijd)),
+                    new SpeeltijdInput(leeftijd, dto.Veldafmeting, totaal,
+                        dto.WedstrijdHelft, dto.WedstrijdRust, helften, ParseTijd(dto.StandaardVoorkeurTijd)),
                     clubCode, PostgresDatabaseConfig.ConnectionString);
                 if (rows == 0) return new NotFoundObjectResult(new { error = "Leeftijdscategorie niet gevonden" });
                 return new OkObjectResult(new { updated = leeftijd });
@@ -92,6 +93,6 @@ public static class AdminSpeeltijdenFunction
 
     private record SpeeltijdDto(
         string Leeftijd, decimal Veldafmeting,
-        int WedstrijdTotaal, int WedstrijdHelft, int WedstrijdRust,
+        int WedstrijdTotaal, int WedstrijdHelft, int WedstrijdRust, int? WedstrijdHelften,
         string? StandaardVoorkeurTijd);
 }

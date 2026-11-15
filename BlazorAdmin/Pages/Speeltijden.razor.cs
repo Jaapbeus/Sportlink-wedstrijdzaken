@@ -47,9 +47,15 @@ public partial class Speeltijden : ClubSelectorPageBase
     /// zodat een intussen geopend ander formulier blijft staan (#1552).
     /// </summary>
     private Task OpslaanAsync() => _bewerking.OpslaanAsync(
-        (model, isNieuw) => isNieuw
-            ? Api.CreateSpeeltijdAsync(model)
-            : Api.UpdateSpeeltijdAsync(model.Leeftijd, model),
+        (model, isNieuw) =>
+        {
+            // #1962: het totaal volgt uit helften × helft + rust. Zo toont de lokale bijwerking direct
+            // hetzelfde totaal als de server opslaat.
+            model.WedstrijdTotaal = model.BerekendTotaal;
+            return isNieuw
+                ? Api.CreateSpeeltijdAsync(model)
+                : Api.UpdateSpeeltijdAsync(model.Leeftijd, model);
+        },
         Api.GetSpeeltijdenAsync);
 
     private async Task DeleteAsync(string leeftijd)

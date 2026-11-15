@@ -7,8 +7,8 @@
 
 <h1>Speeltijden</h1>
 <p class="text-muted">
-    <strong>WedstrijdTotaal</strong> = speeltijd + rust (inclusief buffer). Dit is de totale veldblokkeertijd.
-    De planner gebruikt dit getal direct — rust wordt <em>niet</em> apart opgeteld in de code.
+    <strong>Totaal</strong> = helften × helft + rust. Dit is de tijd die een wedstrijd het veld bezet, zonder
+    buffer: de buffer tussen wedstrijden stelt u in bij Veld optimalisatie.
 </p>
 
 @if (_loading)
@@ -41,7 +41,7 @@ else
     }
 
     @* Op een smalle container worden de regels kaarten (Speeltijden.razor.css), zodat het inline
-       formulier de beschikbare breedte krijgt in plaats van die van de zevenkolomstabel (#1553).
+       formulier de beschikbare breedte krijgt in plaats van die van de achtkolomstabel (#1553).
        De tabelrollen staan expliciet: zodra de cellen display:block krijgen, laat de browser de
        impliciete tabelsemantiek vallen en zou een schermlezer losse tekst horen. *@
     <div class="speeltijden-lijst">
@@ -50,7 +50,8 @@ else
                 <tr role="row">
                     <th role="columnheader" scope="col">Leeftijd</th>
                     <th role="columnheader" scope="col">Veldafmeting</th>
-                    <th role="columnheader" scope="col" title="speeltijd + rust incl. buffer">Totaal (min) <small class="text-muted">incl. rust</small></th>
+                    <th role="columnheader" scope="col" title="helften × helft + rust, zonder buffer">Totaal (min)</th>
+                    <th role="columnheader" scope="col">Helften</th>
                     <th role="columnheader" scope="col">Helft (min)</th>
                     <th role="columnheader" scope="col">Rust (min)</th>
                     <th role="columnheader" scope="col" title="Gebruikt als een team geen eigen voorkeurstijd heeft">Standaard voorkeurstijd</th>
@@ -61,7 +62,7 @@ else
                 @if (_bewerking.Actief is { IsNieuw: true } nieuw)
                 {
                     <tr role="row" class="speeltijd-formulierrij">
-                        <td role="cell" colspan="7">
+                        <td role="cell" colspan="8">
                             <SpeeltijdFormulier @key="nieuw" Sessie="nieuw" OnOpslaan="OpslaanAsync" OnAnnuleer="Annuleer" />
                         </td>
                     </tr>
@@ -74,6 +75,7 @@ else
                         <td role="cell" data-label="Leeftijd" class="speeltijd-leeftijd">@s.Leeftijd</td>
                         <td role="cell" data-label="Veldafmeting">@s.Veldafmeting.ToString("0.00")</td>
                         <td role="cell" data-label="Totaal (min)"><strong>@s.WedstrijdTotaal</strong></td>
+                        <td role="cell" data-label="Helften">@s.WedstrijdHelften</td>
                         <td role="cell" data-label="Helft (min)">@s.WedstrijdHelft</td>
                         <td role="cell" data-label="Rust (min)">@s.WedstrijdRust</td>
                         <td role="cell" data-label="Standaard voorkeurstijd">
@@ -106,7 +108,7 @@ else
                     @if (inBewerking)
                     {
                         <tr role="row" class="speeltijd-formulierrij">
-                            <td role="cell" colspan="7">
+                            <td role="cell" colspan="8">
                                 <SpeeltijdFormulier @key="_bewerking.Actief" Sessie="_bewerking.Actief!" OnOpslaan="OpslaanAsync" OnAnnuleer="Annuleer" />
                             </td>
                         </tr>
@@ -114,7 +116,7 @@ else
                 }
                 @if (_bewerking.Items.Count == 0)
                 {
-                    <tr role="row"><td role="cell" colspan="7" class="text-muted">Geen speeltijden gevonden.</td></tr>
+                    <tr role="row"><td role="cell" colspan="8" class="text-muted">Geen speeltijden gevonden.</td></tr>
                 }
             </tbody>
         </table>

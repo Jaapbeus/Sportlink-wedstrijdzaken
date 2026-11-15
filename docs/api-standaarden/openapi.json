@@ -3,7 +3,7 @@
   "info": {
     "title": "Sportlink Wedstrijdzaken API",
     "description": "API voor het beheer van wedstrijden, veldplanning en club-instellingen.\n\n## Beveiliging\n\nEén beveiligingsschema:\n\n- **easyAuth** — Azure Easy Auth Bearer token (Entra ID) in de `Authorization`-header, vereist\n  voor alle endpoints behalve `/health`; gedetailleerde healthinformatie is admin-only. De rolcontrole gebeurt server-side, met vier niveaus:\n  `admin` (`EasyAuthHelper.RequireAdmin`, via de wrappers `AdminEndpoint.ExecuteAsync` /\n  `ExecuteZonderDatabaseAsync`) voor de meeste `/beheer/`-, `/planner/`- en\n  `/test/`-endpoints (waaronder het feedbackoverzicht `/beheer/feedback`) — sinds #1350 óók voor `/postgres/sync-matches` en `/sync-matches`;\n  `admin` óf `user` (`AdminEndpoint.ExecuteAuthenticatedAsync`, #1330) voor `/planner/veldbezetting`\n  (#1400), de drie `/feedback/`-endpoints (#764: elke ingelogde gebruiker mag feedback geven), de twee Sportlink-viewing-endpoints (`GET /sportlink/match/{wedstrijdcode}` en\n  `.../public-match-id`, #1400) en de drie Teambegeleiding-lookup/doorstuur-endpoints; op\n  **beide** tiers identiek `Wedstrijdzaken` óf `admin` (`EasyAuthHelper.RequireWedstrijdzaken`,\n  beide poorten sinds #1400) voor de Sportlink-mutatie-endpoints (`PUT`/`POST` onder\n  `/sportlink/`), via `SportlinkEndpointSupport.ExecuteWedstrijdzakenAsync`. Netto: een gewone\n  `user` (zonder `Wedstrijdzaken`, zonder `admin`) kan Planning en het Sportlink-paneel bekijken\n  maar geen Sportlink-mutatie triggeren; dat laatste vereist `Wedstrijdzaken` óf `admin`. Lokaal\n  alleen omzeild met de expliciete schakelaar `LOCAL_AUTH_BYPASS=true`; in Azure wordt die\n  geweigerd (#1700).\n\nZonder token volgt `401`. Met een geldig token maar zonder de vereiste rol volgt `403` met\n`{ \"error\": \"Forbidden: vereiste rol ontbreekt\" }`.\n\n## Tiers\n\nAlle endpoints bestaan sinds #1266 op beide databasetiers, met één uitzondering: de handmatige\nsynchronisatie heet `/postgres/sync-matches` op de Postgres-tier (productie) en\n`/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.\n\nAlle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.\n",
-    "version": "3.18.0.2",
+    "version": "3.18.1.0",
     "contact": {
       "name": "Sportlink Wedstrijdzaken",
       "url": "https://github.com/jaapbeus/Sportlink-wedstrijdzaken"
@@ -3602,7 +3602,7 @@
           },
           "WedstrijdTotaal": {
             "type": "integer",
-            "description": "Totale wedstrijdduur in minuten (speeltijd + rust)",
+            "description": "Totale wedstrijdduur in minuten = WedstrijdHelften × WedstrijdHelft + WedstrijdRust, zonder buffer (#1962)",
             "example": 75
           },
           "WedstrijdHelft": {
@@ -3614,6 +3614,15 @@
             "type": "integer",
             "description": "Rustduur in minuten",
             "example": 5
+          },
+          "WedstrijdHelften": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ],
+            "description": "Aantal helften (#1962); 1 voor toernooivormen zoals 35+ en VR30+",
+            "example": 2
           }
         }
       },
@@ -3621,7 +3630,7 @@
         "type": "object",
         "required": [
           "leeftijd",
-          "wedstrijdTotaal"
+          "wedstrijdHelft"
         ],
         "properties": {
           "leeftijd": {
@@ -3635,16 +3644,30 @@
           },
           "wedstrijdTotaal": {
             "type": "integer",
-            "description": "Totale duur in minuten",
+            "deprecated": true,
+            "description": "Wordt genegeerd (#1962): de server berekent het totaal als wedstrijdHelften × wedstrijdHelft +\nwedstrijdRust, zonder buffer.\n",
             "example": 75
           },
           "wedstrijdHelft": {
             "type": "integer",
+            "minimum": 1,
             "example": 35
           },
           "wedstrijdRust": {
             "type": "integer",
+            "minimum": 0,
+            "description": "Rustduur in minuten; 0 bij één helft",
             "example": 5
+          },
+          "wedstrijdHelften": {
+            "type": "integer",
+            "enum": [
+              1,
+              2
+            ],
+            "default": 2,
+            "description": "Aantal helften (#1962); 1 voor toernooivormen zoals 35+ en VR30+. Ongeldige combinaties geven 400.",
+            "example": 2
           },
           "standaardVoorkeurTijd": {
             "type": "string",

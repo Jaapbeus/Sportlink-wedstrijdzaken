@@ -126,10 +126,11 @@ public static class AutoPlanExactApply
         var targetField = choice.VeldNummer ?? sourceField;
         var targetTime = choice.Tijd ?? source.AanvangsTijd;
         var targetLane = choice.VeldNummer.HasValue ? choice.VeldSubpositie : sourceLane;
-        var age = LeeftijdNormalisatie.SpeeltijdSleutel(
+        // #1863: O23 → JO23-speeltijd; #1962: 35+/VR30+ → hun eigen KNVB-speeltijd.
+        var age = AutoPlanRegels.OptimalisatieSpeeltijdSleutel(source.TeamNaam,
             !string.IsNullOrWhiteSpace(source.LeeftijdsCategorie)
                 ? source.LeeftijdsCategorie : AutoPlanRegels.ExtractLeeftijdFromTeamNaam(source.TeamNaam),
-            source.TeamNaam, speeltijden); // #1863: O23 → JO23-speeltijd
+            isAllstars: false, speeltijden);
         speeltijden.TryGetValue(age, out var speeltijd);
         // Een team zonder speeltijdenrij heeft geen duur of veldfractie (WZ-ADR-014: de optimalisatie
         // rekent alleen met de speeltijden). De preview laat deze rij ongewijzigd; hij telt daarom niet
