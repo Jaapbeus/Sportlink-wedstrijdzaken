@@ -36,6 +36,44 @@ public record PlanDoel(
 public static class AutoPlanRegels
 {
     /// <summary>
+    /// De teambuffers (<c>BufferVoor</c>/<c>BufferNa</c>) per teamnaam zoals die in de wedstrijdbron staat (#1960).
+    /// Zoekt via <see cref="TeamSleutelLookup"/>, dezelfde teamsleutel als voorkeursveld en voorkeurstijd, zodat
+    /// een regel op "1" en op "[club] 1" hetzelfde team raakt. Vóór #1960 zochten de buffers op de exacte naam
+    /// en werkte een teamregel alleen als de schrijfwijze letterlijk gelijk was.
+    /// </summary>
+    public static Dictionary<string, (int bufferVoor, int bufferNa)> TeamBuffersVoorWedstrijden(
+        IEnumerable<string?> teamNamen,
+        IReadOnlyDictionary<string, (int bufferVoor, int bufferNa)> regels,
+        string? clubPrefix)
+    {
+        ArgumentNullException.ThrowIfNull(teamNamen);
+        ArgumentNullException.ThrowIfNull(regels);
+        var resultaat = new Dictionary<string, (int bufferVoor, int bufferNa)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var team in teamNamen)
+        {
+            if (string.IsNullOrWhiteSpace(team) || resultaat.ContainsKey(team)) continue;
+            if (TeamSleutelLookup.TryGetValue(regels, team, clubPrefix, out var buffers))
+                resultaat[team] = buffers;
+        }
+        return resultaat;
+    }
+
+    /// <summary>
+    /// Speeltijdsleutel in de optimalisatie (#1962, WZ-ADR-014): een 35+- of VR30+-team krijgt de speeltijd van
+    /// die KNVB-categorie (1 × 20 minuten) zolang de club die met duur &gt; 0 heeft; Sportlink levert deze teams
+    /// als "Senioren" aan. Anders <see cref="SpeeltijdSleutelVoorWedstrijd"/>. De Planning gebruikt dit niet.
+    /// </summary>
+    public static string OptimalisatieSpeeltijdSleutel(
+        string? teamNaam, string? leeftijdsCategorie, bool isAllstars, IReadOnlyDictionary<string, Speeltijd> speeltijden)
+    {
+        ArgumentNullException.ThrowIfNull(speeltijden);
+        var veteranen = TeamNaamNormalisatie.VeteranenSpeeltijdSleutel(teamNaam);
+        if (veteranen != null && speeltijden.TryGetValue(veteranen, out var st) && st.WedstrijdTotaal > 0)
+            return veteranen;
+        return SpeeltijdSleutelVoorWedstrijd(teamNaam, leeftijdsCategorie, isAllstars, speeltijden);
+    }
+
+    /// <summary>
     /// Speeltijdsleutel van één wedstrijd, gedeeld door de automatische planning en de veldbezetting van
     /// beide tiers: de bron-categorie (of in demomodus de leeftijd uit de teamnaam), waarbij een O23-team de
     /// <c>JO23</c>-speeltijd krijgt zolang die met duur &gt; 0 bestaat (#1863, <see cref="LeeftijdNormalisatie.SpeeltijdSleutel"/>).
@@ -67,7 +105,7 @@ public static class AutoPlanRegels
         Dictionary<string, Speeltijd> speeltijden,
         string? clubPrefix = null)
     {
-        var leeftijd = SpeeltijdSleutelVoorWedstrijd(teamNaam, leeftijdsCategorie, isAllstars, speeltijden);
+        var leeftijd = OptimalisatieSpeeltijdSleutel(teamNaam, leeftijdsCategorie, isAllstars, speeltijden);
 
         // Laag 2 — default per leeftijdscategorie (mag null zijn: dan géén streeftijd)
         TimeOnly? defaultTijd = null;

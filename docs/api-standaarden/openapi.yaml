@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.18.0.0
+  version: 3.19.0.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -2808,7 +2808,7 @@ components:
           example: 1.0
         WedstrijdTotaal:
           type: integer
-          description: Totale wedstrijdduur in minuten (speeltijd + rust)
+          description: Totale wedstrijdduur in minuten = WedstrijdHelften × WedstrijdHelft + WedstrijdRust, zonder buffer (#1962)
           example: 75
         WedstrijdHelft:
           type: integer
@@ -2818,12 +2818,17 @@ components:
           type: integer
           description: Rustduur in minuten
           example: 5
+        WedstrijdHelften:
+          type: integer
+          enum: [1, 2]
+          description: Aantal helften (#1962); 1 voor toernooivormen zoals 35+ en VR30+
+          example: 2
 
     SpeeltijdRequest:
       type: object
       required:
         - leeftijd
-        - wedstrijdTotaal
+        - wedstrijdHelft
       properties:
         leeftijd:
           type: string
@@ -2834,14 +2839,28 @@ components:
           default: 1.0
         wedstrijdTotaal:
           type: integer
-          description: Totale duur in minuten
+          deprecated: true
+          description: |
+            Wordt genegeerd (#1962): de server berekent het totaal als wedstrijdHelften × wedstrijdHelft +
+            wedstrijdRust, zonder buffer.
           example: 75
         wedstrijdHelft:
           type: integer
+          minimum: 1
+          maximum: 1440
           example: 35
         wedstrijdRust:
           type: integer
+          minimum: 0
+          maximum: 1440
+          description: Rustduur in minuten; 0 bij één helft. Het berekende totaal mag hoogstens 1440 minuten zijn.
           example: 5
+        wedstrijdHelften:
+          type: integer
+          enum: [1, 2]
+          default: 2
+          description: Aantal helften (#1962); 1 voor toernooivormen zoals 35+ en VR30+. Ongeldige combinaties geven 400.
+          example: 2
         standaardVoorkeurTijd:
           type: string
           nullable: true
@@ -3589,9 +3608,6 @@ components:
           type: integer
           nullable: true
           description: Actieve teamregel BufferNa in minuten (#1430); null = geen regel. Zie teamBufferVoor.
-        sportlinkLeidend:
-          type: boolean
-          description: True als de planner de bronduur gebruikt en rond dit slot geen appbuffer toepast (#1814).
 
     VeldbezettingAntwoord:
       type: object

@@ -10,7 +10,7 @@ public sealed record AutoPlanApplyChoice(
 
 public sealed record AutoPlanApplySource(
     long? WedstrijdCode, string? Veld, string? AanvangsTijd, string TeamNaam,
-    string? LeeftijdsCategorie, int? SportlinkSpeelduur);
+    string? LeeftijdsCategorie);
 
 public sealed record AutoPlanApplyWrite(long WedstrijdCode, string? VerwachtVeld,
     string? VerwachteTijd, string Veld, string Tijd);
@@ -40,8 +40,10 @@ public sealed class AutoPlanApplyForbiddenException : Exception
 /// </summary>
 public static class AutoPlanExactApply
 {
+    private const string AllstarsClubCode = "ALLSTARS";
+
     private sealed record ApplyRow(AutoPlanApplySource Source, int Field, TimeOnly Start,
-        string? Lane, decimal Fraction, int Duration, bool SportlinkLeading, bool Write);
+        string? Lane, decimal Fraction, int Duration, bool Write);
 
     public static List<AutoPlanApplyWrite> Validate(
         IReadOnlyList<AutoPlanApplyChoice> choices,
@@ -69,12 +71,15 @@ public static class AutoPlanExactApply
             VeldNummer = v.VeldNummer, BeschikbaarVanaf = new TimeOnly(8, 0),
             BeschikbaarTot = new TimeOnly(22, 0), GebruikZonsondergang = false
         }).ToList();
-        var scheduler = new FieldScheduler(availability, velden, bufferMinuten, teamBuffers);
+        // #1960: teambuffers via dezelfde teamsleutel als de optimalisatie; Toepassen is alleen testmodus.
+        var buffersPerTeam = AutoPlanRegels.TeamBuffersVoorWedstrijden(
+            sources.Select(s => s.TeamNaam), teamBuffers, AllstarsClubCode);
+        var scheduler = new FieldScheduler(availability, velden, bufferMinuten, buffersPerTeam);
         var writes = new List<AutoPlanApplyWrite>();
         foreach (var row in rows.OrderBy(r => r.Start).ThenBy(r => r.Field))
         {
             if (!scheduler.TryOccupyExactSlot(row.Field, row.Start, row.Duration, row.Fraction,
-                    row.Lane, row.Source.TeamNaam, row.SportlinkLeading, out _))
+                    row.Lane, row.Source.TeamNaam, out _))
                 throw new AutoPlanApplyConflictException();
             if (!row.Write) continue;
             var veld = velden.Single(v => v.VeldNummer == row.Field);
@@ -121,17 +126,16 @@ public static class AutoPlanExactApply
         var targetField = choice.VeldNummer ?? sourceField;
         var targetTime = choice.Tijd ?? source.AanvangsTijd;
         var targetLane = choice.VeldNummer.HasValue ? choice.VeldSubpositie : sourceLane;
-        var age = LeeftijdNormalisatie.SpeeltijdSleutel(
+        // #1863: O23 → JO23-speeltijd; #1962: 35+/VR30+ → hun eigen KNVB-speeltijd.
+        var age = AutoPlanRegels.OptimalisatieSpeeltijdSleutel(source.TeamNaam,
             !string.IsNullOrWhiteSpace(source.LeeftijdsCategorie)
                 ? source.LeeftijdsCategorie : AutoPlanRegels.ExtractLeeftijdFromTeamNaam(source.TeamNaam),
-            source.TeamNaam, speeltijden); // #1863: O23 → JO23-speeltijd
+            isAllstars: false, speeltijden);
         speeltijden.TryGetValue(age, out var speeltijd);
-        bool sportlinkLeading = VeldbezettingDuur.IsSportlinkLeidend(source.SportlinkSpeelduur);
-
-        // Een onbekend team zonder Sportlink-speelduur heeft geen betrouwbare duur of veldfractie.
-        // De preview laat deze rij ongewijzigd; hij telt daarom niet mee als bezetting en kan andere
-        // geldige toewijzingen niet blokkeren.
-        if (IsUnknownUnassigned(choice, speeltijd, sportlinkLeading)) return null;
+        // Een team zonder speeltijdenrij heeft geen duur of veldfractie (WZ-ADR-014: de optimalisatie
+        // rekent alleen met de speeltijden). De preview laat deze rij ongewijzigd; hij telt daarom niet
+        // mee als bezetting en kan andere geldige toewijzingen niet blokkeren.
+        if (IsUnknownUnassigned(choice, speeltijd)) return null;
 
         if (MissingSlot(targetField, targetTime, choice.VeldNummer.HasValue)) return null;
         var start = ParseTargetStart(targetTime, choice.VeldNummer.HasValue);
@@ -141,19 +145,18 @@ public static class AutoPlanExactApply
         start = RetainSourceSeconds(source.AanvangsTijd, choice, start);
 
         var fraction = DetermineFraction(targetLane, speeltijd);
-        var duration = VeldbezettingDuur.Bepaal(source.SportlinkSpeelduur, speeltijd?.WedstrijdTotaal);
+        var duration = speeltijd?.WedstrijdTotaal ?? 0;
         if (duration <= 0) throw new AutoPlanApplyConflictException();
 
         var write = choice.VeldNummer.HasValue &&
             (targetField != sourceField || !SameMinute(source.AanvangsTijd, choice.Tijd) ||
              !string.Equals(sourceLane, targetLane, StringComparison.OrdinalIgnoreCase));
         return new ApplyRow(source, targetField, start, targetLane, fraction, duration,
-            sportlinkLeading, write);
+            write);
     }
 
-    private static bool IsUnknownUnassigned(AutoPlanApplyChoice choice, Speeltijd? speeltijd,
-        bool sportlinkLeading) =>
-        !choice.VeldNummer.HasValue && choice.Tijd == null && speeltijd == null && !sportlinkLeading;
+    private static bool IsUnknownUnassigned(AutoPlanApplyChoice choice, Speeltijd? speeltijd) =>
+        !choice.VeldNummer.HasValue && choice.Tijd == null && speeltijd == null;
 
     private static TimeOnly ParseTargetStart(string? targetTime, bool assigned)
     {

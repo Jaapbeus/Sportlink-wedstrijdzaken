@@ -1012,6 +1012,11 @@ de Planning toont (**WZ-ADR-013**, #1582):
   reden (`SportlinkVeldplannerStatus`), toont de Planning een waarschuwing met die reden en noemt het log dezelfde reden.
   Een Planning die de databasekopie als Sportlink presenteert is de ergste uitkomst.
 
+**Reikwijdte (WZ-ADR-014).** Deze paragraaf geldt voor de Planning, het beeld zoals het is. Veld optimalisatie is een
+rekenmodel van de club: die gebruikt Sportlink alleen voor welke wedstrijden er zijn en waar en wanneer ze nu staan, en
+rekent verder uitsluitend met de app-instellingen. "Een nieuwe functie leest de speelduur uit Sportlink" geldt dus niet
+voor de optimalisatie.
+
 De samenvoeglogica staat één keer in `Planner.Shared/Planning/SportlinkVeldbezettingSamenvoeging.cs`; beide
 databasetiers geven alleen het regelmodel mee. Uitwerking: `docs/ARCHITECTUUR-PLANNER.md`, "Planning leest veld, tijd en
 blokduur uit Sportlink".
@@ -1035,6 +1040,7 @@ nieuw besluit dat het oude vervangt.
 | **WZ-ADR-010** | Geen waarden van de installatie in de repository | Volgt uit B1. Gevolg: de eerste authenticatie-uitrol gebeurt lokaal met een privéparameterbestand; automatisering mag die waarden niet opslaan. |
 | **WZ-ADR-011** | Eén fork = één productieclub + demo-club, geen shared hosting | Vastgelegd na review van #393 (2026-05-31). Gevolg: geen server-side multi-user-clubautorisatie nodig; `X-Club-Code` is UX, geen beveiligingsgrens; shared hosting vereist een volledige herontwerpslag en is expliciet niet het doel. Zie §2.1. |
 | **WZ-ADR-013** | Sportlink is de bron van waarheid voor wedstrijden, tijden, speelduur en velden | Vastgesteld 07-10-2026 (releasetest 3.12, #1582). De Planning was database-eerst en gebruikte Sportlink alleen om eigen regels bij te werken; 12 van de 20 blokken van een speeldag ontbraken. Keuze: Sportlink-eerst, zie §8.8. Gevolg: een Sportlink-blok zonder eigen regel is een regel, een eigen regel zonder blok is een zichtbare afwijking. |
+| **WZ-ADR-014** | Planning en Veld optimalisatie zijn gescheiden domeinen | Vastgesteld 14-11-2026 door de eigenaar (#1961), na de root-cause van #1960. Vervangt #1559 voor de optimalisatie en beperkt WZ-ADR-013 tot de Planning. Context: #1559 liet wedstrijden met een Sportlink-speelduur zonder buffer en teamregels plannen; omdat elke gesynchroniseerde wedstrijd een speelduur heeft, deden de bufferinstelling en de teamregels niets meer. Keuze: de **Planning** toont Sportlink zoals het is en gebruikt geen app-tabellen; bij onbereikbaar Sportlink blijft hij staan met de melding "Synchronisatie mislukt - planning mogelijk niet actueel" (nog uit te voeren). **Veld optimalisatie** rekent alleen met speeltijden (helften × helftduur + rust, zonder buffer), de buffer van de pagina, teamregels, voorkeurstijden en velden; harde grenzen eerst, dan teamregel, teamvoorkeurstijd en standaardtijd, binnen een laag op prioriteit. Gevolg: een wijziging aan de één raakt de ander niet en staat in een eigen issue; een CI-guard bewaakt de scheiding (#1960). Uitwerking: [ARCHITECTUUR-PLANNER.md](ARCHITECTUUR-PLANNER.md), "Bronnen van de optimalisatie". |
 | **WZ-ADR-012** | PDF-export met QuestPDF uit een eigen documentmodel, niet via HTML→PDF | Besluit eigenaar 2026-09-26 (epic #1365), uitgevoerd in #1363. Gevolg: server-side generatie in `Planner.Shared/Deel/`, de HTML-export blijft ongemoeid. Twee afwijkingen van de rest van de stack, beide bewust: QuestPDF is *source-available* onder een omzetgebonden Community License (< USD 1 mln; elke club toetst dat zelf), en het levert native bibliotheken per platform mee (+39,5 MB zip per deploypakket). Zie [ARCHITECTUUR-PDF-EXPORT.md](ARCHITECTUUR-PDF-EXPORT.md). |
 
 ### Afwijkingsregister

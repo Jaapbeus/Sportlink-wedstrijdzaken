@@ -4,7 +4,7 @@ namespace FunctionApp.Postgres.Admin;
 
 internal record SpeeltijdInput(
     string Leeftijd, decimal Veldafmeting,
-    int WedstrijdTotaal, int WedstrijdHelft, int WedstrijdRust,
+    int WedstrijdTotaal, int WedstrijdHelft, int WedstrijdRust, int WedstrijdHelften,
     TimeOnly? StandaardVoorkeurTijd);
 
 /// <summary>
@@ -21,7 +21,7 @@ internal static class AdminSpeeltijdenRepository
         await conn.OpenAsync();
         await using var cmd = new NpgsqlCommand(@"
             SELECT leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust,
-                   to_char(standaardvoorkeurtijd, 'HH24:MI') AS standaardvoorkeurtijd
+                   to_char(standaardvoorkeurtijd, 'HH24:MI') AS standaardvoorkeurtijd, wedstrijdhelften
             FROM public.speeltijden
             WHERE clubcode = @clubcode
             ORDER BY
@@ -45,7 +45,8 @@ internal static class AdminSpeeltijdenRepository
                 WedstrijdTotaal = r.GetInt32(2),
                 WedstrijdHelft = r.GetInt32(3),
                 WedstrijdRust = r.GetInt32(4),
-                StandaardVoorkeurTijd = r.IsDBNull(5) ? null : r.GetString(5)
+                StandaardVoorkeurTijd = r.IsDBNull(5) ? null : r.GetString(5),
+                WedstrijdHelften = r.GetInt32(6)
             });
         return list;
     }
@@ -57,16 +58,9 @@ internal static class AdminSpeeltijdenRepository
         await using var cmd = new NpgsqlCommand(@"
             INSERT INTO public.speeltijden
                 (leeftijd, veldafmeting, wedstrijdtotaal, wedstrijdhelft, wedstrijdrust,
-                 standaardvoorkeurtijd, clubcode)
-            VALUES (@l, @vf, @wt, @wh, @wr, @svt, @cc)", conn);
-        cmd.Parameters.AddWithValue("l", i.Leeftijd.Trim());
-        cmd.Parameters.AddWithValue("vf", i.Veldafmeting);
-        cmd.Parameters.AddWithValue("wt", i.WedstrijdTotaal);
-        cmd.Parameters.AddWithValue("wh", i.WedstrijdHelft);
-        cmd.Parameters.AddWithValue("wr", i.WedstrijdRust);
-        cmd.Parameters.AddWithValue("svt", i.StandaardVoorkeurTijd.HasValue
-            ? i.StandaardVoorkeurTijd.Value.ToTimeSpan() : (object)DBNull.Value);
-        cmd.Parameters.AddWithValue("cc", clubCode);
+                 wedstrijdhelften, standaardvoorkeurtijd, clubcode)
+            VALUES (@l, @vf, @wt, @wh, @wr, @whn, @svt, @cc)", conn);
+        BindWaarden(cmd, i.Leeftijd.Trim(), i, clubCode);
         await cmd.ExecuteNonQueryAsync();
     }
 
@@ -80,17 +74,24 @@ internal static class AdminSpeeltijdenRepository
         await using var cmd = new NpgsqlCommand(@"
             UPDATE public.speeltijden
             SET veldafmeting = @vf, wedstrijdtotaal = @wt, wedstrijdhelft = @wh, wedstrijdrust = @wr,
-                standaardvoorkeurtijd = @svt
+                wedstrijdhelften = @whn, standaardvoorkeurtijd = @svt
             WHERE LOWER(leeftijd) = LOWER(@l) AND clubcode = @cc", conn);
+        BindWaarden(cmd, leeftijd, i, clubCode);
+        return await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>Dezelfde parameters voor insert en update (#1962).</summary>
+    private static void BindWaarden(NpgsqlCommand cmd, string leeftijd, SpeeltijdInput i, string clubCode)
+    {
         cmd.Parameters.AddWithValue("l", leeftijd);
         cmd.Parameters.AddWithValue("vf", i.Veldafmeting);
         cmd.Parameters.AddWithValue("wt", i.WedstrijdTotaal);
         cmd.Parameters.AddWithValue("wh", i.WedstrijdHelft);
         cmd.Parameters.AddWithValue("wr", i.WedstrijdRust);
+        cmd.Parameters.AddWithValue("whn", i.WedstrijdHelften);
         cmd.Parameters.AddWithValue("svt", i.StandaardVoorkeurTijd.HasValue
             ? i.StandaardVoorkeurTijd.Value.ToTimeSpan() : (object)DBNull.Value);
         cmd.Parameters.AddWithValue("cc", clubCode);
-        return await cmd.ExecuteNonQueryAsync();
     }
 
     internal static async Task<int> DeleteAsync(string leeftijd, string clubCode, string cs)

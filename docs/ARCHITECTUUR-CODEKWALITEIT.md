@@ -641,6 +641,8 @@ uit een workflow kan verdwijnen zonder dat iemand het merkt.
 | Beide tiers bieden dezelfde routes en timers (#1266, #1268) | `scripts/ci/check-tier-pariteit.sh` | `build.yml` |
 | Bestanden met uitgaand-verkeertypen of HttpClient-methoden in FunctionApp*, Planner.Shared en Planner.Endpoints controleren EgressGuard of staan met reden op de allowlist (bestandsniveau); de geclaimde syncjob-worker controleert EgressGuard vóór de sync-aanroep (#857, #1676) | `scripts/ci/check-egressguard-dekking.sh` | `build.yml` |
 | De EgressGuard-dekkingsguard kan ook rood worden (#1676) | `scripts/ci/check-egressguard-dekking.test.sh` | `build.yml` |
+| Planning en Veld optimalisatie gescheiden: optimalisatiecode gebruikt geen Sportlink-duur, overlay of Planning-duurregel; Planning-code (ook `VeldbezettingAsync`) geen scheduler, bufferregels of planningsdoel (WZ-ADR-014, #1960) | `scripts/ci/check-planning-optimalisatie-scheiding.sh` | `build.yml` |
+| De scheidingsguard Planning/optimalisatie kan ook rood worden (#1960) | `scripts/ci/check-planning-optimalisatie-scheiding.test.sh` | `build.yml` |
 | Verify-AzureAuthSetup.ps1 lekt geen PII bij lege parameter (#1474) | `scripts/ci/check-verify-script-guards.sh` | `build.yml` |
 | Een infra-deploy mag geen bestaande app setting wissen (#1455) | `scripts/ci/check-whatif-appsettings.sh` | `infrastructure.yml` |
 | De what-if-poort kan ook rood worden (#1455) | `scripts/ci/check-whatif-appsettings.test.sh` | `build.yml` |

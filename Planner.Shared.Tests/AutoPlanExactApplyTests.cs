@@ -14,7 +14,7 @@ public class AutoPlanExactApplyTests
     };
 
     private static AutoPlanApplySource Source(long id = 1, string? field = null, string? time = null,
-        string team = "ALLSTARS JO13-1") => new(id, field, time, team, null, null);
+        string team = "ALLSTARS JO13-1") => new(id, field, time, team, null);
 
     private static AutoPlanApplyChoice Choice(long id = 1, string? oldField = null, string? oldTime = null,
         int? targetField = 101, string? lane = "A2", string? targetTime = "10:00") =>
@@ -34,17 +34,17 @@ public class AutoPlanExactApplyTests
     }
 
     [Fact]
-    public void SportlinkDurationAndFullFieldTargetWorkWithoutAgeSettings()
+    public void ZonderSpeeltijdenrijIsEenGekozenSlotEenConflict_SportlinkDuurTeltNietMee()
     {
-        var source = new AutoPlanApplySource(1, null, null, "ALLSTARS onbekend", null, 90);
+        // WZ-ADR-014 (#1960): zonder speeltijdenrij is er geen duur, ook niet uit Sportlink.
+        var source = new AutoPlanApplySource(1, null, null, "ALLSTARS onbekend", null);
         var choice = Choice(lane: null);
 
-        var write = AutoPlanExactApply.Validate([choice], [source], Fields,
+        var act = () => AutoPlanExactApply.Validate([choice], [source], Fields,
             new Dictionary<string, Speeltijd>(StringComparer.OrdinalIgnoreCase),
-            new Dictionary<string, (int, int)>(), 15).Should().ContainSingle().Which;
+            new Dictionary<string, (int, int)>(), 15);
 
-        write.Veld.Should().Be("veld 101");
-        write.Tijd.Should().Be("10:00");
+        act.Should().Throw<AutoPlanApplyConflictException>();
     }
 
     [Fact]
