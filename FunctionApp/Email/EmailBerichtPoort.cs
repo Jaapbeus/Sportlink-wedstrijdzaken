@@ -10,11 +10,13 @@ namespace SportlinkFunction.Email;
 
 internal sealed class EmailBerichtPoort(
     IEmailGraphService graph, IEmailPersistenceService persistence, BerichtAiService ai,
-    EmailReplyPolicyService replyPolicy, ITeamResolver teamResolver)
+    EmailReplyPolicyService replyPolicy, ITeamResolver teamResolver,
+    EmailVerwerkingsInstellingen? emailInstellingen = null)
     : IEmailBerichtPoort<InkomendBericht>
 {
     private string AppVersie => EmailTraceRecord.VersieVan(typeof(EmailProcessorFunction).Assembly);
     public IReplyGraph Graph => graph;
+    public EmailVerwerkingsInstellingen EmailInstellingen => emailInstellingen ?? EmailVerwerkingsInstellingen.VeiligeStandaard;
     public IReplyPersistentie Persistentie => persistence;
     public Func<string, string> SanitizeFoutMelding => EmailSanitizer.SanitizeFoutMelding;
     public string MessageId(InkomendBericht bericht) => bericht.MessageId;

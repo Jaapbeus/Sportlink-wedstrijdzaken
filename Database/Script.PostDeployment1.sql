@@ -4260,3 +4260,16 @@ BEGIN
     PRINT 'dbo.SportlinkVeldplannerBlok aangemaakt.';
 END
 GO
+
+-- #1977: clubgebonden e-mailinstellingen; geen automatische overname van procesbrede waarden.
+IF COL_LENGTH('[dbo].[AppSettings]', 'EmailVerwerkingIngeschakeld') IS NULL
+    ALTER TABLE [dbo].[AppSettings] ADD [EmailVerwerkingIngeschakeld] BIT NOT NULL CONSTRAINT [DF_AppSettings_EmailVerwerkingIngeschakeld] DEFAULT 0;
+IF COL_LENGTH('[dbo].[AppSettings]', 'EmailReviewModusActief') IS NULL
+    ALTER TABLE [dbo].[AppSettings] ADD [EmailReviewModusActief] BIT NOT NULL CONSTRAINT [DF_AppSettings_EmailReviewModusActief] DEFAULT 1;
+IF COL_LENGTH('[dbo].[AppSettings]', 'EmailReviewOntvanger') IS NULL
+    ALTER TABLE [dbo].[AppSettings] ADD [EmailReviewOntvanger] NVARCHAR(320) NULL;
+IF COL_LENGTH('[dbo].[AppSettings]', 'EmailInstellingenGeimporteerd') IS NULL
+    ALTER TABLE [dbo].[AppSettings] ADD [EmailInstellingenGeimporteerd] BIT NOT NULL CONSTRAINT [DF_AppSettings_EmailInstellingenGeimporteerd] DEFAULT 0;
+IF COL_LENGTH('[dbo].[AppSettings]', 'EmailInstellingenBeheerderGewijzigd') IS NULL
+    ALTER TABLE [dbo].[AppSettings] ADD [EmailInstellingenBeheerderGewijzigd] BIT NOT NULL CONSTRAINT [DF_AppSettings_EmailInstellingenBeheerderGewijzigd] DEFAULT 0;
+GO

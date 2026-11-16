@@ -116,8 +116,11 @@ public static class EmailTestFunction
         // volgorde van de productieverwerking (reply-beleid, dan poort). Alleen lezen; de dry-run slaat niets op.
         var (poortActief, reply) = (await ZekerheidspoortInstelling.IsActiefAsync(PostgresDatabaseConfig.ConnectionString, clubCode, log), ReplyPolicy.Bepaal(classificatie, plannerResponseJson));
 
+        var emailInstellingen = await EmailVerwerkingsInstellingenOpslag.LeesAsync(
+            PostgresDatabaseConfig.ConnectionString, clubCode, log);
+
         return EmailTestEndpointCore.Antwoord(classificatie, classificatie.Type.ToString(), classificatie.Samenvatting,
-            plannerResponseJson, trace, new TesterBeleid(poortActief, reply.MoetVersturen, reply.Reden, EmailReviewModus.IsActief()), voorbeeldOnderwerp, voorbeeldBody);
+            plannerResponseJson, trace, new TesterBeleid(poortActief, reply.MoetVersturen, reply.Reden, emailInstellingen.Instellingen.ReviewModusActief), voorbeeldOnderwerp, voorbeeldBody);
     }
 
     private static async Task<BerichtClassificatie> ClassificeerAsync(

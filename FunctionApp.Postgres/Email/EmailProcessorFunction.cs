@@ -2,6 +2,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using FunctionApp.Postgres.Monitoring;
+using FunctionApp.Postgres.Planner;
 using Planner.Endpoints.Email;
 using Planner.Shared.Email;
 
@@ -64,10 +65,22 @@ public partial class EmailProcessorFunction
     {
         var log = context.GetLogger("ProcessIncomingEmails");
 
-        if (!string.Equals(Environment.GetEnvironmentVariable("EmailProcessorEnabled"),
-                "true", StringComparison.OrdinalIgnoreCase))
+        // Lees de clubgebonden snapshot vóór Graph of enige mailboxmutatie.
+        EmailVerwerkingsInstellingenLeesResultaat instellingen;
+        try
         {
-            log.LogInformation("Email processor uitgeschakeld");
+            await PostgresAppSettings.LoadSettingsAsync(log);
+            instellingen = await EmailVerwerkingsInstellingenOpslag.LeesAsync(
+                PostgresDatabaseConfig.ConnectionString, PostgresClubScope.Primary, log);
+        }
+        catch (Exception)
+        {
+            log.LogWarning("E-mailinstellingen niet beschikbaar; verwerking uit");
+            return;
+        }
+        if (!instellingen.Instellingen.VerwerkingIngeschakeld)
+        {
+            log.LogInformation("Email processor uitgeschakeld voor deze club ({Status})", instellingen.Status);
             return;
         }
 
@@ -88,7 +101,8 @@ public partial class EmailProcessorFunction
             context.InstanceServices.GetRequiredService<ILoggerFactory>(),
             graphService,
             context.InstanceServices.GetRequiredService<INoodmailThrottleStore>(),
-            PostgresDatabaseConfig.ConnectionString);
+            PostgresDatabaseConfig.ConnectionString,
+            instellingen.Instellingen);
 
         // Fase 1 (licht, geen database) en fase 2 (zwaar) staan tier-onafhankelijk in
         // Planner.Endpoints/Email/EmailVerwerkerFasen.cs (#1716 slice 9); de tier-kant in EmailVerwerkerPoort.

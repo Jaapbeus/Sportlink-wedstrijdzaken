@@ -69,10 +69,24 @@ public partial class EmailProcessorFunction
     {
         var log = context.GetLogger("ProcessIncomingEmails");
 
-        if (!string.Equals(Environment.GetEnvironmentVariable("EmailProcessorEnabled"),
-                "true", StringComparison.OrdinalIgnoreCase))
+        // Lees de clubgebonden snapshot vóór Graph of enige mailboxmutatie. Een ontbrekende
+        // migratie, rij of database schakelt de processor uit.
+        EmailVerwerkingsInstellingenLeesResultaat instellingen;
+        try
         {
-            log.LogInformation("Email processor uitgeschakeld");
+            await SystemUtilities.AppSettings.LoadSettingsAsync(log);
+            var clubCode = SystemUtilities.AppSettings.RequireClubCode();
+            instellingen = await EmailVerwerkingsInstellingenOpslag.LeesAsync(
+                SystemUtilities.DatabaseConfig.ConnectionString, clubCode, log);
+        }
+        catch (Exception)
+        {
+            log.LogWarning("E-mailinstellingen niet beschikbaar; verwerking uit");
+            return;
+        }
+        if (!instellingen.Instellingen.VerwerkingIngeschakeld)
+        {
+            log.LogInformation("Email processor uitgeschakeld voor deze club ({Status})", instellingen.Status);
             return;
         }
 
@@ -107,7 +121,8 @@ public partial class EmailProcessorFunction
             graphService,
             teamResolver,
             context.InstanceServices.GetRequiredService<IEmailPersistenceService>(),
-            context.InstanceServices.GetRequiredService<INoodmailThrottleStore>());
+            context.InstanceServices.GetRequiredService<INoodmailThrottleStore>(),
+            instellingen.Instellingen);
 
         // Fase 1 (licht, geen database) en fase 2 (zwaar) staan tier-onafhankelijk in
         // Planner.Endpoints/Email/EmailVerwerkerFasen.cs (#1716 slice 9); de tier-kant in EmailVerwerkerPoort.
