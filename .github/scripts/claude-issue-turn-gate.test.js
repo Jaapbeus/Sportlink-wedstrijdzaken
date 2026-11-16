@@ -9,12 +9,32 @@ const {
   parseFaseComment, MAX_REVIEW_ROUNDS, reviewMarker, resolveIssueNumber,
 } = require('./claude-issue-turn-gate.js');
 const ledgerLib = require('./claude-issue-turn-ledger.js');
+const fs = require('node:fs');
+const path = require('node:path');
 
 let failures = 0;
 function check(name, actual, expected) {
   const a = JSON.stringify(actual), e = JSON.stringify(expected);
   if (a === e) { console.log(`  PASS  ${name}`); }
   else { console.log(`  FAIL  ${name}\n        verwacht: ${e}\n        kreeg:    ${a}`); failures++; }
+}
+
+// Upstream v1.0.275 src/github/trigger.ts: for issues/labeled with a prompt, a
+// configured label_trigger must match the event label case-insensitively or the
+// action skips. action.yml defaults label_trigger to "claude" when omitted.
+function upstreamLabelMatches(eventLabel, labelTrigger) {
+  return Boolean(labelTrigger) && eventLabel.toLowerCase() === labelTrigger.toLowerCase();
+}
+
+function upstreamStartsForPromptedIssueLabel(eventLabel, labelTrigger) {
+  const effectiveTrigger = labelTrigger || 'claude';
+  return upstreamLabelMatches(eventLabel, effectiveTrigger);
+}
+
+function workflowActionSteps(workflow) {
+  return workflow
+    .split(/\n(?=      - name: )/)
+    .filter((step) => step.includes('uses: anthropics/claude-code-action@'));
 }
 
 const ctx = { repo: { owner: 'o', repo: 'r' }, runId: 999999, eventName: 'issues' };
@@ -63,6 +83,50 @@ function fakeGithub({
 }
 
 (async () => {
+  console.log('Claude Code Action workflowcompatibiliteit:');
+  {
+    const workflow = fs.readFileSync(path.join(__dirname, '../workflows/claude-issue-turn.yml'), 'utf8');
+    const steps = workflowActionSteps(workflow);
+    check('alle drie action-stappen zijn aanwezig', steps.length, 3);
+
+    const labelTriggers = steps.map((step) => {
+      const match = step.match(/^\s{10}label_trigger:\s*(['"])(.*?)\1\s*$/m);
+      return match ? match[2] : null;
+    });
+    check('implementatie, dry-run en review gebruiken allemaal het beurtlabel', labelTriggers,
+      Array(3).fill('turn: claude-code'));
+
+    for (const [index, labelTrigger] of labelTriggers.entries()) {
+      check(`action-stap ${index + 1}: upstream start op het aangewezen label`,
+        upstreamStartsForPromptedIssueLabel('turn: claude-code', labelTrigger), true);
+      check(`action-stap ${index + 1}: upstream slaat het standaardlabel over`,
+        upstreamStartsForPromptedIssueLabel('claude', labelTrigger), false);
+      check(`action-stap ${index + 1}: ontbrekende input valt terug op upstream-default`,
+        upstreamStartsForPromptedIssueLabel('turn: claude-code', null), false);
+      check(`action-stap ${index + 1}: verkeerde input wordt overgeslagen`,
+        upstreamStartsForPromptedIssueLabel('turn: claude-code', 'some-other-label'), false);
+    }
+
+    const disallowed = steps[0].match(/--disallowedTools "([^"]*)"/)?.[1].split(',') || [];
+    for (const rule of [
+      'Bash(gh api *)',
+      'Bash(gh pr merge *)',
+      'Bash(gh pr ready *)',
+      'Bash(gh issue edit *)',
+      'Bash(git push * main)',
+      'Bash(git push * develop)',
+      'Bash(git push *:refs/heads/main)',
+      'Bash(git push *:refs/heads/develop)',
+      'Bash(git push *--force*)',
+      'Bash(git push *--delete*)',
+      'Bash(git push *--mirror*)',
+      'Bash(git push *--tags*)',
+      'Bash(git push *:refs/tags/*)',
+    ]) {
+      check(`action deny-regel blijft actief: ${rule}`, disallowed.includes(rule), true);
+    }
+  }
+
   console.log('evaluateGate:');
 
   // ---------- scope-restrictie: ontbrekende source:-label ----------

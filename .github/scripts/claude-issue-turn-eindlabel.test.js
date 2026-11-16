@@ -365,7 +365,7 @@ const run = (github, extra = {}) => applyEndLabel({
   console.log('\nclaude-issue-turn.yml (#1692):');
   {
     const yml = require('fs').readFileSync(require('path').join(__dirname, '../workflows/claude-issue-turn.yml'), 'utf8');
-    check('agent heeft geen gh issue edit in --allowedTools', /Bash\(gh issue edit/.test(yml), false);
+    check('gh issue edit is expliciet geweigerd in --disallowedTools', /--disallowedTools "[^"]*Bash\(gh issue edit \*\)/.test(yml), true);
     check('prompt laat de agent geen label zetten', /--add-label|--remove-label/.test(yml), false);
     check('job eindlabel draait ook na een falende agent', /\n  eindlabel:[\s\S]*?\n    if: always\(\) && needs\.gate\.outputs\.proceed == 'true' && needs\.gate\.outputs\.phase != 'review'\n/.test(yml), true);
 
