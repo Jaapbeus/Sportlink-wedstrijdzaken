@@ -21,6 +21,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ### Changed
 - De elf eerder geteste minor- en patchupdates van AngleSharp, Coverlet, Blazor WebAssembly/MSAL, SqlClient, Logging, Microsoft Graph, Test SDK, OpenAI en Pkcs hersteld na het sluiten van de ongeïntegreerde Dependabot-PR (#1983).
 - De gerelateerde Microsoft.Extensions.AI.Abstractions-, Microsoft.Extensions.AI.OpenAI- en Microsoft.Extensions.Logging.Abstractions-pakketten gezamenlijk bijgewerkt naar 11.0.0; BlazorAdmin declareert Logging.Abstractions direct (#1986).
+- De Claude Code Action-pinnen bijgewerkt en de issue-labeltrigger expliciet afgestemd op `turn: claude-code`; de eerder bewust uitgesloten gh-commando's (`api`, `issue view`, `pr view`, `pr review`, `pr merge`, `pr ready`, `issue edit`) ook in auto mode expliciet geweigerd (#1989).
 
 ### Fixed
 - Private infrastructuurpatronen worden alleen bij een push naar `main` in de basisrepository gecontroleerd; dit gebeurt na de merge en beschermt de PR niet vooraf. De deployworkflow controleert dezelfde patronen vóór build, migratie en deployment, ook bij een handmatige productiestart. Algemene securityscans blijven op alle bestaande events actief. Negatieve workflowmutaties bewaken deze koppeling en ontbrekende of ongeldige privéconfiguratie blokkeert de productiecontrole (#1980).

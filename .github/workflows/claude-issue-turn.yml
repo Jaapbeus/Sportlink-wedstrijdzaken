@@ -209,19 +209,21 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Claude Code
-        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1 (2026-10-10)
+        uses: anthropics/claude-code-action@4d75e5f390ee76b2e09c1980ecc99ff3a2e088c8 # v1.0.275
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           base_branch: develop
+          label_trigger: 'turn: claude-code'
           # Standaard leeg = alleen schrijfbevoegde mensen, geen bots — bewust niet verruimd
           # (AGENTS.md: "allowed_non_write_users nooit op '*'").
           #
-          # In automation mode heeft Claude zonder --allowedTools geen shell- of GitHub-toegang.
-          # Per subcommando toegestaan (#1612), niet `git *`/`gh *`/`node *`: die maken van elke
-          # geslaagde prompt-injectie willekeurige code-uitvoering (`git -c core.fsmonitor=`,
-          # `gh api`, `node -e`, `find -exec`). Geen `gh issue view`/`gh pr view`/`gh api`: alle
-          # leesinvoer komt gefilterd uit de poort. Geen `gh pr merge`/`gh pr ready`. Geen
-          # `gh issue edit` (#1692): het beurtlabel zet de job `eindlabel` als vergelijk-en-zet.
+          # Auto mode laat ook niet-toegestane Bash-regels door de veiligheidsclassifier beoordelen;
+          # --allowedTools is dus geen exhaustieve allowlist. Per subcommando vooraf toegestaan
+          # (#1612), niet `git *`/`gh *`/`node *`: die maken van elke geslaagde prompt-injectie
+          # willekeurige code-uitvoering (`git -c core.fsmonitor=`, `gh api`, `node -e`, `find -exec`).
+          # De deny-regels blokkeren `gh api`, onbewerkte issue-/PR-lezingen, PR-review/merge/ready
+          # en `gh issue edit` (#1692). Leesinvoer komt gefilterd uit de poort; het beurtlabel
+          # zet de job `eindlabel` als vergelijk-en-zet.
           # Pushen naar main/develop is daarnaast al geblokkeerd door de branch protection
           # (verplichte checks, ook voor admins); de deny-regels hieronder zijn een tweede slot.
           # #1727: `--setting-sources user`: geen project-/lokale instellingen uit de checkout (in de
@@ -230,7 +232,7 @@ jobs:
             --max-turns 60
             --setting-sources user
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),Bash(git commit *),Bash(git push *),Bash(git switch -c *),Bash(git checkout -b *),Bash(git rev-parse *),Bash(git branch *),Bash(git fetch *),Bash(gh issue comment *),Bash(gh pr create *),Bash(gh pr checks *),Bash(gh pr comment *),Bash(dotnet build *),Bash(dotnet test *),Bash(dotnet restore *),Bash(node .github/scripts/*),Bash(python3 scripts/ci/*),Bash(bash scripts/ci/*),Bash(ls *),Bash(grep *),Bash(wc *),Bash(head *),Bash(tail *)"
-            --disallowedTools "Bash(git push * main),Bash(git push * develop),Bash(git push *:main),Bash(git push *:develop),Bash(git push *:refs/heads/main),Bash(git push *:refs/heads/develop),Bash(git push *--force*),Bash(git push * -f *),Bash(git push -f *),Bash(git push *--delete*),Bash(git push *--mirror*),Bash(git push *--tags*),Bash(git push *:refs/tags/*)"
+            --disallowedTools "Bash(gh api *),Bash(gh issue view *),Bash(gh pr view *),Bash(gh pr review *),Bash(gh pr merge *),Bash(gh pr ready *),Bash(gh issue edit *),Bash(git push * main),Bash(git push * develop),Bash(git push *:main),Bash(git push *:develop),Bash(git push *:refs/heads/main),Bash(git push *:refs/heads/develop),Bash(git push *--force*),Bash(git push * -f *),Bash(git push -f *),Bash(git push *--delete*),Bash(git push *--mirror*),Bash(git push *--tags*),Bash(git push *:refs/tags/*)"
           prompt: |
             Je werkt deze beurt uit namens de repository-eigenaar, op een kale, kortlevende
             GitHub Actions-runner. Er is geen lokale debugomgeving: roep nooit
@@ -421,10 +423,11 @@ jobs:
           persist-credentials: false
 
       - name: Claude Code (dry-run)
-        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1 (2026-10-10)
+        uses: anthropics/claude-code-action@4d75e5f390ee76b2e09c1980ecc99ff3a2e088c8 # v1.0.275
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           base_branch: develop
+          label_trigger: 'turn: claude-code'
           # Geen enkele tool toegestaan (alles geweigerd): de agent kan niets lezen of schrijven; één beurt, vaste prompt.
           claude_args: >-
             --max-turns 1
@@ -492,11 +495,12 @@ jobs:
 
       - name: Claude Code (review)
         id: claude
-        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1 (2026-10-10)
+        uses: anthropics/claude-code-action@4d75e5f390ee76b2e09c1980ecc99ff3a2e088c8 # v1.0.275
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
           base_branch: ${{ needs.gate.outputs.pr_base }}
+          label_trigger: 'turn: claude-code'
           claude_args: >-
             --max-turns 40
             --setting-sources user
