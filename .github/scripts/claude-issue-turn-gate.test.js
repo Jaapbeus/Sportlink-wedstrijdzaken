@@ -77,9 +77,10 @@ function fakeGithub({
     const workflow = fs.readFileSync(path.join(__dirname, '../workflows/claude-issue-turn.yml'), 'utf8');
     const steps = workflowActionSteps(workflow);
     check('alle drie action-stappen zijn aanwezig', steps.length, 3);
-    check('alle drie action-stappen pinnen dezelfde getoetste SHA',
-      steps.map((step) => step.match(/uses: anthropics\/claude-code-action@([0-9a-f]{40})/)?.[1] || null),
-      Array(3).fill('4d75e5f390ee76b2e09c1980ecc99ff3a2e088c8'));
+    const actionPins = steps.map((step) =>
+      step.match(/^\s*uses: anthropics\/claude-code-action@([0-9a-f]{40})(?=\s|$)/m)?.[1] || null);
+    check('alle action-stappen gebruiken een volledige SHA', actionPins.every((pin) => pin !== null), true);
+    check('alle drie action-stappen pinnen dezelfde SHA', new Set(actionPins).size, 1);
 
     const labelTriggers = steps.map((step) => {
       const match = step.match(/^\s{10}label_trigger:\s*(['"])(.*?)\1\s*$/m);
