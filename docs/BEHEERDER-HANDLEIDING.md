@@ -239,7 +239,8 @@ de huidige stand tonen zou een getal beweren dat daar niet op is berekend.
 
 De bediening, samenvatting en tijdlijn staan boven de wedstrijdenlijst. De lijst heeft een eigen
 scrollbalk; de kolomkop blijft zichtbaar terwijl u door wedstrijden bladert. Dubbelklik op een
-wedstrijdblok om die wedstrijd in de lijst te markeren en ernaartoe te scrollen. De selectie blijft
+wedstrijdblok om die wedstrijd in de lijst te markeren en ernaartoe te scrollen. Met touch tikt u eenmaal;
+met het toetsenbord gebruikt u Enter of Spatie. Activeren via een schermlezer selecteert ook. De selectie blijft
 staan wanneer u tussen Huidig en Optimaal wisselt. Valt de geselecteerde wedstrijd buiten het actieve
 filter, dan blijft het filter actief en wordt alleen die wedstrijd tijdelijk toegevoegd met de badge
 **Buiten filter**.

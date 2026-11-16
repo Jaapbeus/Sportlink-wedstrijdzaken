@@ -60,11 +60,13 @@ window.blazorHelpers = {
     // Resizable two-pane layout for Veld optimalisatie. Keyboard handling is scoped to the
     // separator and selectable Gantt blocks so Tab navigation keeps its native behavior.
     initializeVeldOptimalisatie: function (layout, separator) {
-        if (!layout || !separator || veldOptimalisatieLayouts.has(layout)) return;
+        if (!layout || !separator || !layout.isConnected || !separator.isConnected
+            || veldOptimalisatieLayouts.has(layout)) return;
         var upperPane = layout.querySelector('.veldoptimalisatie-boven-paneel');
         var userAdjusted = false;
         var lastDocumentTop = null;
-        var layoutCheckQueued = false;
+        var layoutCheckFrame = null;
+        var destroyed = false;
 
         function bounds() {
             var usable = Math.max(280, layout.clientHeight - separator.offsetHeight);
@@ -75,6 +77,7 @@ window.blazorHelpers = {
         }
 
         function setHeight(value) {
+            if (destroyed) return;
             var limits = bounds();
             var height = Math.max(limits.min, Math.min(limits.max, value));
             layout.style.setProperty('--veld-boven-hoogte', height + 'px');
@@ -85,6 +88,7 @@ window.blazorHelpers = {
         }
 
         function fitViewport() {
+            if (destroyed) return;
             var top = layout.getBoundingClientRect().top + window.scrollY;
             lastDocumentTop = top;
             layout.style.setProperty('--veld-layout-height', Math.max(280, window.innerHeight - top - 8) + 'px');
@@ -93,7 +97,7 @@ window.blazorHelpers = {
         }
 
         function fitPlanContent() {
-            if (!upperPane) return;
+            if (destroyed || !upperPane) return;
             if (!upperPane.querySelector('.veldoptimalisatie-gantt-kaart')) {
                 return;
             }
@@ -107,10 +111,14 @@ window.blazorHelpers = {
         }
 
         function checkDocumentTop() {
-            if (layoutCheckQueued) return;
-            layoutCheckQueued = true;
-            requestAnimationFrame(function () {
-                layoutCheckQueued = false;
+            if (!layout.isConnected) {
+                window.blazorHelpers.destroyVeldOptimalisatie(layout);
+                return;
+            }
+            if (destroyed || layoutCheckFrame !== null) return;
+            layoutCheckFrame = requestAnimationFrame(function () {
+                layoutCheckFrame = null;
+                if (destroyed || !layout.isConnected) return;
                 var documentTop = layout.getBoundingClientRect().top + window.scrollY;
                 if (Math.abs(documentTop - lastDocumentTop) > 1) fitViewport();
             });
@@ -158,10 +166,14 @@ window.blazorHelpers = {
             }
         }
 
-        function focusSplitter(event) {
+        function layoutClick(event) {
             if (event.target.closest('[data-veld-skip-splitter]')) separator.focus({ preventScroll: true });
+            // A native touch click is emitted only after a tap, not after scrolling/cancelled drag.
+            // Forward it as an assistive click; ordinary mouse clicks still require dblclick.
+            var block = event.target.closest('.gantt-blok[role="button"]');
+            if (block && event.pointerType === 'touch' && event.detail !== 0) block.click();
         }
-        layout.addEventListener('click', focusSplitter);
+        layout.addEventListener('click', layoutClick);
         separator.addEventListener('pointerdown', pointerDown);
         separator.addEventListener('pointermove', pointerMove);
         separator.addEventListener('pointerup', pointerEnd);
@@ -179,7 +191,11 @@ window.blazorHelpers = {
             fitPlanContent();
         }
         veldOptimalisatieLayouts.set(layout, function () {
-            layout.removeEventListener('click', focusSplitter);
+            if (destroyed) return;
+            destroyed = true;
+            if (layoutCheckFrame !== null) cancelAnimationFrame(layoutCheckFrame);
+            layoutCheckFrame = null;
+            layout.removeEventListener('click', layoutClick);
             separator.removeEventListener('pointerdown', pointerDown);
             separator.removeEventListener('pointermove', pointerMove);
             separator.removeEventListener('pointerup', pointerEnd);

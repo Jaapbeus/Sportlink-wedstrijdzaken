@@ -5,6 +5,9 @@
 
 import { existsSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
+import { createServer } from 'node:http';
+import { checkActivation, checkTouch, checkTheme } from './browsercheck-veldoptimalisatie-input.mjs';
+import { checkLifecycle } from './browsercheck-veldoptimalisatie-lifecycle.mjs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -25,6 +28,10 @@ if (baseUrl.protocol !== 'http:' || !['localhost', '127.0.0.1'].includes(baseUrl
   throw new Error('BLAZOR_URL must be an HTTP loopback address');
 }
 const apiPort = process.env.FUNCTION_API_PORT || '7094';
+if (!/^\d+$/.test(apiPort) || Number(apiPort) < 1 || Number(apiPort) > 65535) {
+  throw new Error('FUNCTION_API_PORT must be a valid TCP port');
+}
+const apiOrigins = new Set(['localhost', '127.0.0.1'].map(host => new URL(`http://${host}:${apiPort}`).origin));
 const artifactDir = process.env.BROWSER_ARTIFACT_DIR || path.join(os.tmpdir(), 'sportlink-1978-browser');
 mkdirSync(artifactDir, { recursive: true });
 const results = [];
@@ -71,17 +78,22 @@ const page = await context.newPage();
 const appErrors = [];
 const apiCalls = [];
 const blockedExternal = [];
+const blockedIsolation = [];
+let isolationProbe = false;
 page.on('pageerror', error => appErrors.push(error.message));
 page.on('console', message => { if (message.type() === 'error') appErrors.push(message.text()); });
-await page.addInitScript(() => localStorage.setItem('selectedClubCode', 'ALLSTARS'));
-await context.route('**/*', async route => {
+await page.addInitScript(() => { localStorage.setItem('selectedClubCode', 'ALLSTARS'); localStorage.setItem('theme-mode', 'light'); });
+const stubRoute = async route => {
   const request = route.request();
   const url = new URL(request.url());
-  if (url.hostname !== baseUrl.hostname && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
-    blockedExternal.push(url.origin);
+  const uiOrigin = url.origin === baseUrl.origin;
+  const apiOrigin = apiOrigins.has(url.origin);
+  if (!uiOrigin && !apiOrigin) {
+    (isolationProbe ? blockedIsolation : blockedExternal).push(url.origin);
     return route.abort();
   }
-  if (url.port !== apiPort) return route.continue();
+  // Relative /api requests on the UI origin are synthetic too. Only UI assets may continue.
+  if (uiOrigin && !/^\/api(?:\/|$)/.test(url.pathname)) return route.continue();
 
   apiCalls.push(`${request.method()} ${url.pathname}`);
   const json = body => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -98,9 +110,33 @@ await context.route('**/*', async route => {
     });
   }
   return json([]);
-});
+};
+await context.route('**/*', stubRoute);
 
 try {
+  // A real sentinel listener proves unknown loopback ports never receive the request.
+  let sentinelHits = 0;
+  const sentinel = createServer((_request, response) => { sentinelHits++; response.end('unexpected'); });
+  await new Promise(resolve => sentinel.listen(0, '127.0.0.1', resolve));
+  try {
+    const sentinelOrigin = `http://127.0.0.1:${sentinel.address().port}`;
+    const probe = await context.newPage();
+    await probe.goto(base, { waitUntil: 'domcontentloaded' });
+    isolationProbe = true;
+    const isolation = await probe.evaluate(async ({ sentinelOrigin, base }) => {
+      const blocked = await fetch(`${sentinelOrigin}/api/isolation-sentinel`).then(() => false, () => true);
+      const relativeApi = await fetch(`${base}/api/isolation-sentinel`).then(response => response.json());
+      return { blocked, relativeApi };
+    }, { sentinelOrigin, base });
+    ok(isolation.blocked && sentinelHits === 0 && blockedIsolation.includes(sentinelOrigin),
+      'unknown loopback API port is aborted before a live sentinel receives any request');
+    ok(Array.isArray(isolation.relativeApi) && apiCalls.includes('GET /api/isolation-sentinel'),
+      'relative API on the exact UI origin is fulfilled by the synthetic handler');
+    await probe.close();
+  } finally {
+    isolationProbe = false;
+    await new Promise(resolve => sentinel.close(resolve));
+  }
   await page.goto(`${base}/veld-optimalisatie`, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.getByText('Synthetic wedstrijd 01', { exact: true }).waitFor({ timeout: 60000 });
   const layout = page.locator('.veldoptimalisatie-layout');
@@ -167,6 +203,7 @@ try {
   ok((await page.locator(`#wedstrijd-${wedstrijden[0].wedstrijdCode}`).getAttribute('aria-current')) === 'true',
     'keyboard activation selects a Gantt match in the Optimaal tab');
 
+  await checkActivation({ page, block, wedstrijden, ok });
   await block(1).dblclick();
   ok((await page.locator(`#wedstrijd-${wedstrijden[1].wedstrijdCode}`).getAttribute('aria-current')) === 'true'
     && await page.locator(`#wedstrijd-${wedstrijden[0].wedstrijdCode}`).count() === 0,
@@ -196,7 +233,7 @@ try {
     'drag/drop changed only the local plan and made no apply/write API request');
 
   for (const theme of ['light', 'dark']) {
-    await page.evaluate(value => document.documentElement.setAttribute('data-bs-theme', value), theme);
+    await checkTheme({ page, theme, ok });
     await block(0).focus();
     const marker = await block(0).evaluate(el => ({
       manual: getComputedStyle(el, '::after').borderTopStyle,
@@ -382,6 +419,7 @@ try {
   `above-layout banner recalculates available height (${JSON.stringify(afterBanner)})`);
   await page.evaluate(() => document.getElementById('synthetic-layout-banner').remove());
 
+  await checkTouch({ browser, base, stubRoute, ok });
   // Null codes must remain inert even when the component has a selection callback.
   planSize = 36;
   wedstrijden[0].wedstrijdCode = null;
@@ -391,6 +429,12 @@ try {
   const nullBlock = nullPage.locator('.gantt-blok').filter({ hasText: 'Synthetic wedstrijd 01' }).first();
   ok(await nullBlock.getAttribute('role') === null && await nullBlock.getAttribute('tabindex') === null
     && await nullBlock.getAttribute('aria-pressed') === null, 'null-code block has no interactive semantics or tab stop');
+  await nullBlock.evaluate(el => el.click());
+  await nullBlock.dblclick();
+  await nullPage.waitForTimeout(50);
+  ok(await nullPage.locator('.gantt-blok-geselecteerd').count() === 0
+    && await nullPage.locator('[aria-current="true"]').count() === 0,
+    'null-code block remains inert after synthesized click and mouse double-click');
   await nullPage.close();
   wedstrijden[0].wedstrijdCode = 1978000;
 
@@ -423,6 +467,8 @@ try {
   await emptyPage.waitForTimeout(100);
   ok((await measureEmpty()).height === manualHeight, 'content changes preserve explicit user pane resize');
   await emptyPage.close();
+
+  await checkLifecycle({ browser, base, stubRoute, ok });
 
   ok(blockedExternal.length === 0, 'no external requests were attempted');
   ok(apiCalls.some(call => call.includes('/api/planner/auto-plan')), 'the page used intercepted synthetic planner data');

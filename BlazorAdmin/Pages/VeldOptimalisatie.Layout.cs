@@ -6,13 +6,12 @@ using Microsoft.JSInterop;
 namespace BlazorAdmin.Pages;
 
 /// <summary>Browser layout and selection behavior for the Veld optimalisatie two-pane view.</summary>
-public partial class VeldOptimalisatie : IAsyncDisposable
+public partial class VeldOptimalisatie
 {
     private readonly GanttSelectieState _selectie = new();
     private ElementReference _layoutElement;
     private ElementReference _splitterElement;
     private ElementReference _matchListElement;
-    private bool _browserLayoutInitialized;
     private bool _scrollSelectieNaRender;
 
     private bool IsOptimaal => _visTab == "optimaal";
@@ -25,7 +24,6 @@ public partial class VeldOptimalisatie : IAsyncDisposable
         if (firstRender)
         {
             await JS.InvokeVoidAsync("blazorHelpers.initializeVeldOptimalisatie", _layoutElement, _splitterElement);
-            _browserLayoutInitialized = true;
         }
 
         if (_scrollSelectieNaRender && _selectie.WedstrijdCode.HasValue)
@@ -36,24 +34,8 @@ public partial class VeldOptimalisatie : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        try
-        {
-            if (_browserLayoutInitialized)
-                await JS.InvokeVoidAsync("blazorHelpers.destroyVeldOptimalisatie", _layoutElement);
-        }
-        catch (JSDisconnectedException)
-        {
-            // The component can be disposed after the browser has already disconnected.
-        }
-        finally
-        {
-            // ClubSelectorPageBase owns the club-change subscription; async disposal must still
-            // release that registration when Blazor chooses IAsyncDisposable.
-            base.Dispose();
-        }
-    }
+    // DOM resources are released by the client observer when this layout is removed.
+    // The inherited IDisposable still releases the ClubSelectorPageBase subscription.
 
     // Sortering staat sinds #1331 in BlazorAdmin/Services/DagplanningSortering.cs — tijd, dan de
     // interne clubveldvolgorde (OptimaalVeldNummer).
