@@ -41,6 +41,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De Claude Code Action-pinnen bijgewerkt en de issue-labeltrigger expliciet afgestemd op `turn: claude-code`; de eerder bewust uitgesloten gh-commando's (`api`, `issue view`, `pr view`, `pr review`, `pr merge`, `pr ready`, `issue edit`) ook in auto mode expliciet geweigerd (#1989).
 
 ### Fixed
+- De voorwaarden voor een e-mailpoll staan eenmalig in de gedeelde kern: een lege inbox blijft zonder databasewake, en een mislukte instellingenlezing stopt de verwerking vóór berichtinhoud of mailboxmutaties. Dit verwijdert de nieuwe tierduplicatie zonder gedragswijziging (#1977).
 - Auditwaarden voor de clubbrede optimalisatie-aanvang gebruiken op beide tiers consequent `HH:mm`. Het OpenAPI-schema is aangevuld met het al bestaande antwoordveld `StandaardVoorkeurTijd` van de speeltijden-API; dit documenteert bestaand gedrag en voegt geen responseveld toe (#1979).
 - Private infrastructuurpatronen worden alleen bij een push naar `main` in de basisrepository gecontroleerd; dit gebeurt na de merge en beschermt de PR niet vooraf. De deployworkflow controleert dezelfde patronen vóór build, migratie en deployment, ook bij een handmatige productiestart. Algemene securityscans blijven op alle bestaande events actief. Negatieve workflowmutaties bewaken deze koppeling en ontbrekende of ongeldige privéconfiguratie blokkeert de productiecontrole (#1980).
 

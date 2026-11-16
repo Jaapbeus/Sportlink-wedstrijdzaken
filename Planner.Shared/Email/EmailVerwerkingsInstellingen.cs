@@ -334,6 +334,17 @@ public static class EmailInstellingenAdminCore
         return result;
     }
 
+    /// <summary>Interpreteert de vergrendelde ruwe lezing vóór de schrijf- en auditlijst wordt gekozen.</summary>
+    public static async Task<Dictionary<string, string?>> LeesVoorWijzigingAsync(
+        System.Data.Common.DbDataReader reader, IDictionary<string, string?> changes)
+    {
+        var opgeslagen = await reader.ReadAsync()
+            ? LeesWaarden(reader)
+            : new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        EmailVerwerkingsInstellingenWijziging.VerwijderOngewijzigdeVelden(changes, opgeslagen);
+        return opgeslagen;
+    }
+
     public static bool BevestigingAuditen(EmailInstellingenAdminWijziging wijziging) =>
         wijziging.Oud.Instellingen.ReviewModusActief && !wijziging.Nieuw.ReviewModusActief;
 }

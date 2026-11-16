@@ -47,25 +47,14 @@ public partial class EmailProcessorFunction
         // De metadata-check raakt geen berichtinhoud of database. Alleen werk in de inbox
         // wekt de database; vóór volledige Graph-ophaal/AI/mutaties is één verse clubsnapshot vereist.
         var graphService = context.InstanceServices.GetService<IEmailGraphService>();
-        if (graphService is null)
-        {
-            log.LogWarning("Graph-adapter niet beschikbaar; e-mailpoll overgeslagen");
-            return;
-        }
-        var instellingen = await EmailTimerInstellingenGate.LeesNaInboxProbeAsync(
-            graphService.HeeftOngelezenInboxBerichtenAsync,
+        var instellingen = await EmailPollVoorbereiding.LeesInstellingenAsync(
+            graphService is null ? null : graphService.HeeftOngelezenInboxBerichtenAsync,
             () => PostgresSystemUtilities.WaitForDatabaseAsync(log),
-            async () =>
-            {
-                if (PostgresAppSettings.LastLoadFailed)
-                    throw new InvalidOperationException("AppSettings niet beschikbaar");
-                return await EmailVerwerkingsInstellingenOpslag.LeesAsync(
-                    PostgresDatabaseConfig.ConnectionString, PostgresClubScope.Primary, log);
-            },
-            () => log.LogWarning("Inbox-metadata niet beschikbaar; e-mailpoll overgeslagen"),
-            () => log.LogWarning("E-mailinstellingen niet beschikbaar; verwerking uit"),
-            status => log.LogInformation("Email processor uitgeschakeld voor deze club ({Status})", status));
-        if (instellingen is null) return;
+            () => PostgresAppSettings.LastLoadFailed,
+            () => EmailVerwerkingsInstellingenOpslag.LeesAsync(
+                PostgresDatabaseConfig.ConnectionString, PostgresClubScope.Primary, log),
+            log);
+        if (graphService is null || instellingen is null) return;
 
         var poort = new EmailVerwerkerPoort(
             log,

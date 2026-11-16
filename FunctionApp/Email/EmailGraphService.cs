@@ -27,14 +27,9 @@ public partial class EmailGraphService : IEmailGraphService
     }
 
     /// <summary>Alleen inbox-metadata; geen bericht of bericht-ID ophalen vóór de databasepoort.</summary>
-    public async Task<bool> HeeftOngelezenInboxBerichtenAsync()
-    {
-        var folder = await _graphClient.Users[_mailbox].MailFolders["inbox"]
-            .GetAsync(config => config.QueryParameters.Select = ["unreadItemCount"]);
-        if (folder?.UnreadItemCount is not int aantal)
-            throw new InvalidOperationException("Inbox unread count niet beschikbaar");
-        return aantal > 0;
-    }
+    public async Task<bool> HeeftOngelezenInboxBerichtenAsync() =>
+        EmailInboxMetadata.HeeftWerk((await _graphClient.Users[_mailbox].MailFolders["inbox"]
+            .GetAsync(config => config.QueryParameters.Select = ["unreadItemCount"]))?.UnreadItemCount);
 
     /// <summary>Haalt maximaal 10 ongelezen emails op uit de inbox van de coordinator-mailbox.</summary>
     public async Task<List<InkomendBericht>> GetUnreadEmailsAsync()

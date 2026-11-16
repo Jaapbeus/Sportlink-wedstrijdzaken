@@ -56,9 +56,9 @@ internal static class EmailSettingsAdminSupport
         await bevestigd.ExecuteNonQueryAsync();
     }
     internal static async Task<Dictionary<string, string?>> ReadCurrentValuesAsync(
-        NpgsqlConnection connection, NpgsqlTransaction transaction, IEnumerable<string> velden, string clubCode)
+        NpgsqlConnection connection, NpgsqlTransaction transaction, Dictionary<string, string?> changes, string clubCode)
     {
-        var safe = velden.Where(v => AdminSettingsFunction.AllowedFields.Contains(v, StringComparer.OrdinalIgnoreCase))
+        var safe = changes.Keys.Where(v => AdminSettingsFunction.AllowedFields.Contains(v, StringComparer.OrdinalIgnoreCase))
                          .Select(v => $"{v} AS \"{v}\"")
                          .ToList();
         var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -68,9 +68,7 @@ internal static class EmailSettingsAdminSupport
         await using var cmd = new NpgsqlCommand(sql, connection, transaction);
         cmd.Parameters.AddWithValue("clubcode", clubCode);
         await using var reader = await cmd.ExecuteReaderAsync();
-        if (await reader.ReadAsync())
-            return EmailInstellingenAdminCore.LeesWaarden(reader);
-        return result;
+        return await EmailInstellingenAdminCore.LeesVoorWijzigingAsync(reader, changes);
     }
 
 }

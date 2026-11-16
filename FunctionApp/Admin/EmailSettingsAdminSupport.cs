@@ -58,9 +58,9 @@ internal static class EmailSettingsAdminSupport
         await bevestigd.ExecuteNonQueryAsync();
     }
     internal static async Task<Dictionary<string, string?>> ReadCurrentValuesAsync(
-        SqlConnection connection, SqlTransaction transaction, IEnumerable<string> velden, string clubCode)
+        SqlConnection connection, SqlTransaction transaction, Dictionary<string, string?> changes, string clubCode)
     {
-        var safe = velden.Where(v => AdminSettingsFunction.AllowedFields.Contains(v, StringComparer.OrdinalIgnoreCase))
+        var safe = changes.Keys.Where(v => AdminSettingsFunction.AllowedFields.Contains(v, StringComparer.OrdinalIgnoreCase))
                          .Select(v => $"[{v}]")
                          .ToList();
         var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -71,9 +71,7 @@ internal static class EmailSettingsAdminSupport
         using var cmd = new SqlCommand(sql, connection, transaction);
         cmd.Parameters.AddWithValue("@ClubCode", clubCode);
         using var reader = await cmd.ExecuteReaderAsync();
-        if (await reader.ReadAsync())
-            return EmailInstellingenAdminCore.LeesWaarden(reader);
-        return result;
+        return await EmailInstellingenAdminCore.LeesVoorWijzigingAsync(reader, changes);
     }
 
 }

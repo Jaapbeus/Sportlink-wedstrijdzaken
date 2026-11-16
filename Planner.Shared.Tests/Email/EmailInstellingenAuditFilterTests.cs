@@ -6,6 +6,39 @@ namespace Planner.Shared.Tests.Email;
 
 public sealed class EmailInstellingenAuditFilterTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VergrendeldeRuweLezing_FiltersAlleenOngewijzigdeMailveldenEnBehoudtOudeWaarden(bool rijAanwezig)
+    {
+        var table = new System.Data.DataTable();
+        table.Columns.Add("EmailVerwerkingIngeschakeld", typeof(bool));
+        table.Columns.Add("EmailReviewModusActief", typeof(bool));
+        table.Columns.Add("EmailReviewOntvanger", typeof(string));
+        if (rijAanwezig) table.Rows.Add(false, true, "trainer@voorbeeld.nl");
+        using var reader = table.CreateDataReader();
+        var changes = new Dictionary<string, string?>
+        {
+            ["EmailVerwerkingIngeschakeld"] = "false",
+            ["EmailReviewModusActief"] = "false",
+            ["EmailReviewOntvanger"] = "trainer@voorbeeld.nl"
+        };
+
+        var opgeslagen = await EmailInstellingenAdminCore.LeesVoorWijzigingAsync(reader, changes);
+
+        if (rijAanwezig)
+        {
+            changes.Keys.Should().ContainSingle().Which.Should().Be("EmailReviewModusActief");
+            opgeslagen["EmailReviewModusActief"].Should().Be("True");
+            opgeslagen["EmailReviewOntvanger"].Should().Be("trainer@voorbeeld.nl");
+        }
+        else
+        {
+            opgeslagen.Should().BeEmpty();
+            changes.Should().HaveCount(3);
+        }
+    }
+
     [Fact]
     public void EenVeldWijzigen_LaatAlleenDatVeldInSchrijfEnAuditlijst()
     {

@@ -191,12 +191,10 @@ public static class AdminSettingsFunction
 
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
-                if (EmailVerwerkingsInstellingenWijziging.BevatEmailVeld(changes)
-                    && !await EmailSettingsAdminSupport.EmailKolommenBeschikbaarAsync(connection))
-                    return new ConflictObjectResult(new
-                    {
-                        error = "E-mailinstellingen zijn pas schrijfbaar nadat databasemigratie 056 is toegepast."
-                    });
+                if (await EmailInstellingenSchemaControle.ControleerAsync(
+                    changes, () => EmailSettingsAdminSupport.EmailKolommenBeschikbaarAsync(connection),
+                    "E-mailinstellingen zijn pas schrijfbaar nadat databasemigratie 056 is toegepast.") is { } schemaFout)
+                    return schemaFout;
                 bool fetchScheduleChanged;
                 try
                 {
@@ -255,8 +253,7 @@ public static class AdminSettingsFunction
         {
             var emailChange = await EmailSettingsAdminSupport.BereidVoorAsync(
                 connection, transaction, changes, clubCode, bevestigReviewUitzetten);
-            var currentValues = await EmailSettingsAdminSupport.ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
-            EmailVerwerkingsInstellingenWijziging.VerwijderOngewijzigdeVelden(changes, currentValues);
+            var currentValues = await EmailSettingsAdminSupport.ReadCurrentValuesAsync(connection, transaction, changes, clubCode);
             var fetchScheduleChanged = FetchScheduleChangedCore.IsChanged(currentValues, changes);
 
             foreach (var (veld, nieuweWaarde) in changes)

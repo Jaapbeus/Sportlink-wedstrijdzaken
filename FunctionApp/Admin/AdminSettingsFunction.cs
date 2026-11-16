@@ -147,12 +147,10 @@ public static class AdminSettingsFunction
 
                 using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
-                if (EmailVerwerkingsInstellingenWijziging.BevatEmailVeld(changes)
-                    && !await EmailSettingsAdminSupport.EmailKolommenBeschikbaarAsync(connection))
-                    return new ConflictObjectResult(new
-                    {
-                        error = "E-mailinstellingen zijn pas schrijfbaar nadat de databaseschemawijziging is toegepast."
-                    });
+                if (await EmailInstellingenSchemaControle.ControleerAsync(
+                    changes, () => EmailSettingsAdminSupport.EmailKolommenBeschikbaarAsync(connection),
+                    "E-mailinstellingen zijn pas schrijfbaar nadat de databaseschemawijziging is toegepast.") is { } schemaFout)
+                    return schemaFout;
                 bool fetchScheduleChanged;
                 try
                 {
@@ -208,8 +206,7 @@ public static class AdminSettingsFunction
     {
         var emailChange = await EmailSettingsAdminSupport.BereidVoorAsync(
             connection, transaction, changes, clubCode, bevestigReviewUitzetten);
-        var currentValues = await EmailSettingsAdminSupport.ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
-        EmailVerwerkingsInstellingenWijziging.VerwijderOngewijzigdeVelden(changes, currentValues);
+        var currentValues = await EmailSettingsAdminSupport.ReadCurrentValuesAsync(connection, transaction, changes, clubCode);
         var fetchScheduleChanged = FetchScheduleChangedCore.IsChanged(currentValues, changes);
 
         foreach (var (veld, nieuweWaarde) in changes)
