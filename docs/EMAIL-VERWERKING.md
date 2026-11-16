@@ -1571,3 +1571,6 @@ veilige standaard, en schrijft waarden, marker en geredigeerde audit in één tr
 is veilig; andere clubs blijven onaangeroerd. Voer deze tool niet uit tijdens een gewone migratie
 of deploy. Bewaar de oude privéconfiguratie voor rollback tot de eigenaar de overname en het
 runtimegedrag heeft geaccepteerd; de applicatie leest die waarden na deze wijziging niet meer.
+De audit bevat alleen velden waarvan de ruwe oude en nieuwe waarde verschillen; schakelaars
+worden daarin als `0`/`1` vastgelegd. Het reviewadres wordt vóór opslag van de audit geredigeerd
+tot `[ingesteld]` of `[niet ingesteld]`.

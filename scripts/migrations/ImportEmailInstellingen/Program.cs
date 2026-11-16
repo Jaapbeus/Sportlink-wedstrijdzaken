@@ -129,19 +129,16 @@ private static async Task SchrijfAuditAsync(DbConnection connection, DbTransacti
     var auditColumns = tier == "postgres"
         ? "gewijzigddoor, veld, oudewaarde, nieuwewaarde, clubcode"
         : "[GewijzigdDoor], [Veld], [OudeWaarde], [NieuweWaarde], [ClubCode]";
-    foreach (var (veld, oud, nieuw) in new (string, string?, string?)[]
+    foreach (var veld in EmailInstellingenImportAudit.Projecteer(huidig, verwerking, review, ontvanger))
     {
-        ("EmailVerwerkingIngeschakeld", huidig.VerwerkingIngeschakeld.ToString(), verwerking.ToString()),
-        ("EmailReviewModusActief", huidig.ReviewModusActief.ToString(), review.ToString()),
-        ("EmailReviewOntvanger", huidig.ReviewOntvanger, ontvanger)
-    })
-    {
-        var veilig = EmailVerwerkingsInstellingenWijziging.AuditWaarden(veld, oud, nieuw);
+        // Compare raw values in the pure projection before recipient redaction. Only persisted audit values are redacted.
+        var veilig = EmailVerwerkingsInstellingenWijziging.AuditWaarden(
+            veld.Veld, veld.OudeWaarde, veld.NieuweWaarde);
         await using var audit = connection.CreateCommand();
         audit.Transaction = transaction;
         audit.CommandText = $"INSERT INTO {auditTable} ({auditColumns}) VALUES (@actor,@field,@old,@new,@clubcode)";
         Add(audit, "actor", "private-import");
-        Add(audit, "field", veld);
+        Add(audit, "field", veld.Veld);
         Add(audit, "old", (object?)veilig.OudeWaarde ?? DBNull.Value);
         Add(audit, "new", (object?)veilig.NieuweWaarde ?? DBNull.Value);
         Add(audit, "clubcode", clubCode);
