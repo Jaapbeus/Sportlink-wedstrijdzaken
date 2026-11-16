@@ -184,7 +184,7 @@
                                     @* #1388: bg-light schakelt niet mee met het donkere thema; kaart-thema-bg
                                        (Planning.razor.css) volgt var(--theme-card-bg). *@
                                     <td colspan="6" class="kaart-thema-bg tabel-compact">
-                                        <SportlinkMatchPanel WedstrijdCode="item.WedstrijdCode.Value" />
+                                        <SportlinkMatchPanel WedstrijdCode="item.WedstrijdCode.Value" OnVeldGewijzigd="LoadVeldbezettingAsync" />
                                     </td>
                                 </tr>
                             }

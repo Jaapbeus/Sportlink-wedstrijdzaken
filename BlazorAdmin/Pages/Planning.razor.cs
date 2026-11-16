@@ -75,6 +75,7 @@ public partial class Planning : ClubSelectorPageBase
     // Een eigen mutatie wist ook lopende en vooraf geladen antwoorden.
     private Task LoadVeldbezettingAsync()
     {
+        if (_planningDisposed) return Task.CompletedTask;
         _voorladen.Wis();
         return LaadPlanningAsync();
     }

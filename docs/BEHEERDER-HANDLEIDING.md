@@ -120,7 +120,8 @@ Een reeds opgehaalde dag verschijnt direct met **Vooraf geladen; actuele stand c
 opnieuw de actuele stand vraagt. Het tijdstip bij de bron blijft het tijdstip waarop Sportlink is geraadpleegd.
 Bij een mislukte controle verschijnt de fout of de bestaande waarschuwing; een kopie wordt nooit stil als actueel bevestigd.
 De tijdelijke kopieën blijven maximaal twee minuten in het geheugen van de geopende pagina en worden gewist bij
-clubwisseling, verlaten van de pagina of een wedstrijd die u via deze pagina toevoegt.
+clubwisseling, verlaten van de pagina, een wedstrijd die u via deze pagina toevoegt of een geslaagde echte
+veldwijziging via **Toon**.
 
 ### Planning en Veld optimalisatie — hover-highlight en sticky tijdlijn (#1315, generiek gemaakt bij #1398)
 
