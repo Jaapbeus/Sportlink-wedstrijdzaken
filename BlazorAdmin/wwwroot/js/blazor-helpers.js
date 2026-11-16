@@ -252,10 +252,17 @@ window.blazorHelpers = {
         layout.addEventListener('keydown', keyDown, true);
         window.addEventListener('resize', fitViewport);
         fitViewport();
-        // Blazor banners above this view can change without a window resize. Observe structural
-        // changes, but write the height only if the layout's document position actually moved.
+        // Blazor banners and the responsive navigation above this view can change without a
+        // window resize. Observe structural and class changes, but write the height only if the
+        // layout's document position actually moved.
         var pageObserver = new MutationObserver(checkDocumentTop);
-        pageObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+        pageObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class'],
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
         var planObserver = upperPane ? new MutationObserver(fitPlanContent) : null;
         if (planObserver) {
             planObserver.observe(upperPane, { childList: true, subtree: true });

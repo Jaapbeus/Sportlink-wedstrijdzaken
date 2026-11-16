@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import os from 'node:os';
 import { createServer } from 'node:http';
-import { checkActivation, checkSkipShortcutFocus, checkTouch, checkTheme } from './browsercheck-veldoptimalisatie-input.mjs';
+import { checkActivation, checkMobileMenuLayout, checkSkipShortcutFocus, checkTouch, checkTheme } from './browsercheck-veldoptimalisatie-input.mjs';
 import { checkLifecycle } from './browsercheck-veldoptimalisatie-lifecycle.mjs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -146,6 +146,7 @@ try {
   const block = (i = 0) => page.locator(`.gantt-blok[data-wedstrijd-code="${wedstrijden[i].wedstrijdCode}"]`);
 
   await checkSkipShortcutFocus({ browser, base, stubRoute, ok, artifactDir });
+  await checkMobileMenuLayout({ browser, base, stubRoute, ok, artifactDir });
 
   const layoutBox = await layout.boundingBox();
   const topBox = await top.boundingBox();

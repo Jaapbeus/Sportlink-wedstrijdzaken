@@ -88,6 +88,95 @@ export async function checkSkipShortcutFocus({ browser, base, stubRoute, ok, art
   }
 }
 
+export async function checkMobileMenuLayout({ browser, base, stubRoute, ok, artifactDir }) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await context.addInitScript(() => localStorage.setItem('selectedClubCode', 'ALLSTARS'));
+  await context.route('**/*', stubRoute);
+  const page = await context.newPage();
+  try {
+    await page.goto(`${base}/veld-optimalisatie`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.getByText('Synthetic wedstrijd 01', { exact: true }).waitFor({ timeout: 60000 });
+    const rows = page.locator('.veldoptimalisatie-tabel-scroll tbody tr');
+    const rowCount = await rows.count();
+    ok(rowCount === 36, `mobile menu height fixture renders all 36 synthetic rows (found ${rowCount})`);
+
+    const menuToggle = page.getByRole('button', { name: 'Navigation menu' });
+    await menuToggle.click();
+    const adminGroup = page.getByRole('button', { name: /Admin/i }).first();
+    await adminGroup.waitFor({ state: 'visible' });
+    await adminGroup.click();
+    const expanded = await adminGroup.getAttribute('aria-expanded');
+    await page.waitForFunction(() => {
+      const layout = document.querySelector('.veldoptimalisatie-layout');
+      const top = layout.getBoundingClientRect().top + window.scrollY;
+      const expected = Math.max(280, window.innerHeight - top - 8);
+      const actual = Number.parseFloat(getComputedStyle(layout).getPropertyValue('--veld-layout-height'));
+      return top > window.innerHeight && Math.abs(actual - expected) <= 2;
+    }, null, { timeout: 10000 });
+    const expandedMenuSizing = await page.evaluate(() => {
+      const layout = document.querySelector('.veldoptimalisatie-layout');
+      const top = layout.getBoundingClientRect().top + window.scrollY;
+      return {
+        documentTop: top,
+        expectedHeight: Math.max(280, window.innerHeight - top - 8),
+        layoutHeightVariable: Number.parseFloat(getComputedStyle(layout).getPropertyValue('--veld-layout-height'))
+      };
+    });
+    await menuToggle.click();
+    await page.waitForTimeout(500);
+
+    const afterClose = await page.evaluate(() => {
+      const layout = document.querySelector('.veldoptimalisatie-layout');
+      const list = document.querySelector('.veldoptimalisatie-tabel-scroll');
+      const top = layout.getBoundingClientRect().top + window.scrollY;
+      return {
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        documentTop: top,
+        expectedHeight: Math.max(280, window.innerHeight - top - 8),
+        layoutHeight: layout.getBoundingClientRect().height,
+        layoutHeightVariable: Number.parseFloat(getComputedStyle(layout).getPropertyValue('--veld-layout-height')),
+        listHeight: list.getBoundingClientRect().height,
+        listClientHeight: list.clientHeight,
+        listScrollHeight: list.scrollHeight,
+        unusedBottom: window.innerHeight - layout.getBoundingClientRect().bottom
+      };
+    });
+    await page.screenshot({ path: `${artifactDir}/mobile-menu-height-390x844.png` });
+    ok(expanded === 'true', 'mobile navigation Admin group expands before menu close');
+    ok(Math.abs(expandedMenuSizing.layoutHeightVariable - expandedMenuSizing.expectedHeight) <= 2,
+      `expanded mobile menu settles before closing (${JSON.stringify(expandedMenuSizing)})`);
+    ok(Math.abs(afterClose.layoutHeightVariable - afterClose.expectedHeight) <= 2,
+      `closing mobile navigation recalculates available layout height without resize (${JSON.stringify(afterClose)})`);
+    ok(Math.abs(afterClose.layoutHeight - afterClose.expectedHeight) <= 2,
+      `mobile layout fills the available height after menu close (${JSON.stringify(afterClose)})`);
+    ok(afterClose.listClientHeight > 300,
+      `mobile match list retains its usable height after menu close (${afterClose.listClientHeight}px)`);
+
+    const lastRow = page.locator('#wedstrijd-1978035');
+    const lastRowGeometry = await page.evaluate(() => {
+      const list = document.querySelector('.veldoptimalisatie-tabel-scroll');
+      const row = document.querySelector('#wedstrijd-1978035');
+      list.scrollTop = list.scrollHeight;
+      const pane = list.getBoundingClientRect();
+      const rect = row.getBoundingClientRect();
+      const hit = document.elementFromPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+      return {
+        scrollTop: list.scrollTop,
+        scrollHeight: list.scrollHeight,
+        pane: { top: pane.top, bottom: pane.bottom },
+        row: { top: rect.top, bottom: rect.bottom },
+        rowHitTest: hit?.closest('tr')?.id === row.id
+      };
+    });
+    ok(await lastRow.count() === 1 && lastRowGeometry.rowHitTest
+      && lastRowGeometry.row.top >= lastRowGeometry.pane.top - 1
+      && lastRowGeometry.row.bottom <= lastRowGeometry.pane.bottom + 1,
+    `last synthetic row remains reachable by scrolling the match list (${JSON.stringify(lastRowGeometry)})`);
+  } finally {
+    await context.close();
+  }
+}
+
 export async function checkTouch({ browser, base, stubRoute, ok }) {
   const touchContext = await browser.newContext({ viewport: { width: 900, height: 700 }, hasTouch: true });
   await touchContext.addInitScript(() => localStorage.setItem('selectedClubCode', 'ALLSTARS'));
