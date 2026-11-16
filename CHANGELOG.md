@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.20.0.0] — 2026-11-16
+
 - De gedeelde leesroute voor instellingen behoudt de auditnormalisatie van de optimalisatie-aanvang op beide databasetiers (zie issue #1977 en issue #1979).
 
 - E-mailkarakterisatietests kiezen reviewmodus expliciet per clubsnapshot; de instellingenloader-guard volgt ook gedeelde adapters en bewaakt ontbrekende mappings op beide tiers (zie issue #1977).
