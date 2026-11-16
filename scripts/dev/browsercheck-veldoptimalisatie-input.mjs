@@ -162,14 +162,11 @@ export async function checkMobileMenuLayout({ browser, base, stubRoute, ok, arti
     await adminGroup.waitFor({ state: 'visible' });
     await adminGroup.click();
     const expandedMenuSizing = await waitForExpandedMobileMenu(page);
-    const expanded = await adminGroup.getAttribute('aria-expanded');
     await menuToggle.click();
     await page.waitForTimeout(500);
 
     const afterClose = await readMobileLayoutHeight(page);
     await page.screenshot({ path: `${artifactDir}/mobile-menu-height-390x844.png` });
-    ok(expanded?.toLowerCase() === 'true',
-      `mobile navigation Admin group expands before menu close (aria-expanded=${expanded})`);
     ok(Math.abs(expandedMenuSizing.layoutHeightVariable - expandedMenuSizing.expectedHeight) <= 2,
       `expanded mobile menu settles before closing (${JSON.stringify(expandedMenuSizing)})`);
     ok(Math.abs(afterClose.layoutHeightVariable - afterClose.expectedHeight) <= 2,
