@@ -108,6 +108,14 @@
     z-index: 2;
 }
 
+.gantt-blok:focus-visible,
+.gantt-blok-sleepbaar:focus-visible {
+    outline: 3px solid var(--theme-primary) !important;
+    outline-offset: 1px;
+    box-shadow: 0 0 0 2px var(--bs-body-bg), 0 0 0 5px var(--theme-primary) !important;
+    z-index: 3;
+}
+
 /* #1561: de aanvangstijd staat vóór de wedstrijdnaam op dezelfde regel, zoals in de Sportlink-veldplanner.
    Tot #1561 stonden tijd en naam onder elkaar: in een blok van één deelveld (de helft van de rij) bleef
    dan nog maar één regel over, en de tegenstander verdween ("TESTCLUB O12-5 -"). Nu past de naam op de

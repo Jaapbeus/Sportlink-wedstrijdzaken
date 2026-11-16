@@ -58,7 +58,7 @@
 .veldoptimalisatie-layout {
     --veld-layout-height: 70vh;
     display: grid;
-    grid-template-rows: minmax(0, var(--veld-boven-hoogte, 48%)) 0.75rem minmax(0, 1fr);
+    grid-template-rows: minmax(0, var(--veld-boven-hoogte, 48%)) 1.5rem minmax(0, 1fr);
     height: var(--veld-layout-height);
     min-height: 20rem;
     margin-bottom: 1rem;
@@ -100,8 +100,17 @@
 }
 
 .veldoptimalisatie-splitter:hover::after,
-.veldoptimalisatie-splitter:focus-visible::after,
 .veldoptimalisatie-splitter.is-resizing::after {
+    background: var(--theme-primary);
+}
+
+.veldoptimalisatie-splitter:focus-visible {
+    outline: 2px solid var(--theme-primary);
+    outline-offset: -2px;
+    border-radius: 0.25rem;
+}
+
+.veldoptimalisatie-splitter:focus-visible::after {
     background: var(--theme-primary);
 }
 
@@ -140,7 +149,7 @@
 @media (max-width: 640.98px) {
     .veldoptimalisatie-layout {
         min-height: 26rem;
-        grid-template-rows: minmax(0, var(--veld-boven-hoogte, 48%)) 0.85rem minmax(0, 1fr);
+        grid-template-rows: minmax(0, var(--veld-boven-hoogte, 48%)) 1.5rem minmax(0, 1fr);
     }
 
     .veldoptimalisatie-tabel-scroll {

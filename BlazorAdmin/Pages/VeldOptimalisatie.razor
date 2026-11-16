@@ -239,7 +239,8 @@
                 </div>
             </div>
 
-            @if (IsSelectedOutsideFilter)
+            @{ var selectedOutsideFilter = IsSelectedOutsideFilter; }
+            @if (selectedOutsideFilter)
             {
                 <div class="small text-muted mb-2" role="status">
                     De geselecteerde wedstrijd valt buiten het actieve filter en wordt tijdelijk getoond.
@@ -273,7 +274,7 @@
                                 <td class="tabel-compact">
                                     <div class="fw-semibold">
                                         @(string.IsNullOrWhiteSpace(item.Wedstrijd) ? item.TeamNaam : item.Wedstrijd)
-                                        @if (IsSelectedOutsideFilter && _selectie.IsGeselecteerd(item.WedstrijdCode))
+                                        @if (selectedOutsideFilter && _selectie.IsGeselecteerd(item.WedstrijdCode))
                                         {
                                             <span class="badge text-bg-secondary ms-1">Buiten filter</span>
                                         }

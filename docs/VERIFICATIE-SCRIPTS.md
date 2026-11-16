@@ -643,8 +643,9 @@ ASPNETCORE_ENVIRONMENT=Development dotnet run --no-launch-profile --urls http://
 BLAZOR_URL=http://localhost:<poort> node <repo>/scripts/dev/browsercheck-veldoptimalisatie-layout.mjs
 ```
 
-Exit 0 betekent dat alle browserasserties zijn geslaagd. Het script schrijft geen screenshots of testdata
-naar de repository.
+Exit 0 betekent dat alle browserasserties zijn geslaagd. Screenshots gaan standaard naar een map onder
+de tijdelijke systeemmap; `BROWSER_ARTIFACT_DIR` kan die locatie overschrijven. Het script schrijft geen
+testdata naar de repository. `BLAZOR_URL` accepteert alleen HTTP op `localhost` of `127.0.0.1`.
 
 ## Database.Postgres.Tests — integratietests, env-gestuurd (#866)
 

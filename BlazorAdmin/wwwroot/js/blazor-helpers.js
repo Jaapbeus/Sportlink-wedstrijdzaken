@@ -64,6 +64,8 @@ window.blazorHelpers = {
         var upperPane = layout.querySelector('.veldoptimalisatie-boven-paneel');
         var initialLayoutApplied = false;
         var userAdjusted = false;
+        var lastDocumentTop = null;
+        var layoutCheckQueued = false;
 
         function bounds() {
             var usable = Math.max(280, layout.clientHeight - separator.offsetHeight);
@@ -84,17 +86,37 @@ window.blazorHelpers = {
         }
 
         function fitViewport() {
-            var top = layout.getBoundingClientRect().top;
+            var top = layout.getBoundingClientRect().top + window.scrollY;
+            lastDocumentTop = top;
             layout.style.setProperty('--veld-layout-height', Math.max(280, window.innerHeight - top - 8) + 'px');
             var current = Number.parseFloat(getComputedStyle(layout).getPropertyValue('--veld-boven-hoogte'));
             setHeight(Number.isFinite(current) ? current : bounds().usable * (window.innerWidth <= 640 ? 0.44 : 0.62));
         }
 
         function fitInitialPlan() {
-            if (initialLayoutApplied || userAdjusted || !upperPane
-                || !upperPane.querySelector('.veldoptimalisatie-gantt-kaart')) return;
+            if (!upperPane) return;
+            if (!upperPane.querySelector('.veldoptimalisatie-gantt-kaart')) {
+                if (!userAdjusted) initialLayoutApplied = false;
+                return;
+            }
+            if (initialLayoutApplied || userAdjusted) return;
             initialLayoutApplied = true;
-            setHeight(upperPane.scrollHeight + 4);
+            var paneTop = upperPane.getBoundingClientRect().top;
+            var contentBottom = Array.from(upperPane.children).reduce(function (bottom, child) {
+                var margin = Number.parseFloat(getComputedStyle(child).marginBottom) || 0;
+                return Math.max(bottom, child.getBoundingClientRect().bottom - paneTop + upperPane.scrollTop + margin);
+            }, 0);
+            setHeight(contentBottom + 4);
+        }
+
+        function checkDocumentTop() {
+            if (layoutCheckQueued) return;
+            layoutCheckQueued = true;
+            requestAnimationFrame(function () {
+                layoutCheckQueued = false;
+                var documentTop = layout.getBoundingClientRect().top + window.scrollY;
+                if (Math.abs(documentTop - lastDocumentTop) > 1) fitViewport();
+            });
         }
 
         var dragging = false;
@@ -146,6 +168,10 @@ window.blazorHelpers = {
         layout.addEventListener('keydown', keyDown, true);
         window.addEventListener('resize', fitViewport);
         fitViewport();
+        // Blazor banners above this view can change without a window resize. Observe structural
+        // changes, but write the height only if the layout's document position actually moved.
+        var pageObserver = new MutationObserver(checkDocumentTop);
+        pageObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
         var planObserver = upperPane ? new MutationObserver(fitInitialPlan) : null;
         if (planObserver) {
             planObserver.observe(upperPane, { childList: true, subtree: true });
@@ -158,6 +184,7 @@ window.blazorHelpers = {
             separator.removeEventListener('pointercancel', pointerEnd);
             layout.removeEventListener('keydown', keyDown, true);
             window.removeEventListener('resize', fitViewport);
+            pageObserver.disconnect();
             if (planObserver) planObserver.disconnect();
         });
     },

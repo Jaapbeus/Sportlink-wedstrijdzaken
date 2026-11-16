@@ -4,6 +4,7 @@
 //   BLAZOR_URL=http://localhost:<port> node scripts/dev/browsercheck-veldoptimalisatie-layout.mjs
 
 import { existsSync, mkdirSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -19,7 +20,13 @@ async function laadPlaywright() {
 
 const { chromium } = await laadPlaywright();
 const base = process.env.BLAZOR_URL || 'http://localhost:15078';
+const baseUrl = new URL(base);
+if (baseUrl.protocol !== 'http:' || !['localhost', '127.0.0.1'].includes(baseUrl.hostname)) {
+  throw new Error('BLAZOR_URL must be an HTTP loopback address');
+}
 const apiPort = process.env.FUNCTION_API_PORT || '7094';
+const artifactDir = process.env.BROWSER_ARTIFACT_DIR || path.join(os.tmpdir(), 'sportlink-1978-browser');
+mkdirSync(artifactDir, { recursive: true });
 const results = [];
 let failures = 0;
 const ok = (condition, message) => {
@@ -51,6 +58,7 @@ const wedstrijden = Array.from({ length: 36 }, (_, i) => ({
   voorkeurBron: 'leeftijd',
   voorkeurStatus: 'op-tijd'
 }));
+let planSize = wedstrijden.length;
 
 const browser = await chromium.launch({
   headless: true,
@@ -66,10 +74,10 @@ const blockedExternal = [];
 page.on('pageerror', error => appErrors.push(error.message));
 page.on('console', message => { if (message.type() === 'error') appErrors.push(message.text()); });
 await page.addInitScript(() => localStorage.setItem('selectedClubCode', 'ALLSTARS'));
-await page.route('**/*', async route => {
+await context.route('**/*', async route => {
   const request = route.request();
   const url = new URL(request.url());
-  if (url.hostname !== 'localhost') {
+  if (url.hostname !== baseUrl.hostname && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
     blockedExternal.push(url.origin);
     return route.abort();
   }
@@ -84,9 +92,9 @@ await page.route('**/*', async route => {
   if (url.pathname === '/api/planner/auto-plan' && request.method() === 'POST') {
     await new Promise(resolve => setTimeout(resolve, 650));
     return json({
-      datum: '2026-11-21', totaalWedstrijden: wedstrijden.length, zonderVeld: 0, zonderTijd: 0,
-      teWijzigen: wedstrijden.length - 1, nietInplanbaar: 0, geschatteEindTijd: '18:00',
-      wedstrijden, huidigeHtml: '', optimaleHtml: ''
+      datum: '2026-11-21', totaalWedstrijden: planSize, zonderVeld: 0, zonderTijd: 0,
+      teWijzigen: Math.max(0, planSize - 1), nietInplanbaar: 0, geschatteEindTijd: '18:00',
+      wedstrijden: wedstrijden.slice(0, planSize), huidigeHtml: '', optimaleHtml: ''
     });
   }
   return json([]);
@@ -109,15 +117,14 @@ try {
   ok(await list.locator('tbody tr').count() === wedstrijden.length,
     'synthetic rows render in the independently scrollable list');
   const measuredSizing = await top.evaluate(el => {
-    const layout = el.closest('.veldoptimalisatie-layout');
-    const separator = layout.querySelector('.veldoptimalisatie-splitter');
-    const max = Math.max(280, layout.clientHeight - separator.offsetHeight) - 180;
-    return { content: el.scrollHeight, visible: el.clientHeight, max };
+    const paneTop = el.getBoundingClientRect().top;
+    const contentBottom = Math.max(...[...el.children].map(child =>
+      child.getBoundingClientRect().bottom - paneTop + el.scrollTop
+      + (parseFloat(getComputedStyle(child).marginBottom) || 0)));
+    return { contentBottom, visible: el.clientHeight, listHeight: el.nextElementSibling.nextElementSibling.clientHeight };
   });
-  ok(Math.abs(measuredSizing.visible - Math.min(measuredSizing.content, measuredSizing.max)) <= 2,
-    `delayed plan response sizes the initial upper pane to measured content within the list minimum (${JSON.stringify(measuredSizing)})`);
-  const artifactDir = process.env.BROWSER_ARTIFACT_DIR || '/private/tmp/sportlink-1978-browser-20261116';
-  mkdirSync(artifactDir, { recursive: true });
+  ok(measuredSizing.visible <= measuredSizing.contentBottom + 8 && measuredSizing.listHeight >= 180,
+    `large delayed plan caps the upper pane and keeps list space (${JSON.stringify(measuredSizing)})`);
   const desktopInitial = path.join(artifactDir, 'veld-optimalisatie-1360x900-initial.png');
   await page.screenshot({ path: desktopInitial });
   console.log(`INFO initial desktop screenshot saved to ${desktopInitial}`);
@@ -247,6 +254,100 @@ try {
   const heightAfterPlanRefresh = await top.evaluate(el => getComputedStyle(el.closest('.veldoptimalisatie-layout')).getPropertyValue('--veld-boven-hoogte').trim());
   ok(heightAfterPlanRefresh === heightBeforePlanRefresh,
     'a subsequent plan render preserves the user-adjusted pane height');
+
+  // A new page keeps userAdjusted false. One field must shrink from the provisional
+  // viewport percentage to its actual content, and a date change must fit again.
+  planSize = 1;
+  const smallPage = await context.newPage();
+  smallPage.on('pageerror', error => appErrors.push(error.message));
+  smallPage.on('console', message => { if (message.type() === 'error') appErrors.push(message.text()); });
+  await smallPage.goto(`${base}/veld-optimalisatie`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await smallPage.getByText('Synthetic wedstrijd 01', { exact: true }).waitFor({ timeout: 60000 });
+  const smallMeasure = () => smallPage.locator('.veldoptimalisatie-boven-paneel').evaluate(el => {
+    const paneTop = el.getBoundingClientRect().top;
+    const contentBottom = Math.max(...[...el.children].map(child =>
+      child.getBoundingClientRect().bottom - paneTop + el.scrollTop
+      + (parseFloat(getComputedStyle(child).marginBottom) || 0)));
+    return { contentBottom, visible: el.clientHeight, listHeight: el.nextElementSibling.nextElementSibling.clientHeight };
+  });
+  await smallPage.setViewportSize({ width: 1360, height: 1200 });
+  await smallPage.waitForTimeout(100);
+  const smallInitial = await smallMeasure();
+  ok(smallInitial.visible >= smallInitial.contentBottom - 2
+    && smallInitial.visible <= smallInitial.contentBottom + 12
+    && smallInitial.listHeight >= 180,
+  `one-field plan shrinks to measured content (${JSON.stringify(smallInitial)})`);
+  planSize = 3;
+  const date = smallPage.locator('input[type="date"]');
+  await date.fill('2026-11-28');
+  await date.dispatchEvent('change');
+  await smallPage.getByText('Synthetic wedstrijd 01', { exact: true }).waitFor({ timeout: 60000 });
+  await smallPage.waitForTimeout(100);
+  const afterDateChange = await smallMeasure();
+  ok(afterDateChange.contentBottom > smallInitial.contentBottom + 100
+    && afterDateChange.visible > smallInitial.visible + 100
+    && afterDateChange.visible >= afterDateChange.contentBottom - 2
+    && afterDateChange.visible <= afterDateChange.contentBottom + 12,
+  `date-change plan remount refits without user resize (${JSON.stringify(afterDateChange)})`);
+  const focusCheck = async (tabName) => {
+    await smallPage.getByRole('button', { name: new RegExp(tabName) }).click();
+    const firstBlock = smallPage.locator('.gantt-blok').first();
+    await firstBlock.focus();
+    await smallPage.keyboard.press('Tab');
+    await smallPage.keyboard.press('Shift+Tab');
+    return firstBlock.evaluate(el => ({
+      focused: el === document.activeElement,
+      outline: getComputedStyle(el).outlineStyle,
+      width: getComputedStyle(el).outlineWidth
+    }));
+  };
+  const currentFocus = await focusCheck('Huidig');
+  const optimalFocus = await focusCheck('Optimaal');
+  ok(currentFocus.focused && currentFocus.outline !== 'none' && parseFloat(currentFocus.width) >= 2,
+    `Huidig Gantt block has visible keyboard focus (${JSON.stringify(currentFocus)})`);
+  ok(optimalFocus.focused && optimalFocus.outline !== 'none' && parseFloat(optimalFocus.width) >= 2,
+    `Optimaal Gantt block has visible keyboard focus (${JSON.stringify(optimalFocus)})`);
+  await smallPage.close();
+
+  await page.setViewportSize({ width: 360, height: 400 });
+  const viewportHeight = () => layout.evaluate(el => ({
+    cssHeight: parseFloat(getComputedStyle(el).getPropertyValue('--veld-layout-height')),
+    documentTop: el.getBoundingClientRect().top + window.scrollY,
+    scrollY: window.scrollY,
+    viewport: window.innerHeight
+  }));
+  const beforeScrollResize = await viewportHeight();
+  await page.evaluate(() => window.scrollTo(0, 10000));
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+  await page.waitForTimeout(100);
+  const afterScrollResize = await viewportHeight();
+  ok(afterScrollResize.scrollY > 0
+    && Math.abs(afterScrollResize.cssHeight - beforeScrollResize.cssHeight) <= 2,
+  `scroll position does not alter viewport sizing (${JSON.stringify({ beforeScrollResize, afterScrollResize })})`);
+  const splitterBox = await splitter.boundingBox();
+  ok(splitterBox && splitterBox.height >= 24,
+    `mobile splitter has at least 24px pointer height (${splitterBox?.height})`);
+  await splitter.focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  const focusedSplitter = await splitter.evaluate(el => getComputedStyle(el).outlineStyle);
+  ok(focusedSplitter !== 'none', `splitter has visible keyboard focus (${focusedSplitter})`);
+
+  await page.setViewportSize({ width: 360, height: 700 });
+  await page.waitForTimeout(100);
+  const beforeBanner = await viewportHeight();
+  await page.evaluate(() => {
+    const banner = document.createElement('div');
+    banner.id = 'synthetic-layout-banner';
+    banner.style.height = '40px';
+    document.querySelector('.veldoptimalisatie-layout').before(banner);
+  });
+  await page.waitForTimeout(100);
+  const afterBanner = await viewportHeight();
+  ok(afterBanner.documentTop > beforeBanner.documentTop + 35
+    && afterBanner.cssHeight < beforeBanner.cssHeight - 35,
+  `above-layout banner recalculates available height (${JSON.stringify(afterBanner)})`);
+  await page.evaluate(() => document.getElementById('synthetic-layout-banner').remove());
 
   ok(blockedExternal.length === 0, 'no external requests were attempted');
   ok(apiCalls.some(call => call.includes('/api/planner/auto-plan')), 'the page used intercepted synthetic planner data');
