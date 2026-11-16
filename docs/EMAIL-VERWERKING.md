@@ -1552,7 +1552,9 @@ dotnet run --project scripts/migrations/ImportEmailInstellingen -- --tier postgr
 
 Voor SQL Server is de tier `sqlserver`. De tool leest
 `EMAIL_SETTINGS_IMPORT_CONNECTION_STRING`, `EmailProcessorEnabled`, `EmailReviewMode` en
-`EmailReviewRecipient` uit de **private procesomgeving**. Hij vergrendelt de clubrij, slaat over
+`EmailReviewRecipient` uit de **private procesomgeving**. De schakelaars accepteren uitsluitend
+`true` en `false`, hoofdletterongevoelig; ontbrekende of andere waarden, inclusief extra
+witruimte, breken de import af zonder wijziging. Hij vergrendelt de clubrij, slaat over
 als de importmarker gezet is, een beheerder al wijzigde of de bestaande waarden afwijken van de
 veilige standaard, en schrijft waarden, marker en geredigeerde audit in één transactie. Herhalen
 is veilig; andere clubs blijven onaangeroerd. Voer deze tool niet uit tijdens een gewone migratie
