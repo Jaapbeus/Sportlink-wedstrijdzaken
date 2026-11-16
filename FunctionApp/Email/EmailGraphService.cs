@@ -26,9 +26,12 @@ public partial class EmailGraphService : IEmailGraphService
             ?? throw new InvalidOperationException("GraphMailbox environment variable is niet geconfigureerd");
     }
 
-    /// <summary>
-    /// Haalt maximaal 10 ongelezen emails op uit de inbox van de coordinator-mailbox.
-    /// </summary>
+    /// <summary>Alleen inbox-metadata; geen bericht of bericht-ID ophalen vóór de databasepoort.</summary>
+    public async Task<int> TelOngelezenInboxBerichtenAsync() =>
+        EmailInboxMetadata.LeesOngelezenAantal((await _graphClient.Users[_mailbox].MailFolders["inbox"]
+            .GetAsync(config => config.QueryParameters.Select = ["unreadItemCount"]))?.UnreadItemCount);
+
+    /// <summary>Haalt maximaal 10 ongelezen emails op uit de inbox van de coordinator-mailbox.</summary>
     public async Task<List<InkomendBericht>> GetUnreadEmailsAsync()
     {
         var resultaat = new List<InkomendBericht>();

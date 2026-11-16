@@ -549,6 +549,8 @@ public sealed class ClubBoundLoadRaceMeerPaginasTests
             Renderers.Add(instance, renderer);
         }
         SetProperty(instance, property, value);
+        if (instance is Planning && property == "PlanningApi")
+            SetField(instance, "_voorladen", new PlanningVoorlaadCache(((PlanningApiClient)value).GetVeldbezettingAsync));
     }
 
     private static void SetField(object instance, string field, object? value) =>

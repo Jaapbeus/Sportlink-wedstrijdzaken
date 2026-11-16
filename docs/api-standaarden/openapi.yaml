@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.19.0.0
+  version: 3.20.0.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -882,6 +882,32 @@ components:
         BufferMinuten:
           type: integer
           nullable: true
+        OptimalisatieAanvang:
+          type: string
+          nullable: true
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: |
+            Clubbrede starttijd voor de veldoptimalisatie (#1979). Teamvoorkeuren na deze tijd blijven
+            het doel; eerdere voorkeuren worden begrensd. Leeg laat de bestaande standaardtijden per
+            leeftijdscategorie gelden.
+          example: "08:00"
+        EmailVerwerkingIngeschakeld:
+          type: boolean
+          default: false
+          description: Clubgebonden schakelaar; ontbrekende of onleesbare configuratie schakelt verwerking uit (#1977).
+        EmailReviewModusActief:
+          type: boolean
+          default: true
+          description: Clubgebonden reviewmodus; uitschakelen vergt expliciete bevestiging en audit (#1977).
+        EmailReviewOntvanger:
+          type: string
+          format: email
+          nullable: true
+          description: Optioneel enkel kaal reviewadres; audit bewaart uitsluitend ingesteld of niet ingesteld.
+        EmailInstellingenStatus:
+          type: string
+          enum: [Beschikbaar, RijOntbreekt, NietGeinitialiseerd, Onleesbaar, OntvangerOngeldig]
+          description: Veilige leesstatus van de clubinstellingen.
         EmailVoetnoot:
           type: string
           nullable: true
@@ -1546,8 +1572,10 @@ components:
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
         AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
         KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,
-        ZekerheidspoortActief, SeasonStartMonth
-        (waarde `0`/`1`/`true`/`false`, anders 400).
+        ZekerheidspoortActief, SeasonStartMonth, OptimalisatieAanvang, EmailVerwerkingIngeschakeld,
+        EmailReviewModusActief en EmailReviewOntvanger.
+        `OptimalisatieAanvang` is `HH:mm` of null; null bewaart de bestaande terugval op de
+        leeftijdscategorie. Booleaanse velden accepteren `0`/`1`/`true`/`false`, anders 400.
 
         `SeasonStartMonth` (#1715): een geheel getal 1 t/m 12, anders 400. Bij een wijziging worden de
         seizoensrijen van de club opnieuw opgebouwd met de nieuwe startmaand en schuift het seizoenseinde
@@ -1558,9 +1586,20 @@ components:
         50 tekens. Een ontbrekend volgend UTC-uitvoermoment of ongeldige waarde geeft 400;
         de foutmelding herhaalt de ingevoerde waarde niet. Een weggelaten veld blijft ongewijzigd.
 
+        `EmailReviewOntvanger` accepteert leeg of precies één kaal adres; adreswaarden worden niet
+        in de audit opgenomen. De status van de clubrij blijft fail-safe tot import of beheerderwijziging.
+        `bevestigReviewUitzetten=true` is verplicht bij effectief aan naar uit. Alleen werkelijk
+        veranderde e-mailvelden worden bijgewerkt en geaudit; een onveilige, nog niet geïnitialiseerde
+        rij wordt bij een beheerderwijziging veilig geïnitialiseerd. Vóór de e-mail-schemawijziging
+        geeft een verzoek met e-mailvelden 409; andere velden blijven schrijfbaar.
+
         De audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de
         door Easy Auth gevalideerde claims — dit contract kent daarom geen "wie"-veld (#1003).
       properties:
+        bevestigReviewUitzetten:
+          type: boolean
+          default: false
+          description: Vereist wanneer de effectieve reviewmodus van aan naar uit gaat; de server auditeert de bevestiging.
         velden:
           type: object
           additionalProperties:
@@ -2823,6 +2862,11 @@ components:
           enum: [1, 2]
           description: Aantal helften (#1962); 1 voor toernooivormen zoals 35+ en VR30+
           example: 2
+        StandaardVoorkeurTijd:
+          type: string
+          nullable: true
+          description: Standaard voorkeurstijd voor teams zonder eigen teamvoorkeur.
+          example: "10:00"
 
     SpeeltijdRequest:
       type: object
@@ -4416,6 +4460,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: E-mailveld kan pas worden opgeslagen nadat het databaseschema is bijgewerkt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

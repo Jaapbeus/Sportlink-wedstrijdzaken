@@ -76,8 +76,8 @@ internal static class EmailBerichtVerwerking
                 poort.MessageId(bericht), poort.Persistentie, poort.Graph, async () =>
                 {
                     await poort.UpdateStatusAsync(verwerkingId, EmailStatus.Verwerkt, null);
-                    var reviewMode = EmailReviewModus.IsActief();
-                    var reviewRecipient = Environment.GetEnvironmentVariable("EmailReviewRecipient");
+                    var reviewMode = poort.EmailInstellingen.ReviewModusActief;
+                    var reviewRecipient = poort.EmailInstellingen.ReviewOntvanger;
                     return await poort.HandelReplyFlowAfAsync(verwerkingId, bericht, classificatie,
                         plannerResponseJson, reviewMode, reviewRecipient,
                         () => poort.BouwTemplateAntwoordAsync(bericht, classificatie, plannerResponseJson, log, trace),

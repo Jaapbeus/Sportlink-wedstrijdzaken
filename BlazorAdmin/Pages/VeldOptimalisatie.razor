@@ -6,6 +6,8 @@
 
 <PageTitle>Veld optimalisatie — Admin</PageTitle>
 
+<div class="veldoptimalisatie-layout" @ref="_layoutElement">
+<section class="veldoptimalisatie-boven-paneel" aria-label="Bediening en veldplanning">
 <h1>Veld optimalisatie</h1>
 
 @* #1773: vooraf waarschuwen als de Sportlink-koppeling verbroken is (alleen zinvol met de extensie aan). *@
@@ -31,7 +33,6 @@
                     @(_bezig ? "Bezig..." : "Optimaliseer")
                 </button>
             </div>
-            <div class="col-md-5"></div>
         </div>
     </div>
 </div>
@@ -96,7 +97,8 @@
 
        #1361: Huidig staat als eerste tab en is de standaard-actieve tab (was Optimaal) — de
        eigenaar wil bij binnenkomst eerst de bestaande Sportlink-stand zien. *@
-    <div class="card mb-3">
+    <button type="button" class="veldoptimalisatie-sneltoets btn btn-primary" data-veld-skip-splitter>Ga naar paneelhoogte en wedstrijdenlijst</button>
+    <div class="card mb-0 veldoptimalisatie-gantt-kaart">
         <div class="card-header d-flex align-items-center gap-3 flex-wrap">
             <ul class="nav nav-tabs card-header-tabs mb-0">
                 <li class="nav-item">
@@ -156,6 +158,7 @@
                    die op een 1440px-scherm in een verschillend aantal regels wrapte (21px). De
                    toelichting staat daarom nu ónder de tijdlijn, waar haar hoogte niets verschuift. *@
                 <GanttChart Items="_gantt" Hover="_hover" HoverGewijzigd="@(() => Task.CompletedTask)"
+                            Selectie="_selectie" OnSelect="SelecteerWedstrijd"
                             Sleepbaar="true" KleineAfwijkingDrempelMinuten="KleineAfwijkingDrempelMinuten"
                             IsHandmatigAangepast="IsHandmatigAangepast"
                             OnSleepStart="SleepStart" OnSleepDrop="SleepDrop" />
@@ -196,6 +199,20 @@
                 </div>
             }
 
+        </div>
+    </div>
+}
+</section>
+
+<div class="veldoptimalisatie-splitter" role="separator" aria-label="Hoogte van veldplanning aanpassen"
+     aria-orientation="horizontal" aria-valuemin="20" aria-valuemax="80" aria-valuenow="48"
+     tabindex="0" @ref="_splitterElement"></div>
+
+<section class="veldoptimalisatie-wedstrijden-paneel" aria-label="Wedstrijdenlijst">
+@if (_plan != null)
+{
+    <div class="card mb-0 h-100">
+        <div class="card-body d-flex flex-column min-vh-0">
             @* ── Wedstrijdenlijst van dézelfde stand (#689) ──
                Bewust dezelfde kolommen in beide tabs, zodat de rijen tussen "Optimaal" en "Huidig"
                op precies dezelfde regel staan. Alleen Veld en Tijd komen uit een andere bron.
@@ -204,11 +221,9 @@
                Optimaal-tab, om de diff-informatie niet te verliezen nu de kolommen-naast-elkaar-tabel
                verdwijnt. In de Huidig-tab is dezelfde badge juist het nuttigst: je ziet dáár welke
                wedstrijd gaat verschuiven, en flipt dan naar Optimaal om te zien waarheen. *@
-            <hr class="my-3" />
-
             <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
                 <span class="fw-semibold me-1">
-                    @(_isOptimaal ? "Wedstrijden in de optimale planning" : "Wedstrijden in de huidige situatie")
+                    @(IsOptimaal ? "Wedstrijden in de optimale planning" : "Wedstrijden in de huidige situatie")
                 </span>
                 @* Het filter geldt voor beide tabs: filter je op "Wijzigingen", dan vergelijk je in
                    beide standen dezelfde deelverzameling. *@
@@ -225,7 +240,15 @@
                 </div>
             </div>
 
-            <div class="table-responsive">
+            @{ var selectedOutsideFilter = IsSelectedOutsideFilter; }
+            @if (selectedOutsideFilter)
+            {
+                <div class="small text-muted mb-2" role="status">
+                    De geselecteerde wedstrijd valt buiten het actieve filter en wordt tijdelijk getoond.
+                </div>
+            }
+
+            <div class="table-responsive veldoptimalisatie-tabel-scroll" @ref="_matchListElement" tabindex="0" role="region" aria-label="Wedstrijden; scroll om meer rijen te bekijken">
                 <table class="table table-sm table-hover mb-0">
                     <thead>
                         <tr>
@@ -244,14 +267,22 @@
                     <tbody>
                         @foreach (var item in GefilterdeLijst())
                         {
-                            <tr class="@RowClass(item.Status) @_hover.RijKlasse(item.WedstrijdCode)"
+                            <tr id="@(item.WedstrijdCode.HasValue ? $"wedstrijd-{item.WedstrijdCode.Value}" : null)"
+                                aria-current="@(_selectie.IsGeselecteerd(item.WedstrijdCode) ? "true" : null)"
+                                class="@RowClass(item.Status) @_hover.RijKlasse(item.WedstrijdCode) @(_selectie.IsGeselecteerd(item.WedstrijdCode) ? "gantt-rij-geselecteerd" : "")"
                                 @onmouseover="() => _hover.Zet(item.WedstrijdCode)"
                                 @onmouseout="() => _hover.Wis()">
                                 <td class="tabel-compact">
-                                    <div class="fw-semibold">@(string.IsNullOrWhiteSpace(item.Wedstrijd) ? item.TeamNaam : item.Wedstrijd)</div>
+                                    <div class="fw-semibold">
+                                        @(string.IsNullOrWhiteSpace(item.Wedstrijd) ? item.TeamNaam : item.Wedstrijd)
+                                        @if (selectedOutsideFilter && _selectie.IsGeselecteerd(item.WedstrijdCode))
+                                        {
+                                            <span class="badge text-bg-secondary ms-1">Buiten filter</span>
+                                        }
+                                    </div>
                                 </td>
 
-                                @if (_isOptimaal)
+                                @if (IsOptimaal)
                                 {
                                     @* Veld en tijd zoals de planner ze voorstelt *@
                                     @if (item.Status == "niet-inplanbaar")
@@ -312,7 +343,7 @@
                                     {
                                         <span class="text-muted" title="Geen voorkeurstijd voor dit team en geen standaardtijd voor de leeftijdscategorie">—</span>
                                     }
-                                    else if (_isOptimaal)
+                                    else if (IsOptimaal)
                                     {
                                         <span class="badge @VoorkeurBadgeClass(item.VoorkeurStatus)"
                                               title="@VoorkeurTitel(item)">
@@ -411,16 +442,18 @@
             </div>
         }
     </div>
+}
+</section>
+</div>
 
-    @* ── Deelbare weergave van de berekende planning ── *@
-    @if (!string.IsNullOrEmpty(HuidigeExportHtml))
-    {
-        <DeelPaneel Titel="Planning delen (HTML voor e-mail of download)"
-                    Toelichting="@ExportToelichting"
-                    Waarschuwing="@ExportWaarschuwing"
-                    BestandsNaam="@ExportBestandsNaam"
-                    VerversSleutel="@ExportSleutel"
-                    HtmlOphalen="@HtmlOphalenAsync"
-                    PdfOphalen="@(_pdfExportIngeschakeld ? PdfOphalenAsync : null)" />
-    }
+@* ── Deelbare weergave van de berekende planning ── *@
+@if (!string.IsNullOrEmpty(HuidigeExportHtml))
+{
+    <DeelPaneel Titel="Planning delen (HTML voor e-mail of download)"
+                Toelichting="@ExportToelichting"
+                Waarschuwing="@ExportWaarschuwing"
+                BestandsNaam="@ExportBestandsNaam"
+                VerversSleutel="@ExportSleutel"
+                HtmlOphalen="@HtmlOphalenAsync"
+                PdfOphalen="@(_pdfExportIngeschakeld ? PdfOphalenAsync : null)" />
 }

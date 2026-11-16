@@ -21,7 +21,8 @@ internal sealed class EmailVerwerkerPoort(
     IEmailGraphService graph,
     ITeamResolver teamResolver,
     IEmailPersistenceService persistence,
-    INoodmailThrottleStore throttle) : IEmailVerwerkerPoort<InkomendBericht>
+    INoodmailThrottleStore throttle,
+    EmailVerwerkingsInstellingen? emailInstellingen = null) : IEmailVerwerkerPoort<InkomendBericht>
 {
     /// <summary>Adviesregels in de noodmails voor deze tier (Azure SQL Serverless, Azure OpenAI).</summary>
     internal static readonly EmailNoodmailTeksten Teksten = new(
@@ -131,7 +132,7 @@ internal sealed class EmailVerwerkerPoort(
 
     public Task VerwerkEmailAsync(InkomendBericht email, BerichtClassificatie classificatie, IReadOnlySet<string> uitgeslotenAdressen)
         => EmailProcessorFunction.VerwerkEmailAsync(
-            email, classificatie, graph, uitgeslotenAdressen, Ai, persistence, _replyPolicy, log, teamResolver);
+            email, classificatie, graph, uitgeslotenAdressen, Ai, persistence, _replyPolicy, log, teamResolver, emailInstellingen);
 
     public Task LegVerwerkingsFoutVastAsync(InkomendBericht email, string foutMelding)
         => EmailProcessorFunction.LegVerwerkingsFoutVastAsync(email, foutMelding, persistence, log);

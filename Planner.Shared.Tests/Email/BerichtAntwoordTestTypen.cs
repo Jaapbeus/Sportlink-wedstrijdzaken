@@ -9,8 +9,7 @@ namespace Planner.Shared.Tests.Email;
 // InkomendBericht, EmailTemplate, ClubAppSettingsSnapshot), zodat de gevallen hier gelden voor beide tiers.
 
 /// <summary>
-/// De generatortests zetten soms de procesbrede omgevingsvariabele <c>EmailReviewMode</c>; daarom draaien ze in
-/// één collectie zonder parallelle uitvoering.
+/// De generatortests gebruiken gedeelde testinstellingen; daarom draaien ze in één collectie.
 /// </summary>
 [CollectionDefinition(Naam, DisableParallelization = true)]
 public sealed class BerichtAntwoordCollectie
@@ -71,6 +70,7 @@ internal sealed record TestSjabloon(string Key, string Onderwerp, string Body) :
 internal sealed class TestInstellingen : IAntwoordInstellingen
 {
     public string? EmailVoetnoot { get; set; }
+    public bool EmailReviewModusActief { get; set; }
     public string? PlannerAfzenderNaam { get; set; }
     public string? CoordinatorNaam { get; set; }
     public string? CoordinatorFunctie { get; set; }

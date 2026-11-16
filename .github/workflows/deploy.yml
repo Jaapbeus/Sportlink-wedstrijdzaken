@@ -34,6 +34,13 @@ jobs:
           DEPLOY_REF: ${{ github.ref }}
         run: /bin/bash scripts/ci/check-deploy-readiness.sh ref
 
+      - name: Controleer private infrastructuurpatronen vóór productiehandelingen
+        if: github.ref == 'refs/heads/main' && github.event.repository.fork == false
+        env:
+          CLUB_EXTRA_PATTERNS: ${{ secrets.CLUB_EXTRA_PATTERNS || '' }}
+          REQUIRE_CLUB_EXTRA_PATTERNS: 'true'
+        run: /bin/bash scripts/ci/check-security-patterns.sh infra-private
+
   # ──────────────────────────────────────────────────────────────────────────
   # db-check: controleert de Azure SQL Free-tier database-status VÓÓR alles.
   # Als de DB niet Online is wordt de volledige pipeline geblokkeerd:

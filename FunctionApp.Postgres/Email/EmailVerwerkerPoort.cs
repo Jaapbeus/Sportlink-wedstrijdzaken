@@ -22,7 +22,8 @@ internal sealed class EmailVerwerkerPoort(
     ILoggerFactory loggerFactory,
     IEmailGraphService graph,
     INoodmailThrottleStore throttle,
-    string cs) : IEmailVerwerkerPoort<InkomendBericht>
+    string cs,
+    EmailVerwerkingsInstellingen? emailInstellingen = null) : IEmailVerwerkerPoort<InkomendBericht>
 {
     /// <summary>Adviesregels in de noodmails voor deze tier (Postgres-hosting, OpenAI-dashboard).</summary>
     internal static readonly EmailNoodmailTeksten Teksten = new(
@@ -120,7 +121,7 @@ internal sealed class EmailVerwerkerPoort(
     public Task VerwerkEmailAsync(InkomendBericht email, BerichtClassificatie classificatie, IReadOnlySet<string> uitgeslotenAdressen)
         => EmailProcessorFunction.VerwerkEmailAsync(
             cs, ClubCode, email, classificatie, graph, uitgeslotenAdressen, Ai, _replyPolicy, log,
-            _teamResolver ?? throw new InvalidOperationException("Teamresolutie niet voorbereid"));
+            _teamResolver ?? throw new InvalidOperationException("Teamresolutie niet voorbereid"), emailInstellingen);
 
     public Task LegVerwerkingsFoutVastAsync(InkomendBericht email, string foutMelding)
         => EmailProcessorFunction.LegVerwerkingsFoutVastAsync(cs, ClubCode, email, foutMelding, log);

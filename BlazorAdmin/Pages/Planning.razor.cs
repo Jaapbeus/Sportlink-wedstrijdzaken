@@ -27,6 +27,9 @@ public partial class Planning : ClubSelectorPageBase
     private List<VeldbezettingItemDto> _veldbezetting = new();
     private SportlinkVeldplannerStatusDto? _sportlinkStatus;
     private bool _veldbezettingBezig;
+    private bool _veldbezettingVernieuwen;
+    private PlanningVoorlaadCache _voorladen = default!;
+    private bool _planningDisposed;
     private string? _veldbezettingError;
 
     // Hover-correlatie tussen tijdlijnblok en tabelregel (#1315, generiek gemaakt bij #1398):
@@ -51,6 +54,7 @@ public partial class Planning : ClubSelectorPageBase
     protected override void OnInitialized()
     {
         base.OnInitialized();
+        _voorladen = new PlanningVoorlaadCache(PlanningApi.GetVeldbezettingAsync, haalVooraf: PlanningApi.GetVeldbezettingVoorafAsync);
         _datumDt = DagplanningWeergaveHelpers.VolgendeZaterdag().ToDateTime(TimeOnly.MinValue);
     }
 
@@ -66,39 +70,57 @@ public partial class Planning : ClubSelectorPageBase
     private Task LaadSportlinkExtensionStatusAsync() =>
         LaadSportlinkExtensionVlagAsync(_sportlinkExtensionLoadGuard, InstellingenCache, aan => _sportlinkExtensionEnabled = aan);
 
-    private async Task OnDatumChanged() => await LoadVeldbezettingAsync();
+    private Task OnDatumChanged() => LaadPlanningAsync();
 
-    private async Task LoadVeldbezettingAsync()
+    // Een eigen mutatie wist ook lopende en vooraf geladen antwoorden.
+    private Task LoadVeldbezettingAsync()
     {
-        _veldbezettingBezig = true;
-        _veldbezetting = new();
-        _sportlinkStatus = null;
+        if (_planningDisposed) return Task.CompletedTask;
+        _voorladen.Wis();
+        return LaadPlanningAsync();
+    }
+
+    private Task VerversNaVeldwijzigingAsync()
+    {
+        if (_planningDisposed) return Task.CompletedTask;
+        _voorladen.Wis();
+        return LaadPlanningAsync(behoudHuidigeDag: true);
+    }
+
+    private async Task LaadPlanningAsync(bool behoudHuidigeDag = false)
+    {
+        _voorladen.KiesClub(ClubSelector.SelectedClubCode);
+        _voorladen.StopVoorladen();
+        var datum = DatumStr;
+        var club = ClubSelector.SelectedClubCode;
+        var generatie = _veldbezettingLoadGuard.Start(club);
+        var kopie = _voorladen.Lees(datum);
+        _veldbezetting = kopie?.Wedstrijden ?? (behoudHuidigeDag ? _veldbezetting : new());
+        _sportlinkStatus = kopie?.Sportlink ?? (behoudHuidigeDag ? _sportlinkStatus : null);
         _veldbezettingError = null;
+        _veldbezettingBezig = kopie == null && !behoudHuidigeDag;
+        _veldbezettingVernieuwen = !_veldbezettingBezig;
+        StateHasChanged(); // Laat een vooraf geladen dag zien vóór het netwerkantwoord.
         try
         {
-            // #1872: een late response van de vorige club (of datum) mag de bezetting van de huidige club niet overschrijven.
-            var datum = DatumStr;
-            var toegepast = await LaadClubgebondenAsync(_veldbezettingLoadGuard, () => PlanningApi.GetVeldbezettingAsync(datum), result =>
-            {
-                if (result.Success)
-                {
-                    _veldbezetting = result.Data?.Wedstrijden ?? new();
-                    _sportlinkStatus = result.Data?.Sportlink;
-                }
-                else
-                {
-                    _veldbezetting = new();
-                    _sportlinkStatus = null;
-                    _veldbezettingError = result.ErrorMessage ?? "Ophalen veldbezetting mislukt.";
-                }
-            });
-            if (toegepast) _veldbezettingBezig = false;
+            var result = await _voorladen.LaadZichtbaarAsync(datum);
+            if (_planningDisposed || !IsActueleClubLoad(_veldbezettingLoadGuard, generatie, club)) return;
+            _veldbezetting = result.Success ? result.Data?.Wedstrijden ?? new() : new();
+            _sportlinkStatus = result.Success ? result.Data?.Sportlink : null;
+            _veldbezettingError = result.Success ? null : result.ErrorMessage ?? "Ophalen veldbezetting mislukt.";
+            _veldbezettingBezig = _veldbezettingVernieuwen = false;
+            StateHasChanged();
+            if (result.Success && result.Data?.Sportlink?.Geraadpleegd == true)
+                _ = _voorladen.LaadVolgendeZaterdagenAsync(DateOnly.FromDateTime(_datumDt));
         }
-        catch
-        {
-            _veldbezettingBezig = false;
-            throw;
-        }
+        catch (OperationCanceledException) { /* Clubwisseling, mutatie of navigatie. */ }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        _planningDisposed = true;
+        if (disposing) _voorladen?.Dispose();
+        base.Dispose(disposing);
     }
 
     protected override async Task OnClubChangedAsync()

@@ -10,11 +10,15 @@ namespace SportlinkFunction.Email;
 
 internal sealed class EmailBerichtPoort(
     IEmailGraphService graph, IEmailPersistenceService persistence, BerichtAiService ai,
-    EmailReplyPolicyService replyPolicy, ITeamResolver teamResolver)
+    EmailReplyPolicyService replyPolicy, ITeamResolver teamResolver,
+    EmailVerwerkingsInstellingen? emailInstellingen = null)
     : IEmailBerichtPoort<InkomendBericht>
 {
+    private readonly ClubAppSettingsSnapshot _clubSettings = ClubAppSettingsSnapshot.VanInstellingen(
+        SystemUtilities.AppSettings.GetSetting, emailInstellingen?.ReviewModusActief ?? true);
     private string AppVersie => EmailTraceRecord.VersieVan(typeof(EmailProcessorFunction).Assembly);
     public IReplyGraph Graph => graph;
+    public EmailVerwerkingsInstellingen EmailInstellingen => emailInstellingen ?? EmailVerwerkingsInstellingen.VeiligeStandaard;
     public IReplyPersistentie Persistentie => persistence;
     public Func<string, string> SanitizeFoutMelding => EmailSanitizer.SanitizeFoutMelding;
     public string MessageId(InkomendBericht bericht) => bericht.MessageId;
@@ -41,7 +45,7 @@ internal sealed class EmailBerichtPoort(
     public Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? classificatieJson)
         => persistence.UpdateStatusAsync(verwerkingId, status, classificatieJson);
     public Task<string> VerwerkMetPlannerAsync(InkomendBericht bericht, BerichtClassificatie classificatie, TraceBuilder trace, ILogger logger)
-        => BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, logger, teamResolver, trace: trace);
+        => BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, logger, teamResolver, clubSettings: _clubSettings, trace: trace);
     public Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson)
         => persistence.UpdatePlannerResponseAsync(verwerkingId, plannerResponseJson);
     public Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(int verwerkingId, InkomendBericht bericht,
@@ -55,7 +59,8 @@ internal sealed class EmailBerichtPoort(
         => ZekerheidspoortInstelling.IsActiefAsync(persistence.ResolveClubCode(), logger);
     public Task<(string onderwerp, string body)> BouwTemplateAntwoordAsync(InkomendBericht bericht,
         BerichtClassificatie classificatie, string plannerResponseJson, ILogger logger, TraceBuilder trace)
-        => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, bericht, logger, trace: trace);
+        => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson, bericht, logger,
+            clubSettings: _clubSettings, trace: trace);
     public Task BewaarKorteTraceAsync(int verwerkingId, string verzoekType, BeslissingsTrace trace, ILogger logger)
         => persistence.UpsertTraceAsync(verwerkingId, verzoekType, trace, AppVersie);
     public Task BewaarTraceAsync(int verwerkingId, string verzoekType, BeslissingsTrace trace)

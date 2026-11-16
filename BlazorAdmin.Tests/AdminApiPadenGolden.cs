@@ -9,7 +9,7 @@ internal static class AdminApiPadenGolden
     internal static readonly string[] Regels =
     [
         """GetSettingsAsync | GET api/beheer/settings | """,
-        """UpdateSettingsAsync | PUT api/beheer/settings | {"velden":null}""",
+        """UpdateSettingsAsync | PUT api/beheer/settings | {"velden":null,"bevestigReviewUitzetten":false}""",
         """GetSportlinkExtensieRollenAsync | GET api/beheer/sportlink-extensie/rollen | """,
         """RegistreerSportlinkKoppelingAsync | PUT api/beheer/sportlink-extensie/rollen/rol%20a | {"sportlinkAccountNaam":"acc"}""",
         """GetSportlinkAutoLoginStatusAsync | GET api/beheer/sportlink-extensie/rollen/rol%20a/autologin | """,
@@ -63,6 +63,7 @@ internal static class AdminApiPadenGolden
         """AutoPlanAsync | POST api/planner/auto-plan | {"datum":"2026-03-14","bufferMinuten":null}""",
         """AutoPlanToepassenAsync | POST api/planner/auto-plan/toepassen | {"datum":"2026-03-14","bufferMinuten":null}""",
         """GetVeldbezettingAsync | GET api/planner/veldbezetting?datum=2026-03-14&status=true | """,
+        """GetVeldbezettingVoorafAsync | GET api/planner/veldbezetting?datum=2026-03-14&status=true | """,
         """GetTeambegeleidingTeamsAsync | GET api/beheer/teambegeleiding | """,
         """GetTeambegeleidingAsync | GET api/beheer/teambegeleiding/JO%2011-1 | """,
         """StuurTeambegeleidingBerichtAsync | POST api/beheer/teambegeleiding/doorsturen | {"teamNaam":"","onderwerp":null,"bericht":"","ontvangers":null}""",

@@ -18,6 +18,45 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+## [3.20.0.0] — 2026-11-16
+
+- De gedeelde leesroute voor instellingen behoudt de auditnormalisatie van de optimalisatie-aanvang op beide databasetiers (zie issue #1977 en issue #1979).
+
+- E-mailkarakterisatietests kiezen reviewmodus expliciet per clubsnapshot; de instellingenloader-guard volgt ook gedeelde adapters en bewaakt ontbrekende mappings op beide tiers (zie issue #1977).
+
+- Clientcontracttests bewaken de expliciete bevestiging voor het uitzetten van e-mailreview, zowel zonder als met bevestiging (zie issue #1977).
+
+- Private import van mailinstellingen behoudt hoofdletterongevoelige legacy-booleans en weigert afwijkende witruimte veilig (zie issue #1977).
+
+### Added
+- **E-mailverwerking per club** (#1977). De beheerder stelt verwerking, reviewmodus en één review-ontvanger per club in. Ontbrekende of onleesbare instellingen zetten verwerking veilig uit en review aan; review uitzetten vergt bevestiging en audit zonder adreswaarde. Een privé-importpad kan bestaande procesinstellingen eenmaal naar een expliciet gekozen club overnemen, zonder beheerderwijzigingen te overschrijven. Beide databasetiers; geen automatische productie-import.
+- **Clubbrede optimalisatie-aanvang** (#1979). Beheerders stellen op App instellingen één nullable starttijd voor de veldoptimalisatie in. Latere teamvoorkeuren blijven leidend; bij een lege instelling blijven de standaardtijden per leeftijdscategorie gelden. Op beide databasetiers; de reguliere Planning blijft ongewijzigd.
+
+- **Veld optimalisatie: vaste bediening en zelfstandig scrollende wedstrijdenlijst** (#1978). De samenvatting en veldplanning blijven boven de lijst; de lijstkop blijft zichtbaar. Dubbelklik op een wedstrijdblok om de selectie in Huidig en Optimaal te volgen en de lijst ernaartoe te scrollen. De lijst behoudt het actieve filter en toont een geselecteerde wedstrijd buiten dat filter tijdelijk met een duidelijke melding. De paneelhoogte volgt de inhoud tot u deze met muis of toetsenbord aanpast. Een toetsenbordsnelkoppeling slaat de wedstrijdblokken over. Handmatige verplaatsing, selectie en toetsenbordfocus blijven afzonderlijk herkenbaar.
+
+### Changed
+- E-mailpoll controleert eerst alleen het aantal ongelezen inboxitems; een lege inbox wekt de database niet. Bij ongelezen mail blijft een verse, veilige clubinstelling verplicht. Beheeracties auditen alleen gewijzigde e-mailvelden en geven bij ontbrekend e-mailschema een duidelijke conflictrespons (zie issue #1977).
+- **Planning sneller bij de eerste aanvraag en volgende zaterdagen:** hergebruik van reeds geverifieerde wedstrijdnummers vermijdt overbodige Sportlink-detailaanroepen; beide databasetiers schrijven veldplannerblokken in één batch. De bestaande timer bereidt vier zaterdagen ook zonder gesynchroniseerde wedstrijden voor. Planning haalt volgende zaterdagen serieel vooraf op, toont een recente kopie direct en controleert de actuele stand opnieuw; clubwissels, navigatie en eigen mutaties wissen of annuleren oude gegevens. (#1994)
+- Architectuur/CI: .NET 11 is geen LTS en wordt voorlopig niet overgenomen; de stack blijft op .NET 10 (WZ-ADR-015). Dependabot negeert voortaan major-versies >= 11 voor aan .NET gekoppelde pakketten, zodat alleen .NET 10-updates binnenkomen; zie issue #1992 (onderzoek: #1988)
+
+### Changed
+- De elf eerder geteste minor- en patchupdates van AngleSharp, Coverlet, Blazor WebAssembly/MSAL, SqlClient, Logging, Microsoft Graph, Test SDK, OpenAI en Pkcs hersteld na het sluiten van de ongeïntegreerde Dependabot-PR (#1983).
+- De gerelateerde Microsoft.Extensions.AI.Abstractions-, Microsoft.Extensions.AI.OpenAI- en Microsoft.Extensions.Logging.Abstractions-pakketten gezamenlijk bijgewerkt naar 11.0.0; BlazorAdmin declareert Logging.Abstractions direct (#1986).
+- De Claude Code Action-pinnen bijgewerkt en de issue-labeltrigger expliciet afgestemd op `turn: claude-code`; de eerder bewust uitgesloten gh-commando's (`api`, `issue view`, `pr view`, `pr review`, `pr merge`, `pr ready`, `issue edit`) ook in auto mode expliciet geweigerd (#1989).
+
+### Fixed
+- Review-ontvangers voor e-mailinstellingen worden na trimmen begrensd op 320 tekens, gelijk aan de databasekolom; de gedeelde beheerdervalidatie en het invoerveld hanteren dezelfde grens (#1977).
+- De e-mailpoll bewaart de bestaande, persistent begrensde database-noodmail bij uitgeputte verbindingspogingen, met het echte aantal ongelezen inboxitems uit metadata. Verbindingsherstel wist de uitvalregistratie. Instellingen- en schemafouten blijven veilig stoppen zonder valse uitvalmelding; beide tiers gebruiken dezelfde pollbinding. Beheeracties en de private import auditen alleen werkelijk gewijzigde e-mailvelden; schakelaars gebruiken consequent `0`/`1` en ontvangerwaarden blijven ingesteld/niet ingesteld (#1977).
+- De voorwaarden voor een e-mailpoll staan eenmalig in de gedeelde kern: een lege inbox blijft zonder databasewake, en een mislukte instellingenlezing stopt de verwerking vóór berichtinhoud of mailboxmutaties. Dit verwijdert de nieuwe tierduplicatie zonder gedragswijziging (#1977).
+- Veld optimalisatie toont de toetsenbordsnelkoppeling naar de wedstrijdenlijst ook na scrollen in het bovenpaneel; de browsercheck controleert dit met echte Tab-navigatie op mobiel en na handmatig verkleinen op desktop (#1978).
+- Veld optimalisatie past de beschikbare paneelhoogte ook opnieuw toe wanneer het mobiele navigatiemenu sluit; de browsercheck controleert dit na het uitklappen van de Admin-groep (#1978).
+- Veld optimalisatie activeert een touchselectie alleen na een voltooide tik op hetzelfde blok; pan, annulering, beweging, een ander doel, een tweede pointer en een verlopen tik blijven inert. Ook browsers die de touchklik als muisklik melden worden ondersteund. Dubbelklik met de muis en gesynthetiseerde schermlezeractivering blijven werken; listeners worden ook na vertraagde initialisatie en navigatie opgeruimd. De browsercheck blokkeert onbekende loopbackpoorten en onderschept relatieve API-aanroepen (#1978).
+- Veld optimalisatie behoudt de wedstrijdselectie na een mislukte herberekening en wist haar alleen bij een geaccepteerd nieuw plan; een verouderd antwoord wijzigt de selectie niet (#1978).
+- De Veld optimalisatie-browsercheck wacht nu na een schermhoogtewijziging tot de nieuwe paneelmaat is berekend en herstelt de volledige testplanning vóór de touchcontrole; zo vergelijken de scroll- en touchcontroles de bedoelde scherm- en testgegevens (#1978).
+- Auditwaarden voor de clubbrede optimalisatie-aanvang gebruiken op beide tiers consequent `HH:mm`. Het OpenAPI-schema is aangevuld met het al bestaande antwoordveld `StandaardVoorkeurTijd` van de speeltijden-API; dit documenteert bestaand gedrag en voegt geen responseveld toe (#1979).
+- Private infrastructuurpatronen worden alleen bij een push naar `main` in de basisrepository gecontroleerd; dit gebeurt na de merge en beschermt de PR niet vooraf. De deployworkflow controleert dezelfde patronen vóór build, migratie en deployment, ook bij een handmatige productiestart. Algemene securityscans blijven op alle bestaande events actief. Negatieve workflowmutaties bewaken deze koppeling en ontbrekende of ongeldige privéconfiguratie blokkeert de productiecontrole (#1980).
+
+
 ## [3.19.0.0] — 2026-11-15
 
 - **Speeltijden met aantal helften; 35+ en VR30+ met hun eigen speeltijd** (#1962). Op Instellingen > Speeltijden kiest u 1 of 2 helften; het totaal wordt berekend als helften × helft + rust, zonder buffer (de buffer stelt u in bij Veld optimalisatie). De senioren gaan daardoor van 115 naar 105 minuten. De KNVB-categorieën 35+ en VR30+ (1 × 20 minuten, geen rust, half veld, standaardtijd 20:00) worden toegevoegd voor elke club die al speeltijden heeft (de democlub krijgt ze via zijn kopie), en een team als `35+1` of `VR30+1` krijgt die speeltijd in de optimalisatie. Schemawijziging op beide databasetiers (Postgres-migratie 054, SQL Server `dbo.Speeltijden.WedstrijdHelften`); `wedstrijdHelften` in de speeltijden-API.

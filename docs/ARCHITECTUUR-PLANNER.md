@@ -14,6 +14,40 @@ Dit document definieert de regels, beperkingen en API-contract voor de Veldplann
 >    `dbo.Speeltijden` en zijn per club instelbaar via de Admin GUI. De buffers, de
 >    veldcapaciteitsregel en de rangorde van de auto-planner zijn wél regels.
 
+## Laadpad van de veldbezetting (#1994)
+
+Het contract van `planner/veldbezetting` blijft gelijk: Sportlink is leidend en de bronstatus bewaart het werkelijke
+raadpleegtijdstip. De overlay hergebruikt de geverifieerde `(PublicMatchId, wedstrijdnummer)`-paren uit de eigen dagregels;
+alleen onbekende of tegenstrijdige paren vragen een extern detail op. De dagrepositories koppelen op club + wedstrijdcode
+en leveren uitsluitend `PublicMatchId == VerifiedPublicMatchId`; die cache wordt gevuld na `VindEenduidigeMatch` in
+de warmup of de paneellookup. Nummer 1 (clubwedstrijd), nul en ontbrekende nummers blijven via de detailaanroep lopen.
+Een reeds opgeslagen nummer blijft leidend.
+SQL Server en Postgres voeren alle bestaande upserts/verwijderingen/retentie in één providerbatch binnen dezelfde
+transactie uit. Dit beperkt netwerk-wachtrondes zonder schemawijziging.
+
+De bestaande voorbereidingstimer houdt zijn twee dagelijkse runs en het 28-dagenvenster. Eerst komen bekende speeldagen;
+daarna volgen ontbrekende dagen uit de eerstvolgende vier zaterdagen, ontdubbeld en begrensd. Zo is voorbereiding niet
+meer afhankelijk van aanwezigheid van die zaterdagen in de wedstrijdentabel. Bij databasefouten blijft de timer stoppen;
+drie opeenvolgende fouten stoppen de run. Extra zaterdagen verdringen zo geen bekende speeldagen. Een succesvolle lege
+lijst is geldig; een foutrespons wordt niet als lege dag opgeslagen. Per run worden aantallen en duur in ms gelogd.
+
+De Blazor-pagina bezit een cache van maximaal acht succesvolle dagen, maximaal twee minuten oud. Alleen antwoorden met
+een geslaagde Sportlink-raadpleging en tijdstip zijn bruikbaar. Een datumwissel toont de kopie vóór het opnieuw ophalen;
+het scherm vermeldt dat de actuele stand wordt gecontroleerd. De bestaande servercache geldt maximaal 60 seconden;
+het weergegeven raadpleegtijdstip blijft dat van de bronrespons, ook bij een cachetreffer. Een mislukte hercontrole wist de cache-entry. Per datum
+worden lopende aanvragen gedeeld; er draait hooguit één achtergrondaanvraag tegelijk. De voorgrond wacht niet op de
+hele vooruitlaadrij. Nieuwe datumkeuze stopt de oude rij na de lopende aanvraag. Clubwisseling, eigen mutatie en dispose
+verhogen de generatie, wissen de cache en annuleren de clubgebonden aanvragen. Bij een veldwijziging blijft de zichtbare
+tabel tijdens de hercontrole staan zodat de bevestiging in het paneel zichtbaar blijft. Vooruitladen stopt bij een verlopen
+token zonder een interactieve login te starten. Geen localStorage of serviceworker-cache.
+
+Een compleet koude dag zonder bekende sleutels kan nog op Sportlink wachten. De verbetering belooft geen vaste
+productielatentie; browsermetingen met vertraagde synthetische antwoorden en database-integratietests onderscheiden we
+van live acceptatie. Er zijn geen nieuwe Azure-resources, tiers of timers. Vooruitladen kan maximaal drie extra aanvragen
+na de eerste zaterdag opleveren (vier bij een andere weekdag). De timer voegt maximaal vier datumaanvragen per run toe
+als alle zaterdagen ontbreken (maximaal acht per dag, exclusief detailaanroepen voor nieuwe blokken). Uitvoertijd wordt
+gemeten; werkelijk Azure-verbruik en beschikbare gratis quota moeten vóór productie-uitrol worden gecontroleerd.
+
 ## Doel
 
 Geautomatiseerde veldbeschikbaarheidscontrole voor oefenwedstrijden op **[Sportparklocatie]**. Wanneer iemand (via email, WhatsApp of andere kanalen) een wedstrijd wil plannen, controleert de API de beschikbaarheid en geeft aan of de gewenste datum/tijd mogelijk is — of stelt alternatieven voor.
@@ -621,11 +655,15 @@ het in Sportlink staat (WZ-ADR-013, §8.8); de optimalisatie stelt voor hoe het 
 | Duur van een wedstrijd | **Speeltijden** (WZ Instellingen → Speeltijden): helften × helftduur + rust |
 | Buffer tussen wedstrijden | Het veld **Buffer (min)** op de pagina, altijd, voor elke wedstrijd |
 | Teambuffers en voorkeursveld | Teamregels (`BufferVoor`, `BufferNa`, `VoorkeurVeld`), altijd |
-| Streeftijd | Voorkeurstijden van het team, anders de standaardtijd van de leeftijdscategorie |
+| Streeftijd | Clubbrede `OptimalisatieAanvang`, daarna teamregel of teamvoorkeur; als de clubtijd leeg is, blijft de standaardtijd van de leeftijdscategorie de terugval (#1979) |
 | Velden en openingstijden | WZ Instellingen → Velden en de veldbeschikbaarheid |
 
 Sportlinks speelduur, de "+ 15" van de Sportlink-veldplanner en de veldplanner-overlay worden in de
 optimalisatie **niet** gebruikt. De speeltijd bevat geen buffer; de buffer staat alleen op de pagina.
+
+`OptimalisatieAanvang` is één optionele starttijd per club. Een teamvoorkeur later dan deze tijd blijft
+het doel; een eerdere voorkeur wordt tot deze tijd begrensd. Zonder clubtijd blijven de bestaande
+standaardtijden per categorie gelden. De reguliere Planning en directe Sportlink-planning gebruiken de instelling niet.
 
 **Volgorde.** Harde grenzen gaan voor: veldbeschikbaarheid, paginabuffer, `BufferVoor`/`BufferNa` en
 geen team dubbel geboekt. Daarna bepaalt de rangorde hierboven de streeftijd (laag 0 teamregel, laag 1

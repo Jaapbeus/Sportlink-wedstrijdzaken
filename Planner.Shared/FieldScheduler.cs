@@ -500,7 +500,10 @@ public class FieldScheduler
         return true;
     }
 
-    private IngeplandSlot? FindBestEarliestSlot(decimal fractie, int duurMinuten, int nieuwBufVoor, string? teamNaam = null)
+    private static TimeOnly Max(TimeOnly a, TimeOnly b) => a >= b ? a : b;
+
+    private IngeplandSlot? FindBestEarliestSlot(decimal fractie, int duurMinuten, int nieuwBufVoor,
+        string? teamNaam = null, TimeOnly? ondergrens = null)
     {
         var sorted = _velden.OrderByDescending(v => v.IsKunstgras).ThenBy(v => v.VeldNummer).ToList();
         IngeplandSlot? best = null;
@@ -508,7 +511,7 @@ public class FieldScheduler
         {
             var besch = _beschikbaarheid.FirstOrDefault(b => b.VeldNummer == veld.VeldNummer);
             if (besch == null) continue;
-            var van = besch.BeschikbaarVanaf < StartTijd ? StartTijd : besch.BeschikbaarVanaf;
+            var van = Max(besch.BeschikbaarVanaf, ondergrens ?? StartTijd);
             var slot = FindEarliestSlot(veld.VeldNummer, fractie, duurMinuten, van, besch.BeschikbaarTot, nieuwBufVoor, teamNaam);
             if (slot != null && (best == null || slot.AanvangsTijd < best.AanvangsTijd))
             {
@@ -519,10 +522,11 @@ public class FieldScheduler
         return best;
     }
 
-    public IngeplandSlot? FindAndOccupyNextSlot(decimal fractie, int duurMinuten, int nieuwBufVoor = -1, string? teamNaam = null)
+    public IngeplandSlot? FindAndOccupyNextSlot(decimal fractie, int duurMinuten, int nieuwBufVoor = -1,
+        string? teamNaam = null, TimeOnly? ondergrens = null)
     {
         if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
-        var best = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam);
+        var best = FindBestEarliestSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam, ondergrens);
         if (best != null) { best.TeamNaam = teamNaam; _occupations[best.VeldNummer].Add(best); }
         return best;
     }
@@ -543,16 +547,30 @@ public class FieldScheduler
     /// </summary>
     public IngeplandSlot? FindAndOccupyNearTime(TimeOnly voorkeurTijd, decimal fractie, int duurMinuten,
         int nieuwBufVoor = -1, string? teamNaam = null, int tolerantieMinuten = 90,
-        int? voorkeurVeldNummer = null)
+        int? voorkeurVeldNummer = null, TimeOnly? ondergrens = null)
     {
         if (nieuwBufVoor < 0) nieuwBufVoor = _buffer;
+        if (ondergrens.HasValue && voorkeurTijd < ondergrens.Value) voorkeurTijd = ondergrens.Value;
         var candidates = new List<TimeOnly> { voorkeurTijd };
+        var voorkeurMinuten = voorkeurTijd.Hour * 60 + voorkeurTijd.Minute;
         for (int delta = 5; delta <= tolerantieMinuten; delta += 5)
         {
-            var vroeger = voorkeurTijd.AddMinutes(-delta);
-            var later   = voorkeurTijd.AddMinutes(delta);
-            if (vroeger >= StartTijd) candidates.Add(vroeger);
-            candidates.Add(later);
+            // Behoud de bestaande kandidaatvolgorde als geen clubgrens is ingesteld.
+            if (!ondergrens.HasValue)
+            {
+                var vroeger = voorkeurTijd.AddMinutes(-delta);
+                var later = voorkeurTijd.AddMinutes(delta);
+                if (vroeger >= StartTijd) candidates.Add(vroeger);
+                candidates.Add(later);
+                continue;
+            }
+            if (voorkeurMinuten >= delta)
+            {
+                var vroeger = voorkeurTijd.AddMinutes(-delta);
+                if (!ondergrens.HasValue || vroeger >= ondergrens.Value) candidates.Add(vroeger);
+            }
+            if (voorkeurMinuten + delta < 24 * 60)
+                candidates.Add(voorkeurTijd.AddMinutes(delta));
         }
         // Voorkeursveld vooraan in de veldsortering — de rest van de volgorde blijft ongewijzigd
         // (kunstgras vóór gras, daarna veldnummer), zodat het gedrag zonder voorkeursveld identiek is.
@@ -571,8 +589,9 @@ public class FieldScheduler
                 // (#666): een team met 08:30 als voorkeurstijd mag niet stilzwijgend naar 09:00
                 // geschoven worden terwijl het veld al om 08:00 open was. De 09:00-ondergrens blijft
                 // wél gelden voor wedstrijden zónder voorkeurstijd (FindAndOccupyNextSlot).
-                var van   = besch.BeschikbaarVanaf;
+                var van = Max(besch.BeschikbaarVanaf, ondergrens ?? TimeOnly.MinValue);
                 var start = PlannerShared.RondAfOp5Min(kandidaatTijd < van ? van : kandidaatTijd);
+                if (ondergrens.HasValue && start < ondergrens.Value) continue;
                 var end   = start.AddMinutes(duurMinuten);
                 if (end > besch.BeschikbaarTot || end <= start) continue;
                 if (!PastOpVeld(veld.VeldNummer, start, end, fractie, nieuwBufVoor, teamNaam, out var subpos)) continue;
@@ -581,7 +600,7 @@ public class FieldScheduler
                 return slot;
             }
         }
-        return FindAndOccupyNextSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam);
+        return FindAndOccupyNextSlot(fractie, duurMinuten, nieuwBufVoor, teamNaam, ondergrens);
     }
 
     /// <summary>

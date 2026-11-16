@@ -74,6 +74,20 @@ public class AppSettingsValidatieCoreTests
         else IsFout(uitkomst, "KnvbStandaardRegio");
     }
 
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("08:00", true)]
+    [InlineData("8:00", false)]
+    [InlineData("24:00", false)]
+    [InlineData("08:00:00", false)]
+    public void OptimalisatieAanvang_IsNullableExacte24uTijd(string? waarde, bool geldig)
+    {
+        var uitkomst = Valideer("OptimalisatieAanvang", waarde);
+        if (geldig) uitkomst.Should().BeNull();
+        else IsFout(uitkomst, "OptimalisatieAanvang");
+    }
+
     [Fact]
     public void Spelactiviteit_MaximaalHonderdTekens()
     {

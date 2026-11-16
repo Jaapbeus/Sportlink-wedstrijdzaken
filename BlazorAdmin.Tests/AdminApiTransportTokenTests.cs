@@ -36,4 +36,18 @@ public class AdminApiTransportTokenTests
         resultaat.Success.Should().BeFalse();
         nav.Doel.Should().NotBeNull();
     }
+    [Fact]
+    public async Task PlanningVooruitladen_StartGeenRedirectBijVerlopenToken()
+    {
+        var nav = new FakeNav();
+        var transport = new AdminApiTransport(new HttpClient(new TokenOntbreektHandler(nav)) { BaseAddress = new Uri("http://localhost/api/") });
+        var planning = new PlanningApiClient(transport);
+        var resultaat = await planning.GetVeldbezettingVoorafAsync("2026-11-21", CancellationToken.None);
+        resultaat.Success.Should().BeFalse();
+        nav.Doel.Should().BeNull();
+        resultaat.Code.Should().Be(AdminApiTransport.VoorlaadSessieVerlopen);
+        await planning.GetVeldbezettingAsync("2026-11-21");
+        nav.Doel.Should().NotBeNull("de zichtbare aanvraag behoudt de bestaande sessieafhandeling");
+    }
+
 }

@@ -23,8 +23,10 @@ internal static partial class AutoPlanService
 
         var (alleWedstrijden, velden, beschikbaarheid, speeltijden, veldInfoLookup, voorkeurLookup, teamBuffers, voorkeurVelden) =
             await LoadAutoPlanBronnenAsync(datum, clubCode, isAllstars);
+        var optimalisatieAanvang = await PlannerSettingsRepository.GetOptimalisatieAanvangAsync(clubCode);
 
-        var (gesorteerd, doelen) = BepaalEnSorteerWedstrijden(alleWedstrijden, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden, clubCode);
+        var (gesorteerd, doelen) = BepaalEnSorteerWedstrijden(alleWedstrijden, isAllstars,
+            voorkeurVelden, voorkeurLookup, speeltijden, clubCode, optimalisatieAanvang);
 
         var scheduler = new FieldScheduler(beschikbaarheid, velden, buffer, teamBuffers);
         var items = PlanWedstrijdItems(gesorteerd, doelen, scheduler, speeltijden, veldInfoLookup, teamBuffers, buffer);
@@ -56,7 +58,8 @@ internal static partial class AutoPlanService
         Dictionary<string, TeamVoorkeurVeld> voorkeurVelden,
         Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>> voorkeurLookup,
         Dictionary<string, Speeltijd> speeltijden,
-        string clubCode)
+        string clubCode,
+        TimeOnly? optimalisatieAanvang)
     {
         // Per wedstrijd het planningsdoel bepalen volgens de vastgelegde rangorde (#666):
         //   1. Regels     — dbo.TeamRegels: buffers (altijd van kracht) en VoorkeurVeld (veld + evt. tijd)
@@ -66,7 +69,8 @@ internal static partial class AutoPlanService
         // claimen. Dát is wat conflicten tussen teams oplost: wie eerder verwerkt wordt, krijgt de plek.
         var doelen = alleWedstrijden.ToDictionary(
             w => w,
-            w => BepaalPlanDoel(w, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden, clubCode));
+            w => BepaalPlanDoel(w, isAllstars, voorkeurVelden, voorkeurLookup,
+                speeltijden, clubCode, optimalisatieAanvang));
 
         var gesorteerd = alleWedstrijden
             .OrderBy(w => doelen[w].Laag)          // regels vóór voorkeuren vóór defaults
@@ -145,7 +149,7 @@ internal static partial class AutoPlanService
                 voorkeurTijdStr = doelTijd.ToString("HH:mm");
                 slot = scheduler.FindAndOccupyNearTime(doelTijd, veldafmeting,
                     duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
-                    voorkeurVeldNummer: doel.VoorkeurVeldNummer);
+                    voorkeurVeldNummer: doel.VoorkeurVeldNummer, ondergrens: doel.OndergrensTijd);
                 if (slot != null)
                     voorkeurAfwijking = (int)(slot.AanvangsTijd.ToTimeSpan() - doelTijd.ToTimeSpan()).TotalMinutes;
             }
@@ -156,9 +160,9 @@ internal static partial class AutoPlanService
                 slot = doel.VoorkeurVeldNummer.HasValue
                     ? scheduler.FindAndOccupyNearTime(FieldScheduler.DagStart, veldafmeting,
                         duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
-                        voorkeurVeldNummer: doel.VoorkeurVeldNummer)
+                        voorkeurVeldNummer: doel.VoorkeurVeldNummer, ondergrens: doel.OndergrensTijd)
                     : scheduler.FindAndOccupyNextSlot(veldafmeting, duurMinuten,
-                        teamBufVoor, wedstrijd.TeamNaam);
+                        teamBufVoor, wedstrijd.TeamNaam, doel.OndergrensTijd);
             }
 
             if (slot == null)
@@ -462,10 +466,11 @@ internal static partial class AutoPlanService
         Dictionary<string, TeamVoorkeurVeld> voorkeurVelden,
         Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>> voorkeurLookup,
         Dictionary<string, Speeltijd> speeltijden,
-        string? clubCode = null)
+        string? clubCode = null,
+        TimeOnly? optimalisatieAanvang = null)
         => AutoPlanRegels.BepaalPlanDoel(
             wedstrijd.TeamNaam, wedstrijd.LeeftijdsCategorie, isAllstars,
-            voorkeurVelden, voorkeurLookup, speeltijden, clubCode);
+            voorkeurVelden, voorkeurLookup, speeltijden, clubCode, optimalisatieAanvang);
 
     /// <inheritdoc cref="AutoPlanRegels.BepaalVoorkeurStatus"/>
     internal static string BepaalVoorkeurStatus(string? voorkeurTijd, int? afwijkingMinuten)

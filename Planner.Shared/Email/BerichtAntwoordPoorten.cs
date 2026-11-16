@@ -80,6 +80,7 @@ public interface IAntwoordSjabloon
 public interface IAntwoordInstellingen
 {
     string? EmailVoetnoot { get; }
+    bool EmailReviewModusActief => true;
     string? PlannerAfzenderNaam { get; }
     string? CoordinatorNaam { get; }
     string? CoordinatorFunctie { get; }

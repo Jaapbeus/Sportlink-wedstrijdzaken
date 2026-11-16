@@ -370,6 +370,16 @@ BEGIN
 END
 GO
 
+-- AppSettings: clubbrede starttijd voor veldoptimalisatie (#1979, nullable voor legacygedrag).
+IF NOT EXISTS (
+    SELECT 1 FROM [sys].[columns]
+    WHERE [object_id] = OBJECT_ID('[dbo].[AppSettings]') AND [name] = 'OptimalisatieAanvang'
+)
+BEGIN
+    ALTER TABLE [dbo].[AppSettings] ADD [OptimalisatieAanvang] TIME NULL
+END
+GO
+
 -- AppSettings: FaviconUrl en LogoUrl toevoegen voor club-thema (#339, idempotent)
 IF NOT EXISTS (
     SELECT 1 FROM [sys].[columns]
@@ -4249,4 +4259,17 @@ BEGIN
     CREATE NONCLUSTERED INDEX [IX_SportlinkVeldplannerBlok_ClubCode_Datum] ON [dbo].[SportlinkVeldplannerBlok] ([ClubCode], [Datum]);
     PRINT 'dbo.SportlinkVeldplannerBlok aangemaakt.';
 END
+GO
+
+-- #1977: clubgebonden e-mailinstellingen; geen automatische overname van procesbrede waarden.
+IF COL_LENGTH('[dbo].[AppSettings]', 'EmailVerwerkingIngeschakeld') IS NULL
+    ALTER TABLE [dbo].[AppSettings] ADD [EmailVerwerkingIngeschakeld] BIT NOT NULL CONSTRAINT [DF_AppSettings_EmailVerwerkingIngeschakeld] DEFAULT 0;
+IF COL_LENGTH('[dbo].[AppSettings]', 'EmailReviewModusActief') IS NULL
+    ALTER TABLE [dbo].[AppSettings] ADD [EmailReviewModusActief] BIT NOT NULL CONSTRAINT [DF_AppSettings_EmailReviewModusActief] DEFAULT 1;
+IF COL_LENGTH('[dbo].[AppSettings]', 'EmailReviewOntvanger') IS NULL
+    ALTER TABLE [dbo].[AppSettings] ADD [EmailReviewOntvanger] NVARCHAR(320) NULL;
+IF COL_LENGTH('[dbo].[AppSettings]', 'EmailInstellingenGeimporteerd') IS NULL
+    ALTER TABLE [dbo].[AppSettings] ADD [EmailInstellingenGeimporteerd] BIT NOT NULL CONSTRAINT [DF_AppSettings_EmailInstellingenGeimporteerd] DEFAULT 0;
+IF COL_LENGTH('[dbo].[AppSettings]', 'EmailInstellingenBeheerderGewijzigd') IS NULL
+    ALTER TABLE [dbo].[AppSettings] ADD [EmailInstellingenBeheerderGewijzigd] BIT NOT NULL CONSTRAINT [DF_AppSettings_EmailInstellingenBeheerderGewijzigd] DEFAULT 0;
 GO

@@ -9,12 +9,21 @@ const {
   parseFaseComment, MAX_REVIEW_ROUNDS, reviewMarker, resolveIssueNumber,
 } = require('./claude-issue-turn-gate.js');
 const ledgerLib = require('./claude-issue-turn-ledger.js');
+const fs = require('node:fs');
+const path = require('node:path');
 
 let failures = 0;
 function check(name, actual, expected) {
   const a = JSON.stringify(actual), e = JSON.stringify(expected);
   if (a === e) { console.log(`  PASS  ${name}`); }
   else { console.log(`  FAIL  ${name}\n        verwacht: ${e}\n        kreeg:    ${a}`); failures++; }
+}
+
+// Statische configuratieguard. De echte action-uitvoering vereist een aparte labeled-run.
+function workflowActionSteps(workflow) {
+  return workflow
+    .split(/\n(?=      - name: )/)
+    .filter((step) => step.includes('uses: anthropics/claude-code-action@'));
 }
 
 const ctx = { repo: { owner: 'o', repo: 'r' }, runId: 999999, eventName: 'issues' };
@@ -63,6 +72,50 @@ function fakeGithub({
 }
 
 (async () => {
+  console.log('Claude Code Action workflowcompatibiliteit:');
+  {
+    const workflow = fs.readFileSync(path.join(__dirname, '../workflows/claude-issue-turn.yml'), 'utf8');
+    const steps = workflowActionSteps(workflow);
+    check('alle drie action-stappen zijn aanwezig', steps.length, 3);
+    const actionPins = steps.map((step) =>
+      step.match(/^\s*uses: anthropics\/claude-code-action@([0-9a-f]{40})(?=\s|$)/m)?.[1] || null);
+    check('alle action-stappen gebruiken een volledige SHA', actionPins.every((pin) => pin !== null), true);
+    check('alle drie action-stappen pinnen dezelfde SHA', new Set(actionPins).size, 1);
+
+    const labelTriggers = steps.map((step) => {
+      const match = step.match(/^\s{10}label_trigger:\s*(['"])(.*?)\1\s*$/m);
+      return match ? match[2] : null;
+    });
+    check('implementatie, dry-run en review gebruiken allemaal het beurtlabel', labelTriggers,
+      Array(3).fill('turn: claude-code'));
+
+    const disallowed = steps[0].match(/--disallowedTools "([^"]*)"/)?.[1].split(',') || [];
+    for (const rule of [
+      'Bash(gh api *)',
+      'Bash(gh issue view *)',
+      'Bash(gh pr view *)',
+      'Bash(gh pr review *)',
+      'Bash(gh pr merge *)',
+      'Bash(gh pr ready *)',
+      'Bash(gh issue edit *)',
+      'Bash(git push * main)',
+      'Bash(git push * develop)',
+      'Bash(git push *:main)',
+      'Bash(git push *:develop)',
+      'Bash(git push *:refs/heads/main)',
+      'Bash(git push *:refs/heads/develop)',
+      'Bash(git push *--force*)',
+      'Bash(git push * -f *)',
+      'Bash(git push -f *)',
+      'Bash(git push *--delete*)',
+      'Bash(git push *--mirror*)',
+      'Bash(git push *--tags*)',
+      'Bash(git push *:refs/tags/*)',
+    ]) {
+      check(`action deny-regel blijft actief: ${rule}`, disallowed.includes(rule), true);
+    }
+  }
+
   console.log('evaluateGate:');
 
   // ---------- scope-restrictie: ontbrekende source:-label ----------

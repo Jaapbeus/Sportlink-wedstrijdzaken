@@ -113,6 +113,17 @@ In testmodus:
 
 Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 
+### Sneller wisselen tussen zaterdagen
+
+Planning haalt na het laden de volgende zaterdagen op de achtergrond op, tot vier zaterdagen vanaf de gekozen datum.
+Een reeds opgehaalde dag verschijnt direct met **Actuele stand controleren…** terwijl de pagina
+opnieuw de actuele stand vraagt. De server kan een Sportlink-antwoord maximaal 60 seconden hergebruiken.
+Het tijdstip bij de bron blijft het tijdstip waarop Sportlink is geraadpleegd.
+Bij een mislukte controle verschijnt de fout of de bestaande waarschuwing; een kopie wordt nooit stil als actueel bevestigd.
+De tijdelijke kopieën blijven maximaal twee minuten in het geheugen van de geopende pagina en worden gewist bij
+clubwisseling, verlaten van de pagina, een wedstrijd die u via deze pagina toevoegt of een geslaagde echte
+veldwijziging via **Toon**.
+
 ### Planning en Veld optimalisatie — hover-highlight en sticky tijdlijn (#1315, generiek gemaakt bij #1398)
 
 De kaart **"Veldbezetting op [datum]"** op de pagina **Planning** toont wat er voor die dag al
@@ -225,6 +236,19 @@ welke wedstrijd gaat verschuiven, en met één klik op Optimaal zie je waarheen.
 De kolom **Voorkeurstijd** toont in de tab Optimaal de gewenste tijd mét de afwijking; in de tab
 Huidig alleen de gewenste tijd. Die afwijking is namelijk berekend op de optimale planning — hem bij
 de huidige stand tonen zou een getal beweren dat daar niet op is berekend.
+
+De bediening, samenvatting en tijdlijn staan boven de wedstrijdenlijst. De lijst heeft een eigen
+scrollbalk; de kolomkop blijft zichtbaar terwijl u door wedstrijden bladert. Dubbelklik op een
+wedstrijdblok om die wedstrijd in de lijst te markeren en ernaartoe te scrollen. Met touch tikt u eenmaal;
+met het toetsenbord gebruikt u Enter of Spatie. Activeren via een schermlezer selecteert ook. De selectie blijft
+staan wanneer u tussen Huidig en Optimaal wisselt. Valt de geselecteerde wedstrijd buiten het actieve
+filter, dan blijft het filter actief en wordt alleen die wedstrijd tijdelijk toegevoegd met de badge
+**Buiten filter**.
+
+Sleep de balk tussen de tijdlijn en de lijst om de verdeling aan te passen. U kunt de balk ook met het
+toetsenbord bedienen: activeer de bij Tab zichtbare knop **Ga naar paneelhoogte en wedstrijdenlijst** om de wedstrijdblokken over te slaan, of Tab naar de balk, gebruik de pijltjestoetsen om de hoogte te wijzigen, Home en
+End voor de kleinste en grootste hoogte. Op smalle schermen kan het bovenste deel zelf scrollen zodat
+de bediening en tijdlijn bereikbaar blijven. Zonder eigen aanpassing volgt de paneelhoogte de inhoud bij een tabwissel. Een vinkje markeert de selectie; de stippellijn van een handmatige verplaatsing blijft daarnaast zichtbaar.
 
 ### Veld optimalisatie — status-badges
 
@@ -1672,6 +1696,9 @@ Voert de AI-classificatie van een binnenkomend bericht uit als **dry-run** — e
 verzonden en niets in de e-maillog vastgelegd. Handig om te controleren hoe de AI een nieuw of
 grensgeval van een bericht zou classificeren vóórdat het echt binnenkomt, of om een
 classificatie-instelling te verifiëren na een wijziging in de e-mailtemplates.
+
+De e-mailtester gebruikt de instellingen van de geselecteerde club. De automatische verwerking
+gebruikt de primaire club en mailbox die voor deze omgeving zijn ingesteld.
 
 Onder het voorbeeld-antwoord toont de tester de **beslissingstrace** (#1568): een genummerde lijst
 met de stappen die de verwerking zette — wat de AI herkende, welk team is gevonden (en met welke

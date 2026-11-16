@@ -615,6 +615,60 @@ kloppen. Besluiten en meetwaarden: `docs/DOSSIER-SPEELTIJDEN-INLINE-FORMULIER.md
   een scenario ook rood kan worden, draai de suite dan tegen een build van vóór de fix (eigen tijdelijke worktree
   + eigen poort) — zie dossier §4.5.
 
+## Browsercheck clubbrede optimalisatie-aanvang (#1979)
+
+`scripts/dev/browsercheck-optimalisatie-aanvang.mjs` controleert op App instellingen dat de opgeslagen
+clubtijd wordt geladen, onafgemaakte invoer bij herladen vervalt, opslaan `HH:mm` verstuurt en wissen
+`null` opslaat. Draai tegen een eigen Development-BlazorAdmin-instantie en een lokale mock-API; het
+script blokkeert niet-lokaal netwerkverkeer en gebruikt uitsluitend synthetische mockdata. De mockclub gebruikt code `TEST`,
+omdat ALLSTARS de instellingenpagina bewust verbergt. De screenshot
+komt standaard in `sportlink-1979-browsercheck` onder de tijdelijke systeemmap; met
+`BROWSER_ARTIFACT_DIR` kies je een eigen absoluut artefactpad. Een relatief pad wordt geweigerd.
+Playwright wordt uit de eigen werkmap geladen; de artefacten worden daar niet impliciet geschreven.
+Als de geïnstalleerde Playwright-versie een andere Chromium verwacht, kan
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE` naar een al aanwezige headless Chromium wijzen.
+
+## Browsercheck Veld optimalisatie-layout (`scripts/dev/browsercheck-veldoptimalisatie-layout.mjs`, #1978)
+
+Playwright-check voor de gesplitste Veld optimalisatie-weergave. De suite controleert de twee scrollgebieden,
+sticky tabelkop, selectie en scrollen zonder paginaverschuiving, filterbehoud, tabwissel, toetsenbordselectie
+en -resize, toetsenbordfocus van de snelkoppeling na scrollen op 360×640 en na handmatig verkleinen op desktop,
+en de paneel- en lijsthoogte op 390×844 na het openen/sluiten van het mobiele navigatiemenu,
+gesynthetiseerde assistive klik, geëmuleerde touch-tap en touch-pan. De focuscontrole gebruikt Tab en
+controleert dat de snelkoppeling zichtbaar binnen viewport en bovenpaneel valt en op het midden klikbaar is.
+De touch-regressietest
+controleert ook de browservarianten waarin de bijbehorende klik geen `pointerType` heeft of als muis wordt
+gemeld. Alleen een korte, voltooide touchreeks op hetzelfde blok activeert; annulering, verplaatsing,
+een ander doel en een verlopen reeks blijven inert. De lifecyclecontrole verifieert dat de touchlisteners
+bij navigatie worden opgeruimd. Verder controleert de suite de korte toetsenbordroute naar de balk,
+niet-selecteerbare blokken zonder wedstrijdcode,
+automatisch passend maken bij een lege Huidig-tab en gevulde Optimaal-tab, behoud van een eigen
+paneelhoogte, afzonderlijke handmatige/selectie/focusmarkeringen in licht en donker thema, pointer-resize, 360×640-weergave en echt slepen in de Optimaal-tijdlijn. De volledige API is
+synthetisch; externe verzoeken worden afgebroken en de dragcontrole controleert uitsluitend de lokale
+weergave, zonder de planning toe te passen of Sportlink te schrijven.
+
+Start BlazorAdmin op een eigen gereserveerde poort en voer vanuit een map met Playwright uit:
+
+```sh
+ASPNETCORE_ENVIRONMENT=Development dotnet run --no-launch-profile --urls http://localhost:<poort>
+BLAZOR_URL=http://localhost:<poort> node <repo>/scripts/dev/browsercheck-veldoptimalisatie-layout.mjs
+```
+
+Exit 0 betekent dat alle browserasserties zijn geslaagd. Screenshots gaan standaard naar een map onder
+de tijdelijke systeemmap; `BROWSER_ARTIFACT_DIR` kan die locatie overschrijven. Het script schrijft geen
+testdata naar de repository. `BLAZOR_URL` accepteert alleen HTTP op `localhost` of `127.0.0.1`.
+`FUNCTION_API_PORT` (standaard `7094`) moet overeenkomen met de API-poort in de Blazor-configuratie:
+alleen de exacte UI-origin en de HTTP-origins `localhost`/`127.0.0.1` op die poort zijn toegestaan.
+Elke API-aanroep, ook relatief op de UI-origin, wordt synthetisch beantwoord; alleen UI-assets gaan
+naar de UI-server. Andere loopbackpoorten en externe origins worden afgebroken. Een eigen tijdelijke
+sentinelserver bewijst dat een onbekende poort nul verzoeken ontvangt. Touch is browseremulatie;
+een echte screenreader of fysiek touchapparaat is hiermee niet getest. De echte themaknop wordt
+gebruikt en beide thema-attributen plus de kaartkleur worden gecontroleerd. De lifecyclecontrole
+bewijst eerst actieve listeners/observers en daarna opruiming bij gewone navigatie, een kunstmatige
+initialisatievertraging van één seconde en een reeds ingeplande animatiecallback. Voor de negatieve
+controle laat `LIFECYCLE_NEGATIVE_CONTROL=disable-destroy` de opruiming bewust uitvallen; die run
+moet met een fout eindigen.
+
 ## Database.Postgres.Tests — integratietests, env-gestuurd (#866)
 
 De integratietests in `Database.Postgres.Tests` (`PostgresMergeOrchestratorIntegrationTests`,
@@ -966,11 +1020,16 @@ App-authenticatie niet. Lokale eigen hookpatronen blijven behouden bij een templ
 
 `bash scripts/ci/check-security-patterns.test.sh` gebruikt uitsluitend synthetische patronen.
 De placeholdertest bewijst eerst een treffer in een getrackt bestand en daarna de uitsluiting.
-`REQUIRE_CLUB_EXTRA_PATTERNS=true` maakt actieve privéconfiguratie verplicht; de workflow zet
-dit voor pushes in een basisrepository. Ontbrekende configuratie blokkeert dan met exit 2.
-Lokaal en bij forks blijft een ontbrekende optionele configuratie een expliciete overslag.
-Een ontbrekend secret bij een botrun is geen automatische vrijstelling: de eigenaar moet de
-beschikbaarheid veilig regelen. CRLF-regels worden vóór patroonverwerking genormaliseerd.
+`REQUIRE_CLUB_EXTRA_PATTERNS=true` maakt actieve privéconfiguratie verplicht. De Security Scan zet
+dit alleen bij een niet-fork `push` naar `refs/heads/main`; deze controle vindt dus na de merge
+plaats en beschermt de PR niet vooraf. Ontbrekende configuratie of een ongeldig patroon maakt de
+Security Gate op `main` rood. De deployworkflow voert dezelfde private scan bovendien uit in de
+voorafgaande `deploy-ref-guard` op niet-fork `main`, ook bij een handmatige dispatch. Daardoor
+beginnen build, migratie en deployment pas nadat de scan is geslaagd. Voor alle andere Security
+Scan-events wordt de private controle expliciet als niet van toepassing gemeld. De algemene
+structurele infrastructuurcontrole en overige Security Scan-jobs blijven actief. Lokaal blijft
+ontbrekende optionele configuratie een expliciete overslag. CRLF-regels worden vóór
+patroonverwerking genormaliseerd.
 Scanneruitvoer bevat uitsluitend klasse/aantal of een vaste foutmelding, nooit vindplaatsen.
 
 `node .github/scripts/issue-status.test.js` controleert ook dat een mislukte permissie-aanroep
@@ -989,3 +1048,17 @@ De tierduplicatieguard telt bewust ook niet-genegeerde, ongetrackte bronbestande
 Daardoor verandert staging de meting niet. Een schone CI-checkout heeft zulke lokale extra
 bestanden niet; een lokaal verschil vraagt controle van de lokale broninventaris, geen ruimer plafond.
 Het advisorrapport sorteert ERROR, WARN, INFO, OTHER en geeft alleen vaste veilige vervolginstructies.
+
+## Planning vooruitladen (#1994)
+
+`browsercheck-planning-voorladen.cjs` draait tegen een eigen Development-Blazor op een vrije localhost-poort.
+Alle API-verkeer wordt met synthetische antwoorden onderschept; extern verkeer wordt geweigerd.
+De controle houdt de hercontrole van een vooraf geladen zaterdag bewust tegen, meet wanneer de kopie zichtbaar is,
+geeft daarna de nieuwe stand vrij en controleert instellingen, foutbanner en browserconsole.
+
+```bash
+NODE_PATH=<map-met-playwright> node scripts/dev/browsercheck-planning-voorladen.cjs http://localhost:55294
+```
+
+Dit is bewijs van het UI-laadpad, geen meting tegen Sportlink of productie. De store-integratietests draaien alleen
+met expliciet ingestelde `POSTGRES_TEST_CONNECTION_STRING` of `SQLSERVER_TEST_CONNECTION_STRING` tegen een eigen testdatabase.

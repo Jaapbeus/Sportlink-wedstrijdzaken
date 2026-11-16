@@ -293,7 +293,7 @@ Gitleaks installeren (optioneel maar sterk aanbevolen):
 
 ### Laag 2 — GitHub Actions (in de cloud, bij elke push)
 
-Bij elke push naar elke branch en bij elke pull request naar `main` of `develop`:
+Bij elke push naar elke branch en bij elke pull request:
 
 | Check | Wat wordt gecontroleerd | Blokkeert merge? |
 |---|---|---|
@@ -301,17 +301,24 @@ Bij elke push naar elke branch en bij elke pull request naar `main` of `develop`
 | **PII File Detection** | CSV- en Excel-bestanden met mogelijke persoonsgegevens | ✅ Ja |
 | **PII Pattern Scan** | Nederlandse telefoonnummers, persoonlijke e-mailadressen, ledencodes | ✅ Ja |
 | **PII in Documentatie (CHANGELOG/docs)** | E-mailadressen in `CHANGELOG.md`, `docs/` en recente commit-berichten | ✅ Ja |
-| **Club-infrastructuur patrooncheck** | Azure-resourcenamen, hostnames, tenant-/client-ID's en andere club-identificerende waarden in getrackte bestanden — de check die regel 4a hierboven afdwingt | ✅ Ja |
+| **Club-infrastructuur patrooncheck** | Algemene Azure-resourcenamen en hostnames in getrackte bestanden op alle pushes en PR's; private clubpatronen na een push naar `main` in deze repository | ✅ Algemene controle; private controle pas na de merge |
 | **Dependency Vulnerability Scan** | Bekende kwetsbaarheden in NuGet-pakketten (HIGH/CRITICAL), inclusief transitieve dependencies | ✅ Ja |
 | **CodeQL (eigen code)** | Statische analyse van de eigen C#, JavaScript en GitHub-workflows (injectie, SSRF, workflow-injectie e.d.); faalt op security-severity ≥ 7.0 (high/critical), lagere bevindingen alleen in *Security → Code scanning* (#1470) | ✅ Ja |
 | **Security Gate** | Faalt als één van de bovenstaande verplichte checks faalt | ✅ Ja |
 
 De **Security Gate** is de finale poortwachter: hij hangt via `needs:` af van precies de zeven jobs
-hierboven, en zolang hij rood is, is merge naar `main` geblokkeerd.
+hierboven. Een rode gate op een PR of `develop` blokkeert de merge naar `main`; een rode gate
+op `main` meldt een fout nadat de merge of push al heeft plaatsgevonden.
 
-Een fork kan de infrastructuur-patrooncheck uitbreiden met eigen reguliere expressies via het
-optionele GitHub Secret `CLUB_EXTRA_PATTERNS` (newline-gescheiden) — nuttig voor waarden die alleen
-jouw club identificeren.
+De algemene structurele infrastructuurcontrole draait op alle bestaande Security Scan-events.
+De private controle met newline-gescheiden reguliere expressies draait uitsluitend op een niet-fork
+push naar `main`. Daarvoor leest de workflow de GitHub Actions-secret `CLUB_EXTRA_PATTERNS`.
+Ontbreekt deze configuratie of bevat zij een ongeldig patroon, dan faalt de productiecontrole
+gesloten. Deze controle beschermt een PR niet vóór de merge. De afzonderlijke deployworkflow
+voert dezelfde private scan uit in `deploy-ref-guard`, vóór build, migratie en deployment, ook bij
+een handmatige dispatch op `main` in deze repository. Op alle andere Security Scan-events meldt
+de workflow dat de private productiecontrole niet van toepassing is; de algemene securityscans
+blijven actief.
 
 **Securitypoort vóór elke release (#1470).** CI scant elke push en PR, maar kijkt niet inhoudelijk
 naar wát er sinds de vorige release is veranderd. Daarom begint elke release met de skill
@@ -321,10 +328,9 @@ secret-scanning-alerts. Eén HIGH-bevinding stopt de release vóór de versiebum
 lokaal in Claude Code, dus zonder API-kosten. Zie `AGENTS.md`, "Versiebeheer en release".
 
 **Op welke events de Security Scan draait (#1202):** `push` naar élke branch, én `pull_request`
-naar `main` en naar `develop` — die twee branches staan letterlijk zo in de `on:`-sectie van
-`.github/workflows/security-scan.yml`. Beide branches hebben branch protection die de check
-`Security Gate — blokkeert merge bij fout` verplicht stelt, dus documentatie, workflow-trigger en
-branch protection zeggen bewust alle drie hetzelfde. **De `pull_request`-trigger is niet optioneel
+zonder doelbranchfilter, dus ook voor gestapelde PR's naar een featurebranch.
+`main` en `develop` hebben branch protection die de check
+`Security Gate — blokkeert merge bij fout` verplicht stelt. **De `pull_request`-trigger is niet optioneel
 naast de `push`-trigger:** een PR uit een fork levert géén push-event in deze repository op, dus
 zonder die trigger zou de verplichte check daar nooit verschijnen (de PR kan dan niet mergen) en
 zou de merge-context nooit upstream gescand worden. Wijzigt de branch-strategie of een doelbranch,

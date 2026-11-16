@@ -25,7 +25,7 @@ public class BerichtResponseGeneratorOmhulselTests : IDisposable
         Body = "Is er ruimte?"
     };
 
-    private static readonly ClubAppSettingsSnapshot Voetnoot = new(null, null, null, "Testomgeving", null);
+    private static readonly ClubAppSettingsSnapshot Voetnoot = new(null, null, null, "Testomgeving", null, EmailReviewModusActief: false);
 
     public BerichtResponseGeneratorOmhulselTests() => SystemUtilities.AppSettings.ResetForTests();
 
@@ -89,6 +89,22 @@ public class BerichtResponseGeneratorOmhulselTests : IDisposable
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Reviewkop_VolgtDeExplicieteClubSnapshot(bool reviewActief)
+    {
+        var snapshot = Voetnoot with { EmailReviewModusActief = reviewActief };
+        var classificatie = new BerichtClassificatie();
+
+        var standaard = BerichtResponseGenerator.BouwBuitenScopeAntwoord(Email, snapshot).body;
+        var sjabloon = BerichtResponseGenerator.BouwAangepasteAntwoord(
+            new EmailTemplate("k", "Onderwerp", "Hallo {{voornaam}}"), classificatie, Email, snapshot).body;
+
+        standaard.StartsWith("=== REVIEW MODE ===", StringComparison.Ordinal).Should().Be(reviewActief);
+        sjabloon.StartsWith("=== REVIEW MODE ===", StringComparison.Ordinal).Should().Be(reviewActief);
     }
 
     [Fact]

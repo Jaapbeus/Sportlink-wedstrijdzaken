@@ -18,8 +18,14 @@ public partial class Instellingen : ClubSelectorPageBase
     // wijziging het seizoen niet opnieuw opbouwt en geen extra auditregel schrijft.
     private int _opgeslagenStartMaand = SeizoenStartMaand.Standaard;
     private bool StartMaandGewijzigd => settings != null && SeizoenStartMaand.OfStandaard(settings.SeasonStartMonth) != _opgeslagenStartMaand;
+    private bool _opgeslagenEmailReviewModus = true;
+    private bool _opgeslagenEmailVerwerking;
+    private string? _opgeslagenEmailReviewOntvanger;
+    private bool _toonEmailReviewBevestiging;
+    private bool _emailReviewBevestigd;
     private bool saving;
     private string? errorMessage;
+    private string? saveErrorMessage;
     private string? successMessage;
     private string? herstartMessage;
 
@@ -82,19 +88,13 @@ public partial class Instellingen : ClubSelectorPageBase
         var syncGeneration = ++_syncOperationGeneration;
         StopSyncPolling();
         errorMessage = null;
+        saveErrorMessage = null;
         settings = null;
-        _syncLoading = true;
-        _syncStatusUnavailable = false;
+        ResetLaadStatus();
 
         if (_isTestmodus)
         {
-            StopSyncPolling();
-            _status = null;
-            _emailLog = null;
-            _reviewLog = null;
-            _emailVerwerkt = _emailFouten = _emailBuitenScope = _emailGeenAntwoord = 0;
-            uitgeslotenEmails = new();
-            _syncLoading = false;
+            ZetTestmodusLaadstatus();
             return;
         }
 
@@ -127,6 +127,7 @@ public partial class Instellingen : ClubSelectorPageBase
                 // Een ontbrekende of ongeldige waarde toont de standaard (juli), nooit een lege keuzelijst.
                 settings.SeasonStartMonth = SeizoenStartMaand.OfStandaard(settings.SeasonStartMonth);
                 _opgeslagenStartMaand = settings.SeasonStartMonth.Value;
+                OnthoudEmailInstellingen(settings);
             }
         }
         else errorMessage = r.ErrorMessage;
@@ -396,6 +397,7 @@ public partial class Instellingen : ClubSelectorPageBase
                 ["AccommodatieLongitude"] = s.AccommodatieLongitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["HerplanDeadlineDagen"] = s.HerplanDeadlineDagen?.ToString(),
                 ["BufferMinuten"] = s.BufferMinuten?.ToString(),
+                ["OptimalisatieAanvang"] = s.OptimalisatieAanvang,
                 ["PlannerAfzenderNaam"] = s.PlannerAfzenderNaam,
                 ["PlannerEmailAdres"] = s.PlannerEmailAdres,
                 ["CoordinatorNaam"] = s.CoordinatorNaam,
@@ -410,21 +412,60 @@ public partial class Instellingen : ClubSelectorPageBase
         };
         if (StartMaandGewijzigd)
             update.Velden["SeasonStartMonth"] = SeizoenStartMaand.OfStandaard(s.SeasonStartMonth).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (s.EmailVerwerkingIngeschakeld != _opgeslagenEmailVerwerking)
+            update.Velden["EmailVerwerkingIngeschakeld"] = s.EmailVerwerkingIngeschakeld ? "1" : "0";
+        if (s.EmailReviewModusActief != _opgeslagenEmailReviewModus)
+            update.Velden["EmailReviewModusActief"] = s.EmailReviewModusActief ? "1" : "0";
+        if (!string.Equals(s.EmailReviewOntvanger?.Trim(), _opgeslagenEmailReviewOntvanger?.Trim(), StringComparison.Ordinal))
+            update.Velden["EmailReviewOntvanger"] = s.EmailReviewOntvanger;
+        update.BevestigReviewUitzetten = _emailReviewBevestigd;
         return update;
+    }
+
+    private void ZetTestmodusLaadstatus()
+    {
+        StopSyncPolling();
+        _status = null;
+        _emailLog = null;
+        _reviewLog = null;
+        _emailVerwerkt = _emailFouten = _emailBuitenScope = _emailGeenAntwoord = 0;
+        uitgeslotenEmails = new();
+        _syncLoading = false;
+    }
+
+    private void ResetLaadStatus()
+    {
+        _toonEmailReviewBevestiging = false;
+        _emailReviewBevestigd = false;
+        _syncLoading = true;
+        _syncStatusUnavailable = false;
     }
 
     private async Task OpslaanAsync()
     {
-        if (settings == null) return;
+        if (settings == null)
+        {
+            _emailReviewBevestigd = false;
+            return;
+        }
+        if (_opgeslagenEmailReviewModus && !settings.EmailReviewModusActief && !_emailReviewBevestigd)
+        {
+            _toonEmailReviewBevestiging = true;
+            return;
+        }
         saving = true;
         successMessage = null;
         herstartMessage = null;
-        errorMessage = null;
+        saveErrorMessage = null;
 
-        var r = await InstellingenCache.UpdateSettingsAsync(BouwUpdate(settings));
+        var update = BouwUpdate(settings);
+        // Een bevestiging geldt voor precies deze poging, ook als de PUT mislukt.
+        _emailReviewBevestigd = false;
+        var r = await InstellingenCache.UpdateSettingsAsync(update);
         if (r.Success)
         {
             successMessage = "Instellingen opgeslagen.";
+            NaOpslaanEmailInstellingen(settings);
             if (settings.SeasonStartMonth is int opgeslagen) _opgeslagenStartMaand = opgeslagen;
             if (r.Data?.HerstartAutomatisch == true)
             {
@@ -442,7 +483,7 @@ public partial class Instellingen : ClubSelectorPageBase
         }
         else
         {
-            errorMessage = r.ErrorMessage;
+            saveErrorMessage = r.ErrorMessage;
         }
         saving = false;
     }

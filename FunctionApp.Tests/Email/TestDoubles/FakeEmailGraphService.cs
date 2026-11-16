@@ -28,6 +28,8 @@ internal sealed class FakeEmailGraphService : IEmailGraphService
     /// </summary>
     public Exception? ExceptionToThrowOnSendReply { get; set; }
 
+    public Task<int> TelOngelezenInboxBerichtenAsync() => Task.FromResult(UnreadEmails.Count);
+
     public Task<List<InkomendBericht>> GetUnreadEmailsAsync()
         => Task.FromResult(UnreadEmails.ToList());
 

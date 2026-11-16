@@ -292,6 +292,18 @@ public class VeldplannerOverlayCoreTests
     }
 
     [Fact]
+    public async Task SamenvoegAsync_EersteAanvraag_HergebruiktGeverifieerdeSleutel_ZonderDetailaanroep()
+    {
+        var client = Client("F-1994");
+        var store = new GeheugenStore();
+        var antwoord = await SamenvoegMetStore(client.Object, store, Naam("F-1994"),
+            new Regel("AllStars - Tegenstander", "10:00", PublicMatchId: "M-A", Nummer: 1994));
+        antwoord.Wedstrijden.Should().ContainSingle();
+        store.Rijen["M-A"].ExternalMatchId.Should().Be(1994);
+        client.Verify(c => c.GetMatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task SamenvoegAsync_TweedeAanvraag_VraagHetBewaardeNummerNietOpnieuwOp()
     {
         var client = Client("F-21");

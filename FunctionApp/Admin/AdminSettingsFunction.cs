@@ -4,7 +4,6 @@ using SportlinkFunction.Infrastructure;
 using Planner.Shared;
 using Azure.Core;
 using Azure.Identity;
-using Cronos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -12,6 +11,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Planner.Endpoints.Admin;
+using Planner.Shared.Email;
 using Planner.Shared.Scheduling;
 using Newtonsoft.Json.Linq;
 using System.Globalization;
@@ -43,15 +43,7 @@ public static class AdminSettingsFunction
 {
     // Witte lijst: alleen deze velden mogen via PUT gewijzigd worden.
     // SportlinkClientId, Graph-secrets en OpenAI key komen hier NOOIT in.
-    internal static readonly string[] AllowedFields =
-    {
-        "HerplanDeadlineDagen", "BufferMinuten",
-        "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
-        "Accommodatie", "FetchSchedule", "EmailVoetnoot",
-        "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
-        "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth"
-    };
+    internal static IReadOnlyList<string> AllowedFields => AppSettingsSchrijfvelden.Toegestaan;
 
     private const string ManagementApiVersion = "2022-03-01";
 
@@ -81,7 +73,8 @@ public static class AdminSettingsFunction
                         [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
                         [AccommodatieLatitude], [AccommodatieLongitude],
                         [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled], [SportlinkDryRun],
-                        [SportlinkSpelactiviteit], [PdfExportIngeschakeld], [ZekerheidspoortActief]
+                        [SportlinkSpelactiviteit], [PdfExportIngeschakeld], [ZekerheidspoortActief],
+                        CONVERT(VARCHAR(5), [OptimalisatieAanvang]) AS [OptimalisatieAanvang]
                     FROM [dbo].[AppSettings]
                     WHERE [ClubCode] = @ClubCode", connection);
                 command.Parameters.AddWithValue("@ClubCode", clubCode);
@@ -99,8 +92,10 @@ public static class AdminSettingsFunction
                 }
                 reader.Close();
 
+                await EmailSettingsAdminSupport.VoegAanGetToeAsync(
+                    result, clubCode, context.GetLogger("AdminSettingsGet"));
                 result["UseRealtimeApi"] = await LeesUseRealtimeApiAsync(connection, clubCode);
-                VerrijkMetCronPreview(result);
+                AdminSettingsResponseCore.VulCronPreview(result);
 
                 return new OkObjectResult(result);
             });
@@ -122,16 +117,6 @@ public static class AdminSettingsFunction
         return rtaScalar is bool rtaBool ? rtaBool : true;
     }
 
-    // Voeg CRON-preview toe als FetchSchedule aanwezig is
-    private static void VerrijkMetCronPreview(Dictionary<string, object?> result)
-    {
-        if (result.TryGetValue("FetchSchedule", out var sched) && sched is string schedStr && !string.IsNullOrWhiteSpace(schedStr))
-        {
-            result["fetchScheduleLeesbaar"] = CronLeesbaar.Vertaal(schedStr);
-            result["volgendeMomenten"] = BerekenVolgendeMomenten(schedStr, 3);
-        }
-    }
-
     [Function("AdminSettingsPut")]
     public static Task<IActionResult> Put(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "beheer/settings")] HttpRequest req,
@@ -150,7 +135,7 @@ public static class AdminSettingsFunction
                 var gewijzigdDoor = EasyAuthHelper.GetAuditActor(req);
 
                 // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
-                var changes = FilterToegestaneVelden(updateRequest, log);
+                var changes = AppSettingsNormalisatie.FilterToegestaneVelden(updateRequest.Velden, AllowedFields, log);
 
                 if (changes.Count == 0)
                     return new BadRequestObjectResult(new { error = "Geen toegestane velden in request" });
@@ -162,49 +147,29 @@ public static class AdminSettingsFunction
 
                 using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
-                var fetchScheduleChanged = await PasWijzigingenToeAsync(
-                    connection, changes, clubCode, gewijzigdDoor, DateOnly.FromDateTime(DateTime.UtcNow));
+                if (await EmailInstellingenSchemaControle.ControleerAsync(
+                    changes, () => EmailSettingsAdminSupport.EmailKolommenBeschikbaarAsync(connection),
+                    "E-mailinstellingen zijn pas schrijfbaar nadat de databaseschemawijziging is toegepast.") is { } schemaFout)
+                    return schemaFout;
+                bool fetchScheduleChanged;
+                try
+                {
+                    fetchScheduleChanged = await PasWijzigingenToeAsync(
+                        connection, changes, clubCode, gewijzigdDoor, DateOnly.FromDateTime(DateTime.UtcNow),
+                        updateRequest.BevestigReviewUitzetten);
+                }
+                catch (EmailVerwerkingsInstellingenWijzigingException ex)
+                {
+                    return new BadRequestObjectResult(new { error = ex.VeiligeMelding });
+                }
 
                 await SystemUtilities.AppSettings.LoadSettingsAsync(log);
 
                 var (herstartOpmerking, herstartAutomatisch) = await BouwHerstartInfoAsync(fetchScheduleChanged, nieuweSchedule, log);
 
-                return new OkObjectResult(new
-                {
-                    gewijzigdeVelden = changes.Keys.ToArray(),
-                    herstartVereist = fetchScheduleChanged && !herstartAutomatisch,
-                    herstartAutomatisch,
-                    opmerking = herstartOpmerking,
-                    fetchScheduleLeesbaar = fetchScheduleChanged && nieuweSchedule != null
-                        ? CronLeesbaar.Vertaal(nieuweSchedule) : null,
-                    volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
-                        ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
-                });
+                return AdminSettingsResponseCore.BouwPutResponse(changes.Keys,
+                    fetchScheduleChanged, herstartAutomatisch, herstartOpmerking, nieuweSchedule);
             }, emptyBodyMessage: "Lege request body"));
-    }
-
-    // Pluk alleen de toegestane velden — alles erbuiten wordt genegeerd
-    private static Dictionary<string, string?> FilterToegestaneVelden(UpdateSettingsRequest updateRequest, ILogger log)
-    {
-        var changes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        if (updateRequest.Velden != null)
-        {
-            foreach (var (key, value) in updateRequest.Velden)
-            {
-                if (!AllowedFields.Contains(key, StringComparer.OrdinalIgnoreCase))
-                {
-                    log.LogWarning("AdminSettingsPut: veld {Veld} niet in witte lijst, wordt genegeerd", LogWaarde.Schoon(key));
-                    continue;
-                }
-                if (!System.Text.RegularExpressions.Regex.IsMatch(key, @"^[A-Za-z][A-Za-z0-9_]*$"))
-                {
-                    log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", LogWaarde.Schoon(key));
-                    continue;
-                }
-                changes[key] = value;
-            }
-        }
-        return changes;
     }
 
     /// <summary>
@@ -215,12 +180,12 @@ public static class AdminSettingsFunction
     /// samen terugdraaien.
     /// </summary>
     internal static async Task<bool> PasWijzigingenToeAsync(
-        SqlConnection connection, Dictionary<string, string?> changes, string clubCode, string gewijzigdDoor, DateOnly vandaag)
+        SqlConnection connection, Dictionary<string, string?> changes, string clubCode, string gewijzigdDoor, DateOnly vandaag, bool bevestigReviewUitzetten = false)
     {
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
         try
         {
-            var fetchScheduleChanged = await PersisteerWijzigingenAsync(connection, transaction, changes, clubCode, gewijzigdDoor);
+            var fetchScheduleChanged = await PersisteerWijzigingenAsync(connection, transaction, changes, clubCode, gewijzigdDoor, bevestigReviewUitzetten);
             if (changes.ContainsKey("SeasonStartMonth"))
                 await SqlServerSeizoenHerbouw.HerbouwAsync(connection, transaction, clubCode, vandaag);
             await transaction.CommitAsync();
@@ -237,9 +202,11 @@ public static class AdminSettingsFunction
     }
 
     private static async Task<bool> PersisteerWijzigingenAsync(
-        SqlConnection connection, SqlTransaction transaction, Dictionary<string, string?> changes, string clubCode, string gewijzigdDoor)
+        SqlConnection connection, SqlTransaction transaction, Dictionary<string, string?> changes, string clubCode, string gewijzigdDoor, bool bevestigReviewUitzetten)
     {
-        var currentValues = await ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
+        var emailChange = await EmailSettingsAdminSupport.BereidVoorAsync(
+            connection, transaction, changes, clubCode, bevestigReviewUitzetten);
+        var currentValues = await EmailSettingsAdminSupport.ReadCurrentValuesAsync(connection, transaction, changes, clubCode);
         var fetchScheduleChanged = FetchScheduleChangedCore.IsChanged(currentValues, changes);
 
         foreach (var (veld, nieuweWaarde) in changes)
@@ -259,11 +226,15 @@ public static class AdminSettingsFunction
                 connection, transaction);
             auditCmd.Parameters.AddWithValue("@GewijzigdDoor", gewijzigdDoor);
             auditCmd.Parameters.AddWithValue("@Veld", veld);
-            auditCmd.Parameters.AddWithValue("@OudeWaarde", (object?)oud ?? DBNull.Value);
-            auditCmd.Parameters.AddWithValue("@NieuweWaarde", (object?)nieuweWaarde ?? DBNull.Value);
+            var auditWaarden = EmailVerwerkingsInstellingenWijziging.AuditWaarden(veld, oud, nieuweWaarde);
+            auditCmd.Parameters.AddWithValue("@OudeWaarde", (object?)auditWaarden.OudeWaarde ?? DBNull.Value);
+            auditCmd.Parameters.AddWithValue("@NieuweWaarde", (object?)auditWaarden.NieuweWaarde ?? DBNull.Value);
             auditCmd.Parameters.AddWithValue("@ClubCode", clubCode);
             await auditCmd.ExecuteNonQueryAsync();
         }
+
+        await EmailSettingsAdminSupport.RondAfAsync(
+            connection, transaction, clubCode, gewijzigdDoor, emailChange);
 
         return fetchScheduleChanged;
     }
@@ -433,57 +404,12 @@ public static class AdminSettingsFunction
         }
     }
 
-    /// <summary>
-    /// Berekent de eerstvolgende N uitvoertijden voor een CRON-expressie (6-veld Azure-formaat).
-    /// Geeft een lege lijst als de expressie ongeldig is.
-    /// </summary>
-    internal static List<string> BerekenVolgendeMomenten(string cron, int aantal)
-    {
-        var resultaten = new List<string>();
-        if (!CronExpression.TryParse(cron, CronFormat.IncludeSeconds, out var expr)) return resultaten;
-
-        var nu = DateTime.UtcNow;
-        var volgende = nu;
-        for (int i = 0; i < aantal; i++)
-        {
-            var next = expr.GetNextOccurrence(volgende, TimeZoneInfo.Utc);
-            if (next == null) break;
-            resultaten.Add(next.Value.ToString("yyyy-MM-ddTHH:mm:ss"));
-            volgende = next.Value;
-        }
-        return resultaten;
-    }
-
-    private static async Task<Dictionary<string, string?>> ReadCurrentValuesAsync(
-        SqlConnection connection, SqlTransaction transaction, IEnumerable<string> velden, string clubCode)
-    {
-        var safe = velden.Where(v => AllowedFields.Contains(v, StringComparer.OrdinalIgnoreCase))
-                         .Select(v => $"[{v}]")
-                         .ToList();
-        var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        if (safe.Count == 0) return result;
-
-        // UPDLOCK, HOLDLOCK: de rij van de club blijft tot de commit vergrendeld (Codex-review #1743 ronde 1).
-        var sql = $"SELECT TOP 1 {string.Join(", ", safe)} FROM [dbo].[AppSettings] WITH (UPDLOCK, HOLDLOCK) WHERE [ClubCode] = @ClubCode";
-        using var cmd = new SqlCommand(sql, connection, transaction);
-        cmd.Parameters.AddWithValue("@ClubCode", clubCode);
-        using var reader = await cmd.ExecuteReaderAsync();
-        if (await reader.ReadAsync())
-        {
-            for (int i = 0; i < reader.FieldCount; i++)
-            {
-                var name = reader.GetName(i);
-                result[name] = reader.IsDBNull(i) ? null : reader.GetValue(i).ToString();
-            }
-        }
-        return result;
-    }
-
     public class UpdateSettingsRequest
     {
         // #1003: GewijzigdDoor bewust verwijderd uit dit publieke schrijfcontract — de audit-actor
         // wordt uitsluitend server-side uit gevalideerde Easy Auth-claims bepaald
         // (EasyAuthHelper.GetAuditActor), nooit uit client-input.
         public Dictionary<string, string?>? Velden { get; set; }
+        public bool BevestigReviewUitzetten { get; set; }
     }
 }

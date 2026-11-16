@@ -15,6 +15,20 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "NuGet"
+    # #1992 / WZ-ADR-015: .NET 11 is geen LTS en de stack blijft op .NET 10 (LTS). Pakketten die aan
+    # de .NET-major gekoppeld zijn, krijgen daarom geen major >= 11 meer; minor/patch binnen 10.x
+    # blijft binnenkomen. Opheffen vraagt een nieuw eigenaarsbesluit (docs/ARCHITECTUUR.md §9).
+    ignore:
+      - dependency-name: "Microsoft.AspNetCore.*"
+        versions: [">= 11.0.0"]
+      - dependency-name: "Microsoft.Extensions.*"
+        versions: [">= 11.0.0"]
+      - dependency-name: "Microsoft.Authentication.WebAssembly.Msal"
+        versions: [">= 11.0.0"]
+      - dependency-name: "System.*"
+        versions: [">= 11.0.0"]
+      - dependency-name: "Npgsql"
+        versions: [">= 11.0.0"]
     groups:
       nuget-minor-patch:
         update-types:

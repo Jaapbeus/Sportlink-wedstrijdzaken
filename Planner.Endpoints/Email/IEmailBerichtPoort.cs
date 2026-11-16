@@ -11,6 +11,7 @@ internal interface IEmailBerichtPoort<TBericht>
     string Afzender(TBericht bericht);
     string? ConversationId(TBericht bericht);
     IReplyGraph Graph { get; }
+    EmailVerwerkingsInstellingen EmailInstellingen => EmailVerwerkingsInstellingen.VeiligeStandaard;
     IReplyPersistentie Persistentie { get; }
     Task MarkeerGelezenAsync(string messageId);
     Task<int?> BepaalVerwerkingIdAsync(TBericht bericht, ILogger log);
