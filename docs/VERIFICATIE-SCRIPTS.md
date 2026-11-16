@@ -966,11 +966,11 @@ App-authenticatie niet. Lokale eigen hookpatronen blijven behouden bij een templ
 
 `bash scripts/ci/check-security-patterns.test.sh` gebruikt uitsluitend synthetische patronen.
 De placeholdertest bewijst eerst een treffer in een getrackt bestand en daarna de uitsluiting.
-`REQUIRE_CLUB_EXTRA_PATTERNS=true` maakt actieve privéconfiguratie verplicht; de workflow zet
-dit voor pushes in een basisrepository. Ontbrekende configuratie blokkeert dan met exit 2.
-Lokaal en bij forks blijft een ontbrekende optionele configuratie een expliciete overslag.
-Een ontbrekend secret bij een botrun is geen automatische vrijstelling: de eigenaar moet de
-beschikbaarheid veilig regelen. CRLF-regels worden vóór patroonverwerking genormaliseerd.
+`REQUIRE_CLUB_EXTRA_PATTERNS=true` maakt actieve privéconfiguratie verplicht. De workflow zet dit
+alleen bij een niet-fork `push` naar `refs/heads/main`; ontbrekende configuratie of een ongeldig
+patroon blokkeert die productiecontrole. Voor alle andere events wordt de private controle expliciet
+als niet van toepassing gemeld. De algemene structurele infrastructuurcontrole en overige
+Security Scan-jobs blijven actief. CRLF-regels worden vóór patroonverwerking genormaliseerd.
 Scanneruitvoer bevat uitsluitend klasse/aantal of een vaste foutmelding, nooit vindplaatsen.
 
 `node .github/scripts/issue-status.test.js` controleert ook dat een mislukte permissie-aanroep

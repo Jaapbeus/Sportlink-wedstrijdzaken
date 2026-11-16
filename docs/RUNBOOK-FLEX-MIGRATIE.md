@@ -421,8 +421,9 @@ git grep -n -I -E '\.azurewebsites\.net|azurestaticapps\.net' -- \
 #    → deploy.yml (5x, samengesteld uit ${FUNCTIONAPP_NAME}), commentaar en prompts met placeholders
 ```
 
-De CI-job *Club-infrastructuur patrooncheck* (`security-scan.yml`) bewaakt dit daarnaast op elke
-push met het patroon `[a-z0-9-]+-sportlink\.azurewebsites\.net`.
+De CI-job *Club-infrastructuur patrooncheck* (`security-scan.yml`) bewaakt algemene infrastructuur-
+patronen op elke push. De private clubpatronen draaien alleen bij een push naar `main` in de
+basisrepository.
 
 Eén onjuiste opmerking gecorrigeerd: `FunctionApp/Program.cs` stelde dat CORS in productie niet
 nodig is *"omdat SWA proxying alles op dezelfde origin houdt"*. Er is geen SWA-proxying (AGENTS.md,

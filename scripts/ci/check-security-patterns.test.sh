@@ -315,6 +315,60 @@ done
 
 echo "PASS: security pattern matcher handles unusual tracked paths, preserves pattern classes, and keeps public output value-free."
 
+# Private patterns are eligible only for a push to the base repository's production main branch.
+WORKFLOW="$ROOT/.github/workflows/security-scan.yml"
+PRODUCTION_GATE="if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.fork == false"
+NOT_APPLICABLE_GATE="if: github.event_name != 'push' || github.ref != 'refs/heads/main' || github.event.repository.fork == true"
+PRIVATE_STEP=$(awk '
+  /name: Scan private infrastructure patterns on production pushes/ { capture = 1 }
+  capture { print }
+  capture && /^      - name:/ && !/name: Scan private infrastructure patterns on production pushes/ { exit }
+' "$WORKFLOW")
+NOT_APPLICABLE_STEP=$(awk '
+  /name: Report private production scan as not applicable/ { capture = 1 }
+  capture { print }
+  capture && /^      - name:/ && !/name: Report private production scan as not applicable/ { exit }
+' "$WORKFLOW")
+
+grep -Fq "$PRODUCTION_GATE" <<< "$PRIVATE_STEP" \
+  || fail "private patterns are not gated to a non-fork push to refs/heads/main"
+grep -Fq 'secrets.CLUB_EXTRA_PATTERNS' <<< "$PRIVATE_STEP" \
+  || fail "production-only scan does not receive its private pattern secret"
+grep -Fq "REQUIRE_CLUB_EXTRA_PATTERNS: 'true'" <<< "$PRIVATE_STEP" \
+  || fail "production-only scan is not fail-closed"
+[ "$(grep -Fc 'secrets.CLUB_EXTRA_PATTERNS' "$WORKFLOW")" -eq 1 ] \
+  || fail "private pattern secret is referenced outside the production-only step"
+grep -Fq "$NOT_APPLICABLE_GATE" <<< "$NOT_APPLICABLE_STEP" \
+  || fail "non-production events do not explicitly report the private scan as not applicable"
+grep -Fq 'not applicable for this event' <<< "$NOT_APPLICABLE_STEP" \
+  || fail "non-production private scan status is not explicit"
+grep -Fq 'run_check infra-structural' "$WORKFLOW" \
+  || fail "the general structural infrastructure scan was removed"
+
+assert_production_scope() {
+  event_name="$1"
+  ref="$2"
+  fork="$3"
+  expected="$4"
+  actual=false
+  if [ "$event_name" = push ] && [ "$ref" = refs/heads/main ] && [ "$fork" = false ]; then
+    actual=true
+  fi
+  [ "$actual" = "$expected" ] \
+    || fail "production scope mismatch for synthetic event matrix case"
+}
+
+assert_production_scope push refs/heads/main false true
+assert_production_scope push refs/heads/develop false false
+assert_production_scope push refs/heads/feature-synthetic false false
+assert_production_scope push refs/heads/dependabot/synthetic false false
+assert_production_scope pull_request refs/pull/1/merge false false
+assert_production_scope pull_request refs/pull/2/merge true false
+assert_production_scope push refs/heads/main true false
+
+# The fail-closed scanner behavior is exercised above for both missing and invalid patterns.
+echo "PASS: private infrastructure patterns are limited to production main pushes across the synthetic event matrix."
+
 # #1940: ook fragmenten en releasemanifest vallen onder de documentatiescan.
 new_repo changelog-fragment
 mkdir -p "$REPO/changelog.d"

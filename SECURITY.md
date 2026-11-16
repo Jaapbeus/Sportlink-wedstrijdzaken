@@ -301,7 +301,7 @@ Bij elke push naar elke branch en bij elke pull request naar `main` of `develop`
 | **PII File Detection** | CSV- en Excel-bestanden met mogelijke persoonsgegevens | ✅ Ja |
 | **PII Pattern Scan** | Nederlandse telefoonnummers, persoonlijke e-mailadressen, ledencodes | ✅ Ja |
 | **PII in Documentatie (CHANGELOG/docs)** | E-mailadressen in `CHANGELOG.md`, `docs/` en recente commit-berichten | ✅ Ja |
-| **Club-infrastructuur patrooncheck** | Azure-resourcenamen, hostnames, tenant-/client-ID's en andere club-identificerende waarden in getrackte bestanden — de check die regel 4a hierboven afdwingt | ✅ Ja |
+| **Club-infrastructuur patrooncheck** | Algemene Azure-resourcenamen en hostnames in getrackte bestanden op alle pushes en PR's; private clubpatronen alleen op pushes naar `main` in deze repository | ✅ Ja |
 | **Dependency Vulnerability Scan** | Bekende kwetsbaarheden in NuGet-pakketten (HIGH/CRITICAL), inclusief transitieve dependencies | ✅ Ja |
 | **CodeQL (eigen code)** | Statische analyse van de eigen C#, JavaScript en GitHub-workflows (injectie, SSRF, workflow-injectie e.d.); faalt op security-severity ≥ 7.0 (high/critical), lagere bevindingen alleen in *Security → Code scanning* (#1470) | ✅ Ja |
 | **Security Gate** | Faalt als één van de bovenstaande verplichte checks faalt | ✅ Ja |
@@ -309,9 +309,12 @@ Bij elke push naar elke branch en bij elke pull request naar `main` of `develop`
 De **Security Gate** is de finale poortwachter: hij hangt via `needs:` af van precies de zeven jobs
 hierboven, en zolang hij rood is, is merge naar `main` geblokkeerd.
 
-Een fork kan de infrastructuur-patrooncheck uitbreiden met eigen reguliere expressies via het
-optionele GitHub Secret `CLUB_EXTRA_PATTERNS` (newline-gescheiden) — nuttig voor waarden die alleen
-jouw club identificeren.
+De algemene structurele infrastructuurcontrole draait op alle bestaande Security Scan-events.
+De private controle met newline-gescheiden reguliere expressies draait uitsluitend op een niet-fork
+push naar `main`. Daarvoor leest de workflow de GitHub Actions-secret `CLUB_EXTRA_PATTERNS`.
+Ontbreekt deze configuratie of bevat zij een ongeldig patroon, dan faalt de productiecontrole
+gesloten. Op alle andere events meldt de workflow dat de private productiecontrole niet van
+toepassing is; de algemene securityscans blijven actief.
 
 **Securitypoort vóór elke release (#1470).** CI scant elke push en PR, maar kijkt niet inhoudelijk
 naar wát er sinds de vorige release is veranderd. Daarom begint elke release met de skill
