@@ -632,7 +632,12 @@ Als de geïnstalleerde Playwright-versie een andere Chromium verwacht, kan
 
 Playwright-check voor de gesplitste Veld optimalisatie-weergave. De suite controleert de twee scrollgebieden,
 sticky tabelkop, selectie en scrollen zonder paginaverschuiving, filterbehoud, tabwissel, toetsenbordselectie
-en -resize, gesynthetiseerde assistive klik, geëmuleerde touch-tap en touch-pan, de korte toetsenbordroute naar de balk, niet-selecteerbare blokken zonder wedstrijdcode,
+en -resize, gesynthetiseerde assistive klik, geëmuleerde touch-tap en touch-pan. De touch-regressietest
+controleert ook de browservarianten waarin de bijbehorende klik geen `pointerType` heeft of als muis wordt
+gemeld. Alleen een korte, voltooide touchreeks op hetzelfde blok activeert; annulering, verplaatsing,
+een ander doel en een verlopen reeks blijven inert. De lifecyclecontrole verifieert dat de touchlisteners
+bij navigatie worden opgeruimd. Verder controleert de suite de korte toetsenbordroute naar de balk,
+niet-selecteerbare blokken zonder wedstrijdcode,
 automatisch passend maken bij een lege Huidig-tab en gevulde Optimaal-tab, behoud van een eigen
 paneelhoogte, afzonderlijke handmatige/selectie/focusmarkeringen in licht en donker thema, pointer-resize, 360×640-weergave en echt slepen in de Optimaal-tijdlijn. De volledige API is
 synthetisch; externe verzoeken worden afgebroken en de dragcontrole controleert uitsluitend de lokale

@@ -125,6 +125,59 @@ window.blazorHelpers = {
         }
 
         var dragging = false;
+        var pendingTouchActivation = null;
+        var touchActivationWindowMs = 750;
+        var touchMovementTolerance = 12;
+
+        function blockForTarget(target) {
+            return target && target.closest ? target.closest('.gantt-blok[role="button"]') : null;
+        }
+
+        function clearTouchActivation() {
+            pendingTouchActivation = null;
+        }
+
+        function touchPointerDown(event) {
+            // A new pointer invalidates an unfinished tap, including a second touch or mouse.
+            clearTouchActivation();
+            var block = blockForTarget(event.target);
+            if (event.pointerType !== 'touch' || event.isPrimary === false || !block) return;
+            pendingTouchActivation = {
+                pointerId: event.pointerId,
+                block: block,
+                x: event.clientX,
+                y: event.clientY,
+                ended: false,
+                startedAt: performance.now()
+            };
+        }
+
+        function touchPointerMove(event) {
+            var touch = pendingTouchActivation;
+            if (!touch) return;
+            if (event.pointerId !== touch.pointerId || blockForTarget(event.target) !== touch.block
+                || Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > touchMovementTolerance) {
+                clearTouchActivation();
+            }
+        }
+
+        function touchPointerUp(event) {
+            var touch = pendingTouchActivation;
+            if (!touch) return;
+            if (event.pointerId !== touch.pointerId || blockForTarget(event.target) !== touch.block
+                || Math.hypot(event.clientX - touch.x, event.clientY - touch.y) > touchMovementTolerance
+                || performance.now() - touch.startedAt > touchActivationWindowMs) {
+                clearTouchActivation();
+                return;
+            }
+            touch.ended = true;
+            touch.endedAt = performance.now();
+        }
+
+        function touchPointerCancel() {
+            clearTouchActivation();
+        }
+
         function pointerDown(event) {
             if (event.button !== 0) return;
             userAdjusted = true;
@@ -168,12 +221,30 @@ window.blazorHelpers = {
 
         function layoutClick(event) {
             if (event.target.closest('[data-veld-skip-splitter]')) separator.focus({ preventScroll: true });
-            // A native touch click is emitted only after a tap, not after scrolling/cancelled drag.
-            // Forward it as an assistive click; ordinary mouse clicks still require dblclick.
-            var block = event.target.closest('.gantt-blok[role="button"]');
-            if (block && event.pointerType === 'touch' && event.detail !== 0) block.click();
+            var block = blockForTarget(event.target);
+            var touch = pendingTouchActivation;
+            if (event.detail === 0) {
+                clearTouchActivation();
+                return;
+            }
+            if (!touch) return;
+            if (!block) {
+                clearTouchActivation();
+                return;
+            }
+            var isCompletedTap = touch.ended && touch.block === block
+                && performance.now() - touch.endedAt <= touchActivationWindowMs;
+            clearTouchActivation();
+            // Safari may label a touch-origin click as "mouse", and older browsers may emit a
+            // MouseEvent without pointerType. The preceding same-block touch sequence is the
+            // source of truth; never promote an arbitrary mouse or unknown click.
+            if (isCompletedTap) block.click();
         }
         layout.addEventListener('click', layoutClick);
+        layout.addEventListener('pointerdown', touchPointerDown);
+        layout.addEventListener('pointermove', touchPointerMove);
+        layout.addEventListener('pointerup', touchPointerUp);
+        layout.addEventListener('pointercancel', touchPointerCancel);
         separator.addEventListener('pointerdown', pointerDown);
         separator.addEventListener('pointermove', pointerMove);
         separator.addEventListener('pointerup', pointerEnd);
@@ -196,6 +267,10 @@ window.blazorHelpers = {
             if (layoutCheckFrame !== null) cancelAnimationFrame(layoutCheckFrame);
             layoutCheckFrame = null;
             layout.removeEventListener('click', layoutClick);
+            layout.removeEventListener('pointerdown', touchPointerDown);
+            layout.removeEventListener('pointermove', touchPointerMove);
+            layout.removeEventListener('pointerup', touchPointerUp);
+            layout.removeEventListener('pointercancel', touchPointerCancel);
             separator.removeEventListener('pointerdown', pointerDown);
             separator.removeEventListener('pointermove', pointerMove);
             separator.removeEventListener('pointerup', pointerEnd);

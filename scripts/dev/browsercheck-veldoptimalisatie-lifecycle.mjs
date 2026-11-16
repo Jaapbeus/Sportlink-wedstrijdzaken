@@ -7,6 +7,21 @@ export async function checkLifecycle({ browser, base, stubRoute, ok }) {
   await context.addInitScript(({ negativeControl }) => {
     localStorage.setItem('selectedClubCode', 'ALLSTARS');
     const probe = window.__layoutLifetime = { resize: [], observers: [], delayed: 0, mode: 'ordinary' };
+    probe.layoutListeners = [];
+    const addEvent = EventTarget.prototype.addEventListener;
+    const removeEvent = EventTarget.prototype.removeEventListener;
+    EventTarget.prototype.addEventListener = function (type, listener, options) {
+      if (this instanceof Element && this.matches('.veldoptimalisatie-layout')) {
+        probe.layoutListeners.push({ target: this, type, listener, removed: false });
+      }
+      return addEvent.call(this, type, listener, options);
+    };
+    EventTarget.prototype.removeEventListener = function (type, listener, options) {
+      const item = probe.layoutListeners.find(item => item.target === this && item.type === type
+        && item.listener === listener && !item.removed);
+      if (this instanceof Element && this.matches('.veldoptimalisatie-layout') && item) item.removed = true;
+      return removeEvent.call(this, type, listener, options);
+    };
     const add = window.addEventListener.bind(window), remove = window.removeEventListener.bind(window);
     window.addEventListener = (type, listener, options) => {
       if (type === 'resize') probe.resize.push({ listener, removed: false });
@@ -54,6 +69,12 @@ export async function checkLifecycle({ browser, base, stubRoute, ok }) {
     const relevant = probe.observers.filter(item => item.relevant && item.observed);
     return { added: probe.resize.length, active: probe.resize.filter(item => !item.removed).length,
       observers: relevant.length, observing: relevant.filter(item => !item.disconnected).length,
+      layoutListeners: probe.layoutListeners.length,
+      activeLayoutListeners: probe.layoutListeners.filter(item => !item.removed).length,
+      removedLayoutListeners: probe.layoutListeners.filter(item => item.removed).length,
+      touchListeners: probe.layoutListeners.filter(item => item.type.startsWith('pointer')).length,
+      activeTouchListeners: probe.layoutListeners.filter(item => item.type.startsWith('pointer') && !item.removed).length,
+      removedTouchListeners: probe.layoutListeners.filter(item => item.type.startsWith('pointer') && item.removed).length,
       delayed: probe.delayed };
   });
   try {
@@ -68,18 +89,27 @@ export async function checkLifecycle({ browser, base, stubRoute, ok }) {
       index + 1);
       const entered = await snapshot();
       ok(entered.added === index + 1 && entered.active === 1 && entered.observers === (index + 1) * 2
-        && entered.observing === 2 && (mode !== 'delayed' || entered.delayed === 1),
-      `${mode} initialization registers exactly one listener and two observers (${JSON.stringify(entered)})`);
+        && entered.observing === 2 && entered.layoutListeners === (index + 1) * 6
+        && entered.activeLayoutListeners === 6 && entered.removedLayoutListeners === index * 6
+        && entered.touchListeners === (index + 1) * 4 && entered.activeTouchListeners === 4
+        && entered.removedTouchListeners === index * 4
+        && (mode !== 'delayed' || entered.delayed === 1),
+      `${mode} initialization registers one resize listener, four touch listeners, two other layout listeners and two observers (${JSON.stringify(entered)})`);
       await page.getByRole('link', { name: /Dashboard/ }).click();
       await page.waitForFunction(() => !document.querySelector('.veldoptimalisatie-layout'));
       // This executes within the injected 1s continuation delay.
       await page.waitForTimeout(100);
       const away = await snapshot();
       ok(away.added === index + 1 && away.active === 0 && away.observers === (index + 1) * 2
-        && away.observing === 0, `${mode} navigation releases all observed layout resources (${JSON.stringify(away)})`);
+        && away.observing === 0 && away.activeTouchListeners === 0 && away.activeLayoutListeners === 0
+        && away.removedLayoutListeners === (index + 1) * 6
+        && away.removedTouchListeners === (index + 1) * 4,
+      `${mode} navigation releases all observed layout resources (${JSON.stringify(away)})`);
       if (mode === 'delayed') await page.waitForTimeout(1000);
       const settled = await snapshot();
-      ok(settled.active === 0 && settled.observing === 0, `${mode} late continuation does not restore resources`);
+      ok(settled.active === 0 && settled.observing === 0 && settled.activeTouchListeners === 0
+        && settled.activeLayoutListeners === 0,
+        `${mode} late continuation does not restore resources`);
     }
     const queued = await page.evaluate(async () => {
       const layout = document.createElement('div');
