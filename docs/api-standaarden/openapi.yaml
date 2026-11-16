@@ -1588,7 +1588,10 @@ components:
 
         `EmailReviewOntvanger` accepteert leeg of precies één kaal adres; adreswaarden worden niet
         in de audit opgenomen. De status van de clubrij blijft fail-safe tot import of beheerderwijziging.
-        `bevestigReviewUitzetten=true` is verplicht bij effectief aan naar uit.
+        `bevestigReviewUitzetten=true` is verplicht bij effectief aan naar uit. Alleen werkelijk
+        veranderde e-mailvelden worden bijgewerkt en geaudit; een onveilige, nog niet geïnitialiseerde
+        rij wordt bij een beheerderwijziging veilig geïnitialiseerd. Vóór de e-mail-schemawijziging
+        geeft een verzoek met e-mailvelden 409; andere velden blijven schrijfbaar.
 
         De audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de
         door Easy Auth gevalideerde claims — dit contract kent daarom geen "wie"-veld (#1003).
@@ -4457,6 +4460,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: E-mailveld kan pas worden opgeslagen nadat het databaseschema is bijgewerkt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

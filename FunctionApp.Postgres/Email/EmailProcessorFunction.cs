@@ -44,26 +44,28 @@ public partial class EmailProcessorFunction
     {
         var log = context.GetLogger("ProcessIncomingEmails");
 
-        // Lees de clubgebonden snapshot vóór Graph of enige mailboxmutatie.
-        var instellingen = await EmailTimerInstellingenGate.LeesVoorVerwerkingAsync(async () =>
-        {
-            await PostgresAppSettings.LoadSettingsAsync(log);
-            return await EmailVerwerkingsInstellingenOpslag.LeesAsync(
-                PostgresDatabaseConfig.ConnectionString, PostgresClubScope.Primary, log);
-        }, () => log.LogWarning("E-mailinstellingen niet beschikbaar; verwerking uit"),
-            status => log.LogInformation("Email processor uitgeschakeld voor deze club ({Status})", status));
-        if (instellingen is null) return;
-
-        // IEmailGraphService is alleen geregistreerd als Graph geconfigureerd is én
-        // EgressGuard.ExternalIntegrationsAllowed() true is (Program.cs, #857) — buiten productie
-        // (lokaal, CI) is dit onvoorwaardelijk null. Dat is verwacht, correct gedrag: nooit
-        // gooien, gewoon overslaan.
+        // De metadata-check raakt geen berichtinhoud of database. Alleen werk in de inbox
+        // wekt de database; vóór volledige Graph-ophaal/AI/mutaties is één verse clubsnapshot vereist.
         var graphService = context.InstanceServices.GetService<IEmailGraphService>();
-        if (graphService == null)
+        if (graphService is null)
         {
-            log.LogError("GraphServiceClient niet beschikbaar — controleer Graph settings");
+            log.LogWarning("Graph-adapter niet beschikbaar; e-mailpoll overgeslagen");
             return;
         }
+        var instellingen = await EmailTimerInstellingenGate.LeesNaInboxProbeAsync(
+            graphService.HeeftOngelezenInboxBerichtenAsync,
+            () => PostgresSystemUtilities.WaitForDatabaseAsync(log),
+            async () =>
+            {
+                if (PostgresAppSettings.LastLoadFailed)
+                    throw new InvalidOperationException("AppSettings niet beschikbaar");
+                return await EmailVerwerkingsInstellingenOpslag.LeesAsync(
+                    PostgresDatabaseConfig.ConnectionString, PostgresClubScope.Primary, log);
+            },
+            () => log.LogWarning("Inbox-metadata niet beschikbaar; e-mailpoll overgeslagen"),
+            () => log.LogWarning("E-mailinstellingen niet beschikbaar; verwerking uit"),
+            status => log.LogInformation("Email processor uitgeschakeld voor deze club ({Status})", status));
+        if (instellingen is null) return;
 
         var poort = new EmailVerwerkerPoort(
             log,

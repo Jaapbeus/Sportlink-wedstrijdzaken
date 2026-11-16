@@ -5,7 +5,6 @@ using FunctionApp.Postgres.Infrastructure;
 using Planner.Shared;
 using Azure.Core;
 using Azure.Identity;
-using Cronos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -192,6 +191,12 @@ public static class AdminSettingsFunction
 
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
+                if (EmailVerwerkingsInstellingenWijziging.BevatEmailVeld(changes)
+                    && !await EmailSettingsAdminSupport.EmailKolommenBeschikbaarAsync(connection))
+                    return new ConflictObjectResult(new
+                    {
+                        error = "E-mailinstellingen zijn pas schrijfbaar nadat databasemigratie 056 is toegepast."
+                    });
                 bool fetchScheduleChanged;
                 try
                 {
@@ -251,6 +256,7 @@ public static class AdminSettingsFunction
             var emailChange = await EmailSettingsAdminSupport.BereidVoorAsync(
                 connection, transaction, changes, clubCode, bevestigReviewUitzetten);
             var currentValues = await EmailSettingsAdminSupport.ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
+            EmailVerwerkingsInstellingenWijziging.VerwijderOngewijzigdeVelden(changes, currentValues);
             var fetchScheduleChanged = FetchScheduleChangedCore.IsChanged(currentValues, changes);
 
             foreach (var (veld, nieuweWaarde) in changes)

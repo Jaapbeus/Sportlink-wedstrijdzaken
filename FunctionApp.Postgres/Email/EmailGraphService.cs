@@ -23,6 +23,8 @@ namespace FunctionApp.Postgres.Email;
 /// </summary>
 public interface IEmailGraphService : IReplyGraph
 {
+    /// <summary>Leest alleen het aantal ongelezen inboxitems vóór de databasepoort.</summary>
+    Task<bool> HeeftOngelezenInboxBerichtenAsync();
     /// <summary>Haalt maximaal 10 ongelezen emails op uit de inbox van de coördinator-mailbox.</summary>
     Task<List<InkomendBericht>> GetUnreadEmailsAsync();
 
@@ -61,6 +63,16 @@ public sealed class EmailGraphService : IEmailGraphService
         _logger = logger;
         _mailbox = Environment.GetEnvironmentVariable("GraphMailbox")
             ?? throw new InvalidOperationException("GraphMailbox environment variable is niet geconfigureerd");
+    }
+
+    /// <summary>Alleen inbox-metadata; geen bericht of bericht-ID ophalen vóór de databasepoort.</summary>
+    public async Task<bool> HeeftOngelezenInboxBerichtenAsync()
+    {
+        var folder = await _graphClient.Users[_mailbox].MailFolders["inbox"]
+            .GetAsync(config => config.QueryParameters.Select = ["unreadItemCount"]);
+        if (folder?.UnreadItemCount is not int aantal)
+            throw new InvalidOperationException("Inbox unread count niet beschikbaar");
+        return aantal > 0;
     }
 
     public async Task<List<InkomendBericht>> GetUnreadEmailsAsync()

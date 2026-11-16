@@ -16,6 +16,19 @@ internal static class EmailSettingsAdminSupport
         EmailInstellingenAdminCore.VulGetResult(result, gelezen);
     }
 
+    internal static async Task<bool> EmailKolommenBeschikbaarAsync(SqlConnection connection)
+    {
+        using var command = new SqlCommand(@"
+            SELECT CASE WHEN
+                COL_LENGTH('dbo.AppSettings', 'EmailVerwerkingIngeschakeld') IS NOT NULL AND
+                COL_LENGTH('dbo.AppSettings', 'EmailReviewModusActief') IS NOT NULL AND
+                COL_LENGTH('dbo.AppSettings', 'EmailReviewOntvanger') IS NOT NULL AND
+                COL_LENGTH('dbo.AppSettings', 'EmailInstellingenGeimporteerd') IS NOT NULL AND
+                COL_LENGTH('dbo.AppSettings', 'EmailInstellingenBeheerderGewijzigd') IS NOT NULL
+            THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END", connection);
+        return await command.ExecuteScalarAsync() is true;
+    }
+
     internal static async Task<EmailInstellingenAdminWijziging?> BereidVoorAsync(
         SqlConnection connection, SqlTransaction transaction,
         Dictionary<string, string?> changes, string clubCode, bool bevestigd)

@@ -48,32 +48,31 @@ public partial class EmailProcessorFunction
     {
         var log = context.GetLogger("ProcessIncomingEmails");
 
-        // Lees de clubgebonden snapshot vóór Graph of enige mailboxmutatie. Een ontbrekende
-        // migratie, rij of database schakelt de processor uit.
-        var instellingen = await EmailTimerInstellingenGate.LeesVoorVerwerkingAsync(async () =>
+        // De metadata-check raakt geen berichtinhoud of database. Alleen werk in de inbox
+        // wekt de database; vóór volledige Graph-ophaal/AI/mutaties is één verse clubsnapshot vereist.
+        var graphService = context.InstanceServices.GetService<IEmailGraphService>();
+        if (graphService is null)
         {
-            await SystemUtilities.AppSettings.LoadSettingsAsync(log);
-            var clubCode = SystemUtilities.AppSettings.RequireClubCode();
-            return await EmailVerwerkingsInstellingenOpslag.LeesAsync(
-                SystemUtilities.DatabaseConfig.ConnectionString, clubCode, log);
-        }, () => log.LogWarning("E-mailinstellingen niet beschikbaar; verwerking uit"),
+            log.LogWarning("Graph-adapter niet beschikbaar; e-mailpoll overgeslagen");
+            return;
+        }
+        var instellingen = await EmailTimerInstellingenGate.LeesNaInboxProbeAsync(
+            graphService.HeeftOngelezenInboxBerichtenAsync,
+            () => SystemUtilities.WaitForDatabaseAsync(log),
+            async () =>
+            {
+                if (SystemUtilities.AppSettings.LastLoadFailed)
+                    throw new InvalidOperationException("AppSettings niet beschikbaar");
+                var clubCode = SystemUtilities.AppSettings.RequireClubCode();
+                return await EmailVerwerkingsInstellingenOpslag.LeesAsync(
+                    SystemUtilities.DatabaseConfig.ConnectionString, clubCode, log);
+            },
+            () => log.LogWarning("Inbox-metadata niet beschikbaar; e-mailpoll overgeslagen"),
+            () => log.LogWarning("E-mailinstellingen niet beschikbaar; verwerking uit"),
             status => log.LogInformation("Email processor uitgeschakeld voor deze club ({Status})", status));
         if (instellingen is null) return;
 
-        // IEmailGraphService is alleen geregistreerd als Graph geconfigureerd is (Program.cs) — een
-        // ontbrekende registratie betekent hier hetzelfde als een eerder ontbrekende GraphServiceClient.
-        var graphService = context.InstanceServices.GetService<IEmailGraphService>();
-        if (graphService == null)
-        {
-            log.LogError("GraphServiceClient niet beschikbaar — controleer Graph settings");
-            return;
-        }
-
         var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
-
-        // Teamnaam→TeamId-vertaallaag (#692). Sinds #700 is dit het ENIGE pad waarlangs een team wordt
-        // herkend — de oude regex-normalisatie bestaat niet meer. Ontbreekt de resolver, dan zou elke
-        // mail zonder teamherkenning verwerkt worden; dat is erger dan niet verwerken, dus we stoppen.
         var teamResolver = context.InstanceServices.GetService<ITeamResolver>();
         if (teamResolver is null)
         {
@@ -81,9 +80,6 @@ public partial class EmailProcessorFunction
             return;
         }
 
-        // IEmailPersistenceService is onvoorwaardelijk geregistreerd (#827) — geen eigen `new` meer.
-        // Persistente noodmail-throttle (#831) — onvoorwaardelijk geregistreerd, want AzureWebJobsStorage
-        // is sowieso vereist voor de Functions-host zelf.
         var poort = new EmailVerwerkerPoort(
             log,
             context.InstanceServices,

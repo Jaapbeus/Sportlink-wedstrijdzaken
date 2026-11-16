@@ -7,6 +7,7 @@ namespace SportlinkFunction.Email;
 /// </summary>
 public interface IEmailGraphService : IReplyGraph
 {
+    Task<bool> HeeftOngelezenInboxBerichtenAsync();
     Task<List<InkomendBericht>> GetUnreadEmailsAsync();
     Task StuurTeamContactDoorAsync(
         IReadOnlyList<string> ontvangers,

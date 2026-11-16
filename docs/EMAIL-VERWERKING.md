@@ -268,8 +268,11 @@ Er wordt niets stil weggegooid: het bericht wordt normaal verwerkt en gelogd in
 **Review-mode blijft leidend:** staat review-mode aan, dan gaat er nooit een mail uit —
 die check komt vóór de reply-policy.
 
-**Fail-safe standaard (#1977):** de timer leest vóór Graph en AI één database-snapshot van de primaire club.
-Een ontbrekende rij, niet toegepaste migratie, niet-geïnitialiseerde rij, ongeldige review-ontvanger
+**Fail-safe standaard (#1977):** de timer leest eerst alleen het aantal ongelezen items van de
+Graph-inbox. Bij nul of een metadatafout stopt hij zonder database. Bij ongelezen mail gebruikt hij
+de bestaande database-wachtroute en leest één verse clubgebonden snapshot vóór het volledig ophalen
+van berichten, AI en mailboxmutaties. Ook bij uitgeschakelde verwerking kost een inbox met ongelezen
+mail dus een databaselezing. Een ontbrekende rij, niet toegepaste migratie, niet-geïnitialiseerde rij, ongeldige review-ontvanger
 of leesfout zet de verwerking uit en review aan. De oude procesinstellingen
 `EmailProcessorEnabled`, `EmailReviewMode` en `EmailReviewRecipient` worden tijdens de normale
 verwerking niet gelezen. De e-mailtester gebruikt dezelfde clubgebonden leesregel en bouwt de

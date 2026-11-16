@@ -31,6 +31,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - **Clubbrede optimalisatie-aanvang** (#1979). Beheerders stellen op App instellingen één nullable starttijd voor de veldoptimalisatie in. Latere teamvoorkeuren blijven leidend; bij een lege instelling blijven de standaardtijden per leeftijdscategorie gelden. Op beide databasetiers; de reguliere Planning blijft ongewijzigd.
 
 ### Changed
+- E-mailpoll controleert eerst alleen het aantal ongelezen inboxitems; een lege inbox wekt de database niet. Bij ongelezen mail blijft een verse, veilige clubinstelling verplicht. Beheeracties auditen alleen gewijzigde e-mailvelden en geven bij ontbrekend e-mailschema een duidelijke conflictrespons (zie issue #1977).
 - **Planning sneller bij de eerste aanvraag en volgende zaterdagen:** hergebruik van reeds geverifieerde wedstrijdnummers vermijdt overbodige Sportlink-detailaanroepen; beide databasetiers schrijven veldplannerblokken in één batch. De bestaande timer bereidt vier zaterdagen ook zonder gesynchroniseerde wedstrijden voor. Planning haalt volgende zaterdagen serieel vooraf op, toont een recente kopie direct en controleert de actuele stand opnieuw; clubwissels, navigatie en eigen mutaties wissen of annuleren oude gegevens. (#1994)
 - Architectuur/CI: .NET 11 is geen LTS en wordt voorlopig niet overgenomen; de stack blijft op .NET 10 (WZ-ADR-015). Dependabot negeert voortaan major-versies >= 11 voor aan .NET gekoppelde pakketten, zodat alleen .NET 10-updates binnenkomen; zie issue #1992 (onderzoek: #1988)
 

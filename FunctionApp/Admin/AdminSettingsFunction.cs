@@ -4,7 +4,6 @@ using SportlinkFunction.Infrastructure;
 using Planner.Shared;
 using Azure.Core;
 using Azure.Identity;
-using Cronos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -148,6 +147,12 @@ public static class AdminSettingsFunction
 
                 using var connection = new SqlConnection(SystemUtilities.DatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
+                if (EmailVerwerkingsInstellingenWijziging.BevatEmailVeld(changes)
+                    && !await EmailSettingsAdminSupport.EmailKolommenBeschikbaarAsync(connection))
+                    return new ConflictObjectResult(new
+                    {
+                        error = "E-mailinstellingen zijn pas schrijfbaar nadat de databaseschemawijziging is toegepast."
+                    });
                 bool fetchScheduleChanged;
                 try
                 {
@@ -204,6 +209,7 @@ public static class AdminSettingsFunction
         var emailChange = await EmailSettingsAdminSupport.BereidVoorAsync(
             connection, transaction, changes, clubCode, bevestigReviewUitzetten);
         var currentValues = await EmailSettingsAdminSupport.ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
+        EmailVerwerkingsInstellingenWijziging.VerwijderOngewijzigdeVelden(changes, currentValues);
         var fetchScheduleChanged = FetchScheduleChangedCore.IsChanged(currentValues, changes);
 
         foreach (var (veld, nieuweWaarde) in changes)
@@ -401,10 +407,6 @@ public static class AdminSettingsFunction
         }
     }
 
-    /// <summary>
-    /// Berekent de eerstvolgende N uitvoertijden voor een CRON-expressie (6-veld Azure-formaat).
-    /// Geeft een lege lijst als de expressie ongeldig is.
-    /// </summary>
     public class UpdateSettingsRequest
     {
         // #1003: GewijzigdDoor bewust verwijderd uit dit publieke schrijfcontract — de audit-actor

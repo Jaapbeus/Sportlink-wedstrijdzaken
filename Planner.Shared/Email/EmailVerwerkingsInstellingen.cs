@@ -253,6 +253,29 @@ public static class EmailVerwerkingsInstellingenWijziging
         velden["EmailReviewOntvanger"] = nieuw.ReviewOntvanger;
     }
 
+    /// <summary>Laat alleen werkelijk veranderde e-mailkolommen over na de vergrendelde ruwe DB-lezing.</summary>
+    public static void VerwijderOngewijzigdeVelden(
+        IDictionary<string, string?> changes, IReadOnlyDictionary<string, string?> opgeslagen)
+    {
+        foreach (var veld in new[] { "EmailVerwerkingIngeschakeld", "EmailReviewModusActief", "EmailReviewOntvanger" })
+        {
+            if (!changes.TryGetValue(veld, out var nieuw) || !opgeslagen.TryGetValue(veld, out var oud))
+                continue;
+            var gelijk = veld == "EmailReviewOntvanger"
+                ? string.Equals(oud, nieuw, StringComparison.Ordinal)
+                : ProbeerSchakelaar(oud, out var oudeWaarde)
+                    && ProbeerSchakelaar(nieuw, out var nieuweWaarde) && oudeWaarde == nieuweWaarde;
+            if (gelijk) changes.Remove(veld);
+        }
+    }
+
+    private static bool ProbeerSchakelaar(string? waarde, out bool resultaat)
+    {
+        resultaat = false;
+        if (waarde is "1" or "true" or "True") { resultaat = true; return true; }
+        return waarde is "0" or "false" or "False";
+    }
+
     public static EmailOntvangerAuditWaardes AuditWaarden(string veld, string? oud, string? nieuw) =>
         string.Equals(veld, "EmailReviewOntvanger", StringComparison.OrdinalIgnoreCase)
             ? EmailOntvangerAuditRedactie.Redigeer(oud, nieuw)
@@ -319,9 +342,31 @@ public sealed record EmailInstellingenAdminWijziging(
     EmailVerwerkingsInstellingenLeesResultaat Oud,
     EmailVerwerkingsInstellingen Nieuw);
 
-/// <summary>Fail-safe timer gate before any Graph or mailbox operation.</summary>
+/// <summary>Fail-safe timer gate before full Graph message reads or mailbox changes.</summary>
 public static class EmailTimerInstellingenGate
 {
+    /// <summary>Een metadata-check houdt een lege inbox weg van de database; fouten stoppen veilig.</summary>
+    public static async Task<EmailVerwerkingsInstellingenLeesResultaat?> LeesNaInboxProbeAsync(
+        Func<Task<bool>> heeftOngelezenInboxBerichten, Func<Task> wachtOpDatabase,
+        Func<Task<EmailVerwerkingsInstellingenLeesResultaat>> leesSnapshot,
+        Action meldProbeFout, Action meldLeesfout,
+        Action<EmailVerwerkingsInstellingenLeesStatus> meldUitgeschakeld)
+    {
+        bool heeftWerk;
+        try { heeftWerk = await heeftOngelezenInboxBerichten(); }
+        catch (Exception)
+        {
+            meldProbeFout();
+            return null;
+        }
+        if (!heeftWerk) return null;
+        return await LeesVoorVerwerkingAsync(async () =>
+        {
+            await wachtOpDatabase();
+            return await leesSnapshot();
+        }, meldLeesfout, meldUitgeschakeld);
+    }
+
     public static async Task<EmailVerwerkingsInstellingenLeesResultaat?> LeesVoorVerwerkingAsync(
         Func<Task<EmailVerwerkingsInstellingenLeesResultaat>> leesSnapshot,
         Action meldLeesfout, Action<EmailVerwerkingsInstellingenLeesStatus> meldUitgeschakeld)

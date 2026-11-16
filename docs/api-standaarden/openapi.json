@@ -1940,7 +1940,7 @@
       },
       "UpdateSettingsRequest": {
         "type": "object",
-        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,\nZekerheidspoortActief, SeasonStartMonth, OptimalisatieAanvang, EmailVerwerkingIngeschakeld,\nEmailReviewModusActief en EmailReviewOntvanger.\n`OptimalisatieAanvang` is `HH:mm` of null; null bewaart de bestaande terugval op de\nleeftijdscategorie. Booleaanse velden accepteren `0`/`1`/`true`/`false`, anders 400.\n\n`SeasonStartMonth` (#1715): een geheel getal 1 t/m 12, anders 400. Bij een wijziging worden de\nseizoensrijen van de club opnieuw opgebouwd met de nieuwe startmaand en schuift het seizoenseinde\nmee: de bewaartermijn van persoonskolommen in de historietabellen (#1698) volgt het seizoenseinde\nvan de club van de wedstrijd. Het wijzigen wordt vastgelegd in de auditlog zoals andere velden.\n\n`FetchSchedule`: een niet-lege, uitvoerbare CRON-expressie met zes velden en maximaal\n50 tekens. Een ontbrekend volgend UTC-uitvoermoment of ongeldige waarde geeft 400;\nde foutmelding herhaalt de ingevoerde waarde niet. Een weggelaten veld blijft ongewijzigd.\n\n`EmailReviewOntvanger` accepteert leeg of precies één kaal adres; adreswaarden worden niet\nin de audit opgenomen. De status van de clubrij blijft fail-safe tot import of beheerderwijziging.\n`bevestigReviewUitzetten=true` is verplicht bij effectief aan naar uit.\n\nDe audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de\ndoor Easy Auth gevalideerde claims — dit contract kent daarom geen \"wie\"-veld (#1003).\n",
+        "description": "Wijzig toegestane AppSettings-velden. Velden buiten de witte lijst worden genegeerd.\nWitte lijst: HerplanDeadlineDagen, BufferMinuten, PlannerAfzenderNaam, CoordinatorNaam,\nCoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,\nAccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,\nKnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,\nZekerheidspoortActief, SeasonStartMonth, OptimalisatieAanvang, EmailVerwerkingIngeschakeld,\nEmailReviewModusActief en EmailReviewOntvanger.\n`OptimalisatieAanvang` is `HH:mm` of null; null bewaart de bestaande terugval op de\nleeftijdscategorie. Booleaanse velden accepteren `0`/`1`/`true`/`false`, anders 400.\n\n`SeasonStartMonth` (#1715): een geheel getal 1 t/m 12, anders 400. Bij een wijziging worden de\nseizoensrijen van de club opnieuw opgebouwd met de nieuwe startmaand en schuift het seizoenseinde\nmee: de bewaartermijn van persoonskolommen in de historietabellen (#1698) volgt het seizoenseinde\nvan de club van de wedstrijd. Het wijzigen wordt vastgelegd in de auditlog zoals andere velden.\n\n`FetchSchedule`: een niet-lege, uitvoerbare CRON-expressie met zes velden en maximaal\n50 tekens. Een ontbrekend volgend UTC-uitvoermoment of ongeldige waarde geeft 400;\nde foutmelding herhaalt de ingevoerde waarde niet. Een weggelaten veld blijft ongewijzigd.\n\n`EmailReviewOntvanger` accepteert leeg of precies één kaal adres; adreswaarden worden niet\nin de audit opgenomen. De status van de clubrij blijft fail-safe tot import of beheerderwijziging.\n`bevestigReviewUitzetten=true` is verplicht bij effectief aan naar uit. Alleen werkelijk\nveranderde e-mailvelden worden bijgewerkt en geaudit; een onveilige, nog niet geïnitialiseerde\nrij wordt bij een beheerderwijziging veilig geïnitialiseerd. Vóór de e-mail-schemawijziging\ngeeft een verzoek met e-mailvelden 409; andere velden blijven schrijfbaar.\n\nDe audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de\ndoor Easy Auth gevalideerde claims — dit contract kent daarom geen \"wie\"-veld (#1003).\n",
         "properties": {
           "bevestigReviewUitzetten": {
             "type": "boolean",
@@ -5806,6 +5806,16 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "description": "E-mailveld kan pas worden opgeslagen nadat het databaseschema is bijgewerkt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"

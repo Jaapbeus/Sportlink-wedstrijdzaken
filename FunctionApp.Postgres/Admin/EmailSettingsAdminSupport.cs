@@ -16,6 +16,17 @@ internal static class EmailSettingsAdminSupport
         EmailInstellingenAdminCore.VulGetResult(result, gelezen);
     }
 
+    internal static async Task<bool> EmailKolommenBeschikbaarAsync(NpgsqlConnection connection)
+    {
+        await using var command = new NpgsqlCommand(@"
+            SELECT count(*) = 5 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'appsettings'
+              AND column_name IN ('emailverwerkingingeschakeld', 'emailreviewmodusactief',
+                  'emailreviewontvanger', 'emailinstellingengeimporteerd',
+                  'emailinstellingenbeheerdergewijzigd')", connection);
+        return await command.ExecuteScalarAsync() is true;
+    }
+
     internal static async Task<EmailInstellingenAdminWijziging?> BereidVoorAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction,
         Dictionary<string, string?> changes, string clubCode, bool bevestigd)
