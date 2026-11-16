@@ -40,6 +40,12 @@ public partial class GanttChart
 
     [Parameter] public EventCallback<SleepDropArgs> OnSleepDrop { get; set; }
 
+    /// <summary>Optional selection callback for mouse double-click, touch and assistive/keyboard activation.</summary>
+    [Parameter] public EventCallback<long> OnSelect { get; set; }
+
+    /// <summary>Persistent selection correlated with the page's table row.</summary>
+    [Parameter] public GanttSelectieState? Selectie { get; set; }
+
     /// <summary>Velden in weergavevolgorde: Kunstgras eerst, daarna alfabetisch.</summary>
     public static List<string> OrdenVelden(IEnumerable<GanttItem> items)
         => items.Select(g => g.VeldNaam).Distinct()
@@ -67,5 +73,25 @@ public partial class GanttChart
         await HoverGewijzigd.InvokeAsync();
     }
 
+    private bool KanSelecteren(GanttItem gi) => OnSelect.HasDelegate && gi.WedstrijdCode.HasValue;
+
     private string BlokHoverKlasse(GanttItem gi) => Hover?.BlokKlasse(gi.WedstrijdCode) ?? "";
+
+    private string BlokSelectieKlasse(GanttItem gi) => Selectie?.IsGeselecteerd(gi.WedstrijdCode) == true
+        ? "gantt-blok-geselecteerd"
+        : "";
+
+    private async Task SelecteerAsync(long? wedstrijdCode)
+    {
+        if (OnSelect.HasDelegate && wedstrijdCode.HasValue)
+            await OnSelect.InvokeAsync(wedstrijdCode.Value);
+    }
+
+    // Assistive technology and HTMLElement.click() synthesize a click with detail 0.
+    // The layout forwards completed touch clicks through this path; mouse clicks keep dblclick.
+    private Task ActiveerKlikAsync(MouseEventArgs args, long? wedstrijdCode) =>
+        args.Detail == 0 ? SelecteerAsync(wedstrijdCode) : Task.CompletedTask;
+
+    private Task ActiveerSelectieAsync(KeyboardEventArgs args, long? wedstrijdCode) =>
+        args.Key is "Enter" or " " ? SelecteerAsync(wedstrijdCode) : Task.CompletedTask;
 }

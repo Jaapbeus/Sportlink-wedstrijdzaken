@@ -73,7 +73,16 @@
             if (!Sleepbaar)
             {
                 <div title="@_tooltip"
-                     class="gantt-blok @BlokHoverKlasse(gi)"
+                     data-wedstrijd-code="@gi.WedstrijdCode"
+                     class="gantt-blok @BlokHoverKlasse(gi) @BlokSelectieKlasse(gi)"
+                     role="@(KanSelecteren(gi) ? "button" : null)"
+                     tabindex="@(KanSelecteren(gi) ? "0" : null)"
+                     aria-label="@(KanSelecteren(gi) ? $"Selecteer {gi.Label}, {gi.Aanvang:HH:mm}" : null)"
+                     aria-pressed="@(KanSelecteren(gi) ? (Selectie?.IsGeselecteerd(gi.WedstrijdCode) == true ? "true" : "false") : null)"
+                     @onclick="args => ActiveerKlikAsync(args, gi.WedstrijdCode)"
+                     @ondblclick="() => SelecteerAsync(gi.WedstrijdCode)"
+                     @ondblclick:stopPropagation="true"
+                     @onkeydown="args => ActiveerSelectieAsync(args, gi.WedstrijdCode)"
                      @onmouseover="() => ZetHoverAsync(gi.WedstrijdCode)"
                      @onmouseout="() => WisHoverAsync()"
                      style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
@@ -90,11 +99,20 @@
                 bool _sleepbaar = gi.Bron != null;
                 bool _handmatig = gi.Bron != null && IsHandmatigAangepast?.Invoke(gi) == true;
                 <div title="@_tooltip"
+                     data-wedstrijd-code="@gi.WedstrijdCode"
                      draggable="@(_sleepbaar ? "true" : "false")"
                      @ondragstart="@(e => OnSleepStart.InvokeAsync(new SleepStartArgs(gi, e)))"
                      @onmouseover="() => ZetHoverAsync(gi.WedstrijdCode)"
                      @onmouseout="() => WisHoverAsync()"
-                     class="gantt-blok gantt-blok-sleepbaar @BlokHoverKlasse(gi)"
+                     class="gantt-blok gantt-blok-sleepbaar @BlokHoverKlasse(gi) @BlokSelectieKlasse(gi)"
+                     role="@(KanSelecteren(gi) ? "button" : null)"
+                     tabindex="@(KanSelecteren(gi) ? "0" : null)"
+                     aria-label="@(KanSelecteren(gi) ? $"Selecteer {gi.Label}, {gi.Aanvang:HH:mm}" : null)"
+                     aria-pressed="@(KanSelecteren(gi) ? (Selectie?.IsGeselecteerd(gi.WedstrijdCode) == true ? "true" : "false") : null)"
+                     @onclick="args => ActiveerKlikAsync(args, gi.WedstrijdCode)"
+                     @ondblclick="() => SelecteerAsync(gi.WedstrijdCode)"
+                     @ondblclick:stopPropagation="true"
+                     @onkeydown="args => ActiveerSelectieAsync(args, gi.WedstrijdCode)"
                      style="--gantt-left:calc(@(_lft)% + 2px); --gantt-width:calc(@(_wdt)% - 4px);
                             --gantt-top:calc(@(_top)% + 2px); --gantt-height:calc(@(_hgt)% - 4px);
                             --gantt-bg:@GanttKleur(gi.Status);

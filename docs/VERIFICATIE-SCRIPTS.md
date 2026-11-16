@@ -628,6 +628,47 @@ Playwright wordt uit de eigen werkmap geladen; de artefacten worden daar niet im
 Als de geïnstalleerde Playwright-versie een andere Chromium verwacht, kan
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` naar een al aanwezige headless Chromium wijzen.
 
+## Browsercheck Veld optimalisatie-layout (`scripts/dev/browsercheck-veldoptimalisatie-layout.mjs`, #1978)
+
+Playwright-check voor de gesplitste Veld optimalisatie-weergave. De suite controleert de twee scrollgebieden,
+sticky tabelkop, selectie en scrollen zonder paginaverschuiving, filterbehoud, tabwissel, toetsenbordselectie
+en -resize, toetsenbordfocus van de snelkoppeling na scrollen op 360×640 en na handmatig verkleinen op desktop,
+en de paneel- en lijsthoogte op 390×844 na het openen/sluiten van het mobiele navigatiemenu,
+gesynthetiseerde assistive klik, geëmuleerde touch-tap en touch-pan. De focuscontrole gebruikt Tab en
+controleert dat de snelkoppeling zichtbaar binnen viewport en bovenpaneel valt en op het midden klikbaar is.
+De touch-regressietest
+controleert ook de browservarianten waarin de bijbehorende klik geen `pointerType` heeft of als muis wordt
+gemeld. Alleen een korte, voltooide touchreeks op hetzelfde blok activeert; annulering, verplaatsing,
+een ander doel en een verlopen reeks blijven inert. De lifecyclecontrole verifieert dat de touchlisteners
+bij navigatie worden opgeruimd. Verder controleert de suite de korte toetsenbordroute naar de balk,
+niet-selecteerbare blokken zonder wedstrijdcode,
+automatisch passend maken bij een lege Huidig-tab en gevulde Optimaal-tab, behoud van een eigen
+paneelhoogte, afzonderlijke handmatige/selectie/focusmarkeringen in licht en donker thema, pointer-resize, 360×640-weergave en echt slepen in de Optimaal-tijdlijn. De volledige API is
+synthetisch; externe verzoeken worden afgebroken en de dragcontrole controleert uitsluitend de lokale
+weergave, zonder de planning toe te passen of Sportlink te schrijven.
+
+Start BlazorAdmin op een eigen gereserveerde poort en voer vanuit een map met Playwright uit:
+
+```sh
+ASPNETCORE_ENVIRONMENT=Development dotnet run --no-launch-profile --urls http://localhost:<poort>
+BLAZOR_URL=http://localhost:<poort> node <repo>/scripts/dev/browsercheck-veldoptimalisatie-layout.mjs
+```
+
+Exit 0 betekent dat alle browserasserties zijn geslaagd. Screenshots gaan standaard naar een map onder
+de tijdelijke systeemmap; `BROWSER_ARTIFACT_DIR` kan die locatie overschrijven. Het script schrijft geen
+testdata naar de repository. `BLAZOR_URL` accepteert alleen HTTP op `localhost` of `127.0.0.1`.
+`FUNCTION_API_PORT` (standaard `7094`) moet overeenkomen met de API-poort in de Blazor-configuratie:
+alleen de exacte UI-origin en de HTTP-origins `localhost`/`127.0.0.1` op die poort zijn toegestaan.
+Elke API-aanroep, ook relatief op de UI-origin, wordt synthetisch beantwoord; alleen UI-assets gaan
+naar de UI-server. Andere loopbackpoorten en externe origins worden afgebroken. Een eigen tijdelijke
+sentinelserver bewijst dat een onbekende poort nul verzoeken ontvangt. Touch is browseremulatie;
+een echte screenreader of fysiek touchapparaat is hiermee niet getest. De echte themaknop wordt
+gebruikt en beide thema-attributen plus de kaartkleur worden gecontroleerd. De lifecyclecontrole
+bewijst eerst actieve listeners/observers en daarna opruiming bij gewone navigatie, een kunstmatige
+initialisatievertraging van één seconde en een reeds ingeplande animatiecallback. Voor de negatieve
+controle laat `LIFECYCLE_NEGATIVE_CONTROL=disable-destroy` de opruiming bewust uitvallen; die run
+moet met een fout eindigen.
+
 ## Database.Postgres.Tests — integratietests, env-gestuurd (#866)
 
 De integratietests in `Database.Postgres.Tests` (`PostgresMergeOrchestratorIntegrationTests`,
