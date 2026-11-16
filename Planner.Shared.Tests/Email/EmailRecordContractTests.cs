@@ -18,21 +18,24 @@ public class EmailRecordContractTests
         type.GetProperties(BindingFlags.Instance | BindingFlags.Public).Select(property => property.Name)
             .Should().Equal(
                 "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "EmailVoetnoot",
-                "HerplanDeadlineDagen", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio");
+                "HerplanDeadlineDagen", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio", "EmailReviewModusActief");
         type.GetProperties(BindingFlags.Instance | BindingFlags.Public).Select(property => property.PropertyType)
-            .Should().Equal(typeof(string), typeof(string), typeof(string), typeof(string), typeof(int?), typeof(bool?), typeof(string));
+            .Should().Equal(typeof(string), typeof(string), typeof(string), typeof(string), typeof(int?), typeof(bool?), typeof(string), typeof(bool));
 
         var parameters = type.GetConstructors().Single().GetParameters();
         parameters.Select(parameter => parameter.HasDefaultValue)
-            .Should().Equal(false, false, false, false, false, true, true);
+            .Should().Equal(false, false, false, false, false, true, true, true);
         parameters[5].DefaultValue.Should().BeNull();
         parameters[6].DefaultValue.Should().BeNull();
+        parameters[7].DefaultValue.Should().Be(true);
         new NullabilityInfoContext().Create(type.GetProperty("PlannerAfzenderNaam")!).ReadState
             .Should().Be(NullabilityState.Nullable);
 
         var record = new ClubAppSettingsSnapshot("Naam", "Coördinator", "Functie", "Voetnoot", 7);
         record.KnvbPdfBijlageIngeschakeld.Should().BeNull();
         record.KnvbStandaardRegio.Should().BeNull();
+        record.EmailReviewModusActief.Should().BeTrue();
+        (record with { EmailReviewModusActief = false }).EmailReviewModusActief.Should().BeFalse();
         (record with { HerplanDeadlineDagen = 8 }).HerplanDeadlineDagen.Should().Be(8);
         JsonSerializer.Serialize(record).Should().Contain("\"HerplanDeadlineDagen\":7");
     }
