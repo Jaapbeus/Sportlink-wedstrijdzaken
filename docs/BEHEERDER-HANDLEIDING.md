@@ -113,6 +113,15 @@ In testmodus:
 
 Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 
+### Sneller wisselen tussen zaterdagen
+
+Planning haalt na het laden de volgende zaterdagen op de achtergrond op, tot vier zaterdagen vanaf de gekozen datum.
+Een reeds opgehaalde dag verschijnt direct met **Vooraf geladen; actuele stand controleren…** terwijl de pagina
+opnieuw de actuele stand vraagt. Het tijdstip bij de bron blijft het tijdstip waarop Sportlink is geraadpleegd.
+Bij een mislukte controle verschijnt de fout of de bestaande waarschuwing; een kopie wordt nooit stil als actueel bevestigd.
+De tijdelijke kopieën blijven maximaal twee minuten in het geheugen van de geopende pagina en worden gewist bij
+clubwisseling, verlaten van de pagina of een wedstrijd die u via deze pagina toevoegt.
+
 ### Planning en Veld optimalisatie — hover-highlight en sticky tijdlijn (#1315, generiek gemaakt bij #1398)
 
 De kaart **"Veldbezetting op [datum]"** op de pagina **Planning** toont wat er voor die dag al

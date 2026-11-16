@@ -994,3 +994,17 @@ De tierduplicatieguard telt bewust ook niet-genegeerde, ongetrackte bronbestande
 Daardoor verandert staging de meting niet. Een schone CI-checkout heeft zulke lokale extra
 bestanden niet; een lokaal verschil vraagt controle van de lokale broninventaris, geen ruimer plafond.
 Het advisorrapport sorteert ERROR, WARN, INFO, OTHER en geeft alleen vaste veilige vervolginstructies.
+
+## Planning vooruitladen (#1994)
+
+`browsercheck-planning-voorladen.cjs` draait tegen een eigen Development-Blazor op een vrije localhost-poort.
+Alle API-verkeer wordt met synthetische antwoorden onderschept; extern verkeer wordt geweigerd.
+De controle houdt de hercontrole van een vooraf geladen zaterdag bewust tegen, meet wanneer de kopie zichtbaar is,
+geeft daarna de nieuwe stand vrij en controleert instellingen, foutbanner en browserconsole.
+
+```bash
+NODE_PATH=<map-met-playwright> node scripts/dev/browsercheck-planning-voorladen.cjs http://localhost:55294
+```
+
+Dit is bewijs van het UI-laadpad, geen meting tegen Sportlink of productie. De store-integratietests draaien alleen
+met expliciet ingestelde `POSTGRES_TEST_CONNECTION_STRING` of `SQLSERVER_TEST_CONNECTION_STRING` tegen een eigen testdatabase.

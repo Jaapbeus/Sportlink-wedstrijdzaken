@@ -36,11 +36,13 @@ internal sealed class PostgresVeldplannerBlokStore : IVeldplannerBlokStore
         await using var connection = new NpgsqlConnection(_connectionString);
         await connection.OpenAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
+        // #1994: verstuur de hele dag in één batch, zonder netwerk-wachtronde per blok.
+        await using var batch = new NpgsqlBatch(connection, transaction);
 
         foreach (var rij in rijen)
         {
             // Een al bekend wedstrijdnummer wordt nooit overschreven met "onbekend".
-            await using var upsert = new NpgsqlCommand("""
+            var upsert = new NpgsqlBatchCommand("""
                 INSERT INTO public.sportlinkveldplannerblok
                     (clubcode, publicmatchid, datum, label, veld, starttijd, veldafmeting, duurminuten, externalmatchid, rijhash, bijgewerktop)
                 VALUES (@clubcode, @publicmatchid, @datum, @label, @veld, @starttijd, @veldafmeting, @duurminuten, @externalmatchid, @rijhash, now())
@@ -49,7 +51,7 @@ internal sealed class PostgresVeldplannerBlokStore : IVeldplannerBlokStore
                     veldafmeting = EXCLUDED.veldafmeting, duurminuten = EXCLUDED.duurminuten,
                     externalmatchid = COALESCE(EXCLUDED.externalmatchid, public.sportlinkveldplannerblok.externalmatchid),
                     rijhash = EXCLUDED.rijhash, bijgewerktop = now()
-                """, connection, transaction);
+                """);
             upsert.Parameters.AddWithValue("clubcode", rij.ClubCode);
             upsert.Parameters.AddWithValue("publicmatchid", rij.PublicMatchId);
             upsert.Parameters.AddWithValue("datum", rij.Datum);
@@ -60,25 +62,25 @@ internal sealed class PostgresVeldplannerBlokStore : IVeldplannerBlokStore
             upsert.Parameters.AddWithValue("duurminuten", rij.DuurMinuten);
             upsert.Parameters.AddWithValue("externalmatchid", (object?)rij.ExternalMatchId ?? DBNull.Value);
             upsert.Parameters.AddWithValue("rijhash", rij.RijHash);
-            await upsert.ExecuteNonQueryAsync(ct);
+            batch.BatchCommands.Add(upsert);
         }
 
         if (verwijderSleutels.Count > 0)
         {
-            await using var verwijder = new NpgsqlCommand(
-                "DELETE FROM public.sportlinkveldplannerblok WHERE clubcode = @clubcode AND datum = @datum AND publicmatchid = ANY(@sleutels)",
-                connection, transaction);
+            var verwijder = new NpgsqlBatchCommand(
+                "DELETE FROM public.sportlinkveldplannerblok WHERE clubcode = @clubcode AND datum = @datum AND publicmatchid = ANY(@sleutels)");
             verwijder.Parameters.AddWithValue("clubcode", clubCode);
             verwijder.Parameters.AddWithValue("datum", datum);
             verwijder.Parameters.AddWithValue("sleutels", verwijderSleutels.ToArray());
-            await verwijder.ExecuteNonQueryAsync(ct);
+            batch.BatchCommands.Add(verwijder);
         }
 
-        await using var opruim = new NpgsqlCommand(
-            "DELETE FROM public.sportlinkveldplannerblok WHERE clubcode = @clubcode AND datum < @vanaf", connection, transaction);
+        var opruim = new NpgsqlBatchCommand(
+            "DELETE FROM public.sportlinkveldplannerblok WHERE clubcode = @clubcode AND datum < @vanaf");
         opruim.Parameters.AddWithValue("clubcode", clubCode);
         opruim.Parameters.AddWithValue("vanaf", bewaarVanaf);
-        await opruim.ExecuteNonQueryAsync(ct);
+        batch.BatchCommands.Add(opruim);
+        await batch.ExecuteNonQueryAsync(ct);
 
         await transaction.CommitAsync(ct);
     }

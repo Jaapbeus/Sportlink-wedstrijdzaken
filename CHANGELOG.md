@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Verbeterd
+- **Planning sneller bij de eerste aanvraag en volgende zaterdagen:** hergebruik van reeds geverifieerde wedstrijdnummers vermijdt overbodige Sportlink-detailaanroepen; beide databasetiers schrijven veldplannerblokken in één batch. De bestaande timer bereidt vier zaterdagen ook zonder gesynchroniseerde wedstrijden voor. Planning haalt volgende zaterdagen serieel vooraf op, toont een recente kopie direct en controleert de actuele stand opnieuw; clubwissels, navigatie en eigen mutaties wissen of annuleren oude gegevens. (#1994)
+
 ### Changed
 - Architectuur/CI: .NET 11 is geen LTS en wordt voorlopig niet overgenomen; de stack blijft op .NET 10 (WZ-ADR-015). Dependabot negeert voortaan major-versies >= 11 voor aan .NET gekoppelde pakketten, zodat alleen .NET 10-updates binnenkomen; zie issue #1992 (onderzoek: #1988)
 

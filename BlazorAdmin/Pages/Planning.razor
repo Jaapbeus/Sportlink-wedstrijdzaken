@@ -53,12 +53,16 @@
 <div class="card mb-3">
     <div class="card-header d-flex align-items-center gap-2">
         <span class="fw-semibold">Veldbezetting op @_datumDt.ToString("dd-MM-yyyy") - @(_veldbezettingBezig ? "…" : _veldbezetting.Count) wedstrijden</span>
-        @if (_veldbezettingBezig)
+        @if (_veldbezettingBezig || _veldbezettingVernieuwen)
         {
             <span class="spinner-border spinner-border-sm text-secondary ms-2" role="status" aria-hidden="true"></span>
         }
     </div>
     <div class="card-body">
+        @if (_veldbezettingVernieuwen)
+        {
+            <div class="text-muted small mb-2" role="status">Vooraf geladen; actuele stand controleren…</div>
+        }
         @if (!string.IsNullOrEmpty(_veldbezettingError))
         {
             <div class="alert alert-danger mb-0">@_veldbezettingError</div>

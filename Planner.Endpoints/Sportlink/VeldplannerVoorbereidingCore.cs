@@ -62,7 +62,7 @@ public static class VeldplannerVoorbereidingCore
             return;
         }
 
-        await VoerUitAsync(client, store, club, rolNaam, accommodatie, datums, log);
+        await VoerUitAsync(client, store, club, rolNaam, accommodatie, PlanningVooruitblik.VoorbereidDatums(vandaag, datums), log);
     }
 
     /// <param name="datums">De datums met eigen wedstrijden op de accommodatie; de aanroeper bepaalt het venster.</param>

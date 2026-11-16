@@ -129,4 +129,66 @@ public class PostgresVeldplannerBlokStoreIntegrationTests
         (await TelAsync(Club)).Should().Be(1);
         await SchoonAsync();
     }
+
+    [PostgresFact]
+    public async Task GroteBatch_BewaartParametersEnVerwijdertAlleenDeGekozenClubEnDag()
+    {
+        await SchoonAsync();
+        var store = new PostgresVeldplannerBlokStore(ConnectionString);
+        var andereDag = Dag.AddDays(7);
+        try
+        {
+            // Meer dan 2100 waarden: elke opdracht houdt eigen parameters, zonder gedeelde parameterlimiet.
+            var rijen = Enumerable.Range(1, 220).Select(i => new VeldplannerBlokRij(
+                Club, $"B{i}", Dag, $"Team {i} - Team \"B\"", "veld 1", "10:00", 0.5m, 75, i, $"h{i}")).ToArray();
+            await store.SchrijfAsync(Club, Dag, rijen, Array.Empty<string>(), Vandaag.AddDays(-14));
+            await store.SchrijfAsync(AndereClub, Dag, new[] { rijen[0] with { ClubCode = AndereClub } },
+                Array.Empty<string>(), Vandaag.AddDays(-14));
+            await store.SchrijfAsync(Club, andereDag, new[] { rijen[0] with { PublicMatchId = "ANDEREDAG", Datum = andereDag } },
+                Array.Empty<string>(), Vandaag.AddDays(-14));
+
+            // Batch met wijzigingen én verwijderingen; een onbekend nummer wist het bestaande niet.
+            var gewijzigde = rijen.Take(150).Select(r => r with { RijHash = r.RijHash + "nieuw", ExternalMatchId = null }).ToArray();
+            await store.SchrijfAsync(Club, Dag, gewijzigde,
+                rijen.Skip(150).Select(r => r.PublicMatchId).Append("ANDEREDAG").ToArray(), Vandaag.AddDays(-14));
+
+            var stand = await store.LeesDagAsync(Club, Dag);
+            stand.Should().HaveCount(150);
+            foreach (var rij in gewijzigde)
+            {
+                stand[rij.PublicMatchId].RijHash.Should().Be(rij.RijHash);
+                stand[rij.PublicMatchId].ExternalMatchId.Should().Be(long.Parse(rij.PublicMatchId[1..]));
+            }
+            (await store.LeesDagAsync(Club, andereDag)).Should().ContainKey("ANDEREDAG");
+            (await store.LeesDagAsync(AndereClub, Dag))["B1"].RijHash.Should().Be("h1");
+        }
+        finally { await SchoonAsync(); }
+    }
+
+    [PostgresFact]
+    public async Task FoutMiddenInBatch_RoltOokEerdereWijzigingTerug()
+    {
+        await SchoonAsync();
+        var store = new PostgresVeldplannerBlokStore(ConnectionString);
+        var bestaand = new VeldplannerBlokRij(Club, "BEHOUD", Dag, "A - B", "veld 1", "10:00", 1m, 75, 101, "oud");
+        try
+        {
+            await store.SchrijfAsync(Club, Dag, new[] { bestaand }, Array.Empty<string>(), Vandaag.AddDays(-14));
+            var rijen = new[]
+            {
+                bestaand with { RijHash = "nieuw", ExternalMatchId = 202 },
+                bestaand with { PublicMatchId = "ONGELDIG", Label = new string('x', 301) },
+                bestaand with { PublicMatchId = "NIEUW" }
+            };
+            Func<Task> schrijf = () => store.SchrijfAsync(Club, Dag, rijen, Array.Empty<string>(), Vandaag.AddDays(-14));
+
+            await schrijf.Should().ThrowAsync<PostgresException>();
+
+            var stand = await store.LeesDagAsync(Club, Dag);
+            stand.Should().HaveCount(1);
+            stand["BEHOUD"].Should().Be(new BlokOpslagStand("oud", 101));
+        }
+        finally { await SchoonAsync(); }
+    }
+
 }

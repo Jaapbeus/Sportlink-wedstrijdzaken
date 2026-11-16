@@ -18,8 +18,8 @@ public sealed class PlanningApiClient
         => await _t.PostAsync<AutoPlanToepassenResponseDto>("api/planner/auto-plan/toepassen", req);
 
     /// <summary>Vraagt met <c>status=true</c> expliciet de statusenvelope aan (#1774); zonder die parameter blijft de route de kale array leveren voor oudere clients.</summary>
-    public async Task<ApiResult<VeldbezettingAntwoordDto>> GetVeldbezettingAsync(string datum)
-        => await _t.GetAsync<VeldbezettingAntwoordDto>($"api/planner/veldbezetting?datum={Uri.EscapeDataString(datum)}&status=true");
+    public async Task<ApiResult<VeldbezettingAntwoordDto>> GetVeldbezettingAsync(string datum, CancellationToken cancellationToken = default)
+        => await _t.GetAsync<VeldbezettingAntwoordDto>($"api/planner/veldbezetting?datum={Uri.EscapeDataString(datum)}&status=true", cancellationToken);
 
     public Task<string> GetVeldbezettingHtmlAsync(string datum)
         => _t.GetTekstAsync($"api/planner/veldbezetting?datum={Uri.EscapeDataString(datum)}&format=html");

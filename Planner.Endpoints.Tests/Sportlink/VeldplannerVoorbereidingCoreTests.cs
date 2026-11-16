@@ -218,6 +218,16 @@ public class VeldplannerVoorbereidingCoreTests
     }
 
     [Fact]
+    public async Task Timer_LegeWedstrijdentabel_BereidtTochKomendeZaterdagenVoor()
+    {
+        var client = Client("V-1994", _ => Array.Empty<SportlinkVeldplannerBlok>());
+        await VeldplannerVoorbereidingCore.VoerTimerUitAsync(client.Object, () => "CLUB", "Rol", Naam("V-1994"),
+            (_, _, _) => Task.FromResult<IReadOnlyList<DateOnly>>(Array.Empty<DateOnly>()), new GeheugenStore(), NullLogger.Instance);
+        client.Verify(c => c.GetVeldplannerAsync(It.IsAny<string>(), "V-1994",
+            It.Is<DateOnly>(d => d.DayOfWeek == DayOfWeek.Saturday), It.IsAny<CancellationToken>()), Times.Exactly(4));
+    }
+
+    [Fact]
     public void Timer_HeeftEenVasteNaamEnTweeRunsPerDag()
     {
         VeldplannerVoorbereidingCore.FunctieNaam.Should().Be("SportlinkVeldplannerVoorbereiding");
