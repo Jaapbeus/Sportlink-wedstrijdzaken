@@ -6,29 +6,35 @@ namespace Planner.Shared.Email;
 public static class EmailPollVoorbereiding
 {
     public static Task<EmailVerwerkingsInstellingenLeesResultaat?> LeesInstellingenAsync(
-        Func<Task<bool>>? heeftOngelezenInboxBerichten,
+        Func<Task<int>>? telOngelezenInboxBerichten,
         Func<Task> wachtOpDatabase,
         Func<bool> instellingenLadenMislukt,
+        Func<Task> laadInstellingen,
         Func<Task<EmailVerwerkingsInstellingenLeesResultaat>> leesSnapshot,
-        ILogger log)
+        ILogger log,
+        Func<Exception, int, Task>? meldDatabaseVerbindingsFout = null,
+        Func<Task>? meldDatabaseHerstel = null)
     {
-        if (heeftOngelezenInboxBerichten is null)
+        if (telOngelezenInboxBerichten is null)
         {
             log.LogWarning("Graph-adapter niet beschikbaar; e-mailpoll overgeslagen");
             return Task.FromResult<EmailVerwerkingsInstellingenLeesResultaat?>(null);
         }
 
         return EmailTimerInstellingenGate.LeesNaInboxProbeAsync(
-            heeftOngelezenInboxBerichten,
+            telOngelezenInboxBerichten,
             wachtOpDatabase,
             async () =>
             {
+                await laadInstellingen();
                 if (instellingenLadenMislukt())
                     throw new InvalidOperationException("AppSettings niet beschikbaar");
                 return await leesSnapshot();
             },
             () => log.LogWarning("Inbox-metadata niet beschikbaar; e-mailpoll overgeslagen"),
             () => log.LogWarning("E-mailinstellingen niet beschikbaar; verwerking uit"),
-            status => log.LogInformation("Email processor uitgeschakeld voor deze club ({Status})", status));
+            status => log.LogInformation("Email processor uitgeschakeld voor deze club ({Status})", status),
+            meldDatabaseVerbindingsFout,
+            meldDatabaseHerstel);
     }
 }

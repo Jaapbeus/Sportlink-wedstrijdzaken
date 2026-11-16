@@ -21,9 +21,9 @@ public sealed class EmailGraphServiceCollection
 public class EmailGraphServiceTests
 {
     [Theory]
-    [InlineData(0, false)]
-    [InlineData(2, true)]
-    public async Task InboxMetadataProbe_LeestAlleenAantalEnGeenBerichten(int aantal, bool verwacht)
+    [InlineData(0)]
+    [InlineData(2)]
+    public async Task InboxMetadataProbe_LeestAlleenAantalEnGeenBerichten(int aantal)
     {
         using var mailbox = new GraphMailboxEnvironment();
         using var handler = new StubHandler(_ => Json(HttpStatusCode.OK,
@@ -31,7 +31,7 @@ public class EmailGraphServiceTests
         using var httpClient = new HttpClient(handler);
         var service = new EmailGraphService(new GraphServiceClient(httpClient), NullLogger<EmailGraphService>.Instance);
 
-        (await service.HeeftOngelezenInboxBerichtenAsync()).Should().Be(verwacht);
+        (await service.TelOngelezenInboxBerichtenAsync()).Should().Be(aantal);
 
         var request = handler.Requests.Should().ContainSingle().Which;
         request.Method.Should().Be(HttpMethod.Get);
@@ -48,7 +48,7 @@ public class EmailGraphServiceTests
         using var httpClient = new HttpClient(handler);
         var service = new EmailGraphService(new GraphServiceClient(httpClient), NullLogger<EmailGraphService>.Instance);
 
-        var act = () => service.HeeftOngelezenInboxBerichtenAsync();
+        var act = () => service.TelOngelezenInboxBerichtenAsync();
         await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
@@ -61,7 +61,7 @@ public class EmailGraphServiceTests
         using var httpClient = new HttpClient(handler);
         var service = new EmailGraphService(new GraphServiceClient(httpClient), NullLogger<EmailGraphService>.Instance);
 
-        var act = () => service.HeeftOngelezenInboxBerichtenAsync();
+        var act = () => service.TelOngelezenInboxBerichtenAsync();
         await act.Should().ThrowAsync<ApiException>();
         handler.Requests.Should().ContainSingle().Which.Uri.Should().NotContain("/messages");
     }

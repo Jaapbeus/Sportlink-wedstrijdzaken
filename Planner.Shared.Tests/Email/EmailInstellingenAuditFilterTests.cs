@@ -29,7 +29,8 @@ public sealed class EmailInstellingenAuditFilterTests
         if (rijAanwezig)
         {
             changes.Keys.Should().ContainSingle().Which.Should().Be("EmailReviewModusActief");
-            opgeslagen["EmailReviewModusActief"].Should().Be("True");
+            opgeslagen["EmailReviewModusActief"].Should().Be("1");
+            changes["EmailReviewModusActief"].Should().Be("0");
             opgeslagen["EmailReviewOntvanger"].Should().Be("trainer@voorbeeld.nl");
         }
         else
@@ -115,6 +116,8 @@ public sealed class EmailInstellingenAuditFilterTests
         EmailVerwerkingsInstellingenWijziging.VerwijderOngewijzigdeVelden(changes, opgeslagen);
 
         changes.Should().ContainSingle().Which.Key.Should().Be("EmailReviewModusActief");
+        opgeslagen["EmailReviewModusActief"].Should().Be("1");
+        changes["EmailReviewModusActief"].Should().Be("0");
         EmailInstellingenAdminCore.BevestigingAuditen(wijziging!).Should().BeTrue();
     }
 }

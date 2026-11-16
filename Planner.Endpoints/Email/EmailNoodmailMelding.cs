@@ -71,13 +71,13 @@ public static class EmailNoodmailMelding
     /// </summary>
     public static async Task BehandelDatabaseVerbindingsFoutAsync(
         Exception dbEx, IReplyGraph graph, int aantalOnverwerkt, INoodmailThrottlePoort throttle,
-        EmailNoodmailTeksten teksten, ILogger log)
+        EmailNoodmailTeksten teksten, ILogger log, string labelAantal = "Onverwerkte emails")
     {
         if (await throttle.LaatsteKeerVerstuurdAsync(DatabaseNoodmailSleutel) is null)
         {
             log.LogError(dbEx, "Database niet beschikbaar — stuur noodmail");
             await StuurDatabaseNoodmailAsync(
-                graph, aantalOnverwerkt, EmailFoutCategorie.Categoriseer(dbEx), throttle, teksten, log);
+                graph, aantalOnverwerkt, EmailFoutCategorie.Categoriseer(dbEx), throttle, teksten, log, labelAantal);
         }
         else
         {
@@ -91,12 +91,12 @@ public static class EmailNoodmailMelding
     /// </summary>
     public static async Task StuurDatabaseNoodmailAsync(
         IReplyGraph graph, int aantalEmails, string foutmelding, INoodmailThrottlePoort throttle,
-        EmailNoodmailTeksten teksten, ILogger log)
+        EmailNoodmailTeksten teksten, ILogger log, string labelAantal = "Onverwerkte emails")
     {
         var body = "URGENT: De database is niet bereikbaar.\n\n"
                  + $"Tijdstip: {NlTijd():dd-MM-yyyy HH:mm}\n"
                  + $"Foutmelding: {foutmelding}\n"
-                 + $"Onverwerkte emails: {aantalEmails}\n\n"
+                 + $"{labelAantal}: {aantalEmails}\n\n"
                  + "De email-processor is automatisch GEPAUZEERD. Er worden geen herhaalde meldingen verstuurd.\n"
                  + "De processor hervat automatisch zodra de database weer bereikbaar is.\n\n"
                  + "De emails blijven ongelezen in de inbox en worden automatisch verwerkt zodra de database weer beschikbaar is.\n\n"

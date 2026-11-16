@@ -47,13 +47,17 @@ public partial class EmailProcessorFunction
         // De metadata-check raakt geen berichtinhoud of database. Alleen werk in de inbox
         // wekt de database; vóór volledige Graph-ophaal/AI/mutaties is één verse clubsnapshot vereist.
         var graphService = context.InstanceServices.GetService<IEmailGraphService>();
+        var noodmail = graphService is null ? null : EmailPollNoodmailCallbacksFactory.Maak(
+            graphService, context.InstanceServices.GetRequiredService<INoodmailThrottleStore>(), EmailVerwerkerPoort.Teksten,
+            log, "Ongelezen inboxitems (metadata)");
         var instellingen = await EmailPollVoorbereiding.LeesInstellingenAsync(
-            graphService is null ? null : graphService.HeeftOngelezenInboxBerichtenAsync,
-            () => PostgresSystemUtilities.WaitForDatabaseAsync(log),
+            graphService is null ? null : graphService.TelOngelezenInboxBerichtenAsync,
+            () => PostgresSystemUtilities.WaitForDatabaseConnectionAsync(log),
             () => PostgresAppSettings.LastLoadFailed,
+            () => PostgresAppSettings.LoadSettingsAsync(log),
             () => EmailVerwerkingsInstellingenOpslag.LeesAsync(
                 PostgresDatabaseConfig.ConnectionString, PostgresClubScope.Primary, log),
-            log);
+            log, noodmail?.BijVerbindingsfout, noodmail?.BijHerstel);
         if (graphService is null || instellingen is null) return;
 
         var poort = new EmailVerwerkerPoort(

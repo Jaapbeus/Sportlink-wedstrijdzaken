@@ -14,7 +14,7 @@ public sealed class EmailTimerInstellingenGateTests
     {
         var calls = new List<string>();
         var result = await EmailTimerInstellingenGate.LeesNaInboxProbeAsync(
-            () => { calls.Add("probe"); return Task.FromResult(false); },
+            () => { calls.Add("probe"); return Task.FromResult(0); },
             () => { calls.Add("wake"); return Task.CompletedTask; },
             () => { calls.Add("snapshot"); return Task.FromResult(Snapshot(true)); },
             () => calls.Add("probe-fout"), () => calls.Add("lees-fout"),
@@ -44,7 +44,7 @@ public sealed class EmailTimerInstellingenGateTests
     {
         var calls = new List<string>();
         var result = await EmailTimerInstellingenGate.LeesNaInboxProbeAsync(
-            () => { calls.Add("probe"); return Task.FromResult(true); },
+            () => { calls.Add("probe"); return Task.FromResult(1); },
             () => { calls.Add("wake"); return Task.CompletedTask; },
             () => { calls.Add("snapshot"); return Task.FromResult(Snapshot(true)); },
             () => calls.Add("probe-fout"), () => calls.Add("lees-fout"),
@@ -59,7 +59,7 @@ public sealed class EmailTimerInstellingenGateTests
     {
         var calls = new List<string>();
         var result = await EmailTimerInstellingenGate.LeesNaInboxProbeAsync(
-            () => { calls.Add("probe"); return Task.FromResult(true); },
+            () => { calls.Add("probe"); return Task.FromResult(1); },
             () => { calls.Add("wake"); throw new InvalidOperationException(); },
             () => { calls.Add("snapshot"); return Task.FromResult(Snapshot(true)); },
             () => calls.Add("probe-fout"), () => calls.Add("lees-fout"),
@@ -78,7 +78,7 @@ public sealed class EmailTimerInstellingenGateTests
         var snapshot = status == EmailVerwerkingsInstellingenLeesStatus.Onleesbaar
             ? EmailVerwerkingsInstellingenLezer.LeesVeilig(null, false) : Snapshot(processing);
         var result = await EmailTimerInstellingenGate.LeesNaInboxProbeAsync(
-            () => { calls.Add("probe"); return Task.FromResult(true); },
+            () => { calls.Add("probe"); return Task.FromResult(1); },
             () => { calls.Add("wake"); return Task.CompletedTask; },
             () => { calls.Add("snapshot"); return Task.FromResult(snapshot); },
             () => calls.Add("probe-fout"), () => calls.Add("lees-fout"),

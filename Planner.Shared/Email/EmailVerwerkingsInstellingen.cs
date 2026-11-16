@@ -255,7 +255,7 @@ public static class EmailVerwerkingsInstellingenWijziging
 
     /// <summary>Laat alleen werkelijk veranderde e-mailkolommen over na de vergrendelde ruwe DB-lezing.</summary>
     public static void VerwijderOngewijzigdeVelden(
-        IDictionary<string, string?> changes, IReadOnlyDictionary<string, string?> opgeslagen)
+        IDictionary<string, string?> changes, IDictionary<string, string?> opgeslagen)
     {
         foreach (var veld in new[] { "EmailVerwerkingIngeschakeld", "EmailReviewModusActief", "EmailReviewOntvanger" })
         {
@@ -266,6 +266,18 @@ public static class EmailVerwerkingsInstellingenWijziging
                 : ProbeerSchakelaar(oud, out var oudeWaarde)
                     && ProbeerSchakelaar(nieuw, out var nieuweWaarde) && oudeWaarde == nieuweWaarde;
             if (gelijk) changes.Remove(veld);
+        }
+
+        // Canonicalize only booleans that remain actual changes, so persisted audit old/new values
+        // use the same 0/1 representation regardless of the provider's raw bool formatting.
+        foreach (var veld in new[] { "EmailVerwerkingIngeschakeld", "EmailReviewModusActief" })
+        {
+            if (!changes.ContainsKey(veld) || !opgeslagen.TryGetValue(veld, out var oud)
+                || !ProbeerSchakelaar(oud, out var oudeWaarde)
+                || !changes.TryGetValue(veld, out var nieuw) || !ProbeerSchakelaar(nieuw, out var nieuweWaarde))
+                continue;
+            opgeslagen[veld] = oudeWaarde ? "1" : "0";
+            changes[veld] = nieuweWaarde ? "1" : "0";
         }
     }
 
@@ -358,22 +370,33 @@ public static class EmailTimerInstellingenGate
 {
     /// <summary>Een metadata-check houdt een lege inbox weg van de database; fouten stoppen veilig.</summary>
     public static async Task<EmailVerwerkingsInstellingenLeesResultaat?> LeesNaInboxProbeAsync(
-        Func<Task<bool>> heeftOngelezenInboxBerichten, Func<Task> wachtOpDatabase,
+        Func<Task<int>> telOngelezenInboxBerichten, Func<Task> wachtOpDatabase,
         Func<Task<EmailVerwerkingsInstellingenLeesResultaat>> leesSnapshot,
         Action meldProbeFout, Action meldLeesfout,
-        Action<EmailVerwerkingsInstellingenLeesStatus> meldUitgeschakeld)
+        Action<EmailVerwerkingsInstellingenLeesStatus> meldUitgeschakeld,
+        Func<Exception, int, Task>? meldDatabaseVerbindingsFout = null,
+        Func<Task>? meldDatabaseHerstel = null)
     {
-        bool heeftWerk;
-        try { heeftWerk = await heeftOngelezenInboxBerichten(); }
+        int ongelezenAantal;
+        try { ongelezenAantal = await telOngelezenInboxBerichten(); }
         catch (Exception)
         {
             meldProbeFout();
             return null;
         }
-        if (!heeftWerk) return null;
+        if (ongelezenAantal < 1) return null;
+        try { await wachtOpDatabase(); }
+        catch (Exception ex)
+        {
+            if (ex is Planner.Shared.Monitoring.DatabaseVerbindingOnbeschikbaarException
+                && meldDatabaseVerbindingsFout is not null)
+                await meldDatabaseVerbindingsFout(ex, ongelezenAantal);
+            meldLeesfout();
+            return null;
+        }
+        if (meldDatabaseHerstel is not null) await meldDatabaseHerstel();
         return await LeesVoorVerwerkingAsync(async () =>
         {
-            await wachtOpDatabase();
             return await leesSnapshot();
         }, meldLeesfout, meldUitgeschakeld);
     }

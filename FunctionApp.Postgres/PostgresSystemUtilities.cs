@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Planner.Shared.Monitoring;
 
 namespace FunctionApp.Postgres;
 
@@ -45,6 +46,15 @@ public static class PostgresSystemUtilities
 
         throw new Exception("Unable to establish a database connection after multiple attempts.");
     }
+
+    /// <summary>Wekt Postgres zonder instellingen of schema te laden.</summary>
+    public static Task WaitForDatabaseConnectionAsync(ILogger log) => DatabaseVerbindingsWacht.WachtAsync(
+        async () =>
+        {
+            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
+            await connection.OpenAsync();
+            LogTlsWarningOnce(log);
+        }, GetConfiguredInt("DbWaitMaxRetries", 5), GetConfiguredInt("DbWaitDelayMs", 3000), log);
 
     private static void LogTlsWarningOnce(ILogger log)
     {

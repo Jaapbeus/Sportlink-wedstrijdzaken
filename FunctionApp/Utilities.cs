@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using Microsoft.Data.SqlClient;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Planner.Shared.Monitoring;
 using SportlinkFunction.Planner;
 
 namespace SportlinkFunction
@@ -319,6 +320,14 @@ namespace SportlinkFunction
                 throw new Exception("Unable to establish a database connection after multiple attempts.");
             }
         }
+
+        /// <summary>Wekt SQL Server zonder de instellingen-/schemalaadfout als verbindingsuitval te classificeren.</summary>
+        public static Task WaitForDatabaseConnectionAsync(ILogger log) => DatabaseVerbindingsWacht.WachtAsync(
+            async () =>
+            {
+                using var connection = new SqlConnection(DatabaseConfig.ConnectionString);
+                await connection.OpenAsync();
+            }, MaxDatabaseConnectRetries, DatabaseConnectRetryDelayMs, log);
 
         public static class SeasonHelper
         {

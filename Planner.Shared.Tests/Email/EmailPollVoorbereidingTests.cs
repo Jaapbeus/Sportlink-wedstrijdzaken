@@ -17,9 +17,10 @@ public sealed class EmailPollVoorbereidingTests
     {
         var calls = new List<string>();
         var result = await EmailPollVoorbereiding.LeesInstellingenAsync(
-            graphBeschikbaar ? () => { calls.Add("probe"); return Task.FromResult(false); } : null,
+            graphBeschikbaar ? () => { calls.Add("probe"); return Task.FromResult(0); } : null,
             () => { calls.Add("wake"); return Task.CompletedTask; },
             () => { calls.Add("cache"); return false; },
+            () => { calls.Add("load"); return Task.CompletedTask; },
             () => { calls.Add("snapshot"); return Task.FromResult(Snapshot()); },
             NullLogger.Instance);
 
@@ -34,13 +35,14 @@ public sealed class EmailPollVoorbereidingTests
     {
         var calls = new List<string>();
         var result = await EmailPollVoorbereiding.LeesInstellingenAsync(
-            () => { calls.Add("probe"); return Task.FromResult(true); },
+            () => { calls.Add("probe"); return Task.FromResult(2); },
             () => { calls.Add("wake"); return Task.CompletedTask; },
             () => { calls.Add("cache"); return ladenMislukt; },
+            () => { calls.Add("load"); return Task.CompletedTask; },
             () => { calls.Add("snapshot"); return Task.FromResult(Snapshot()); },
             NullLogger.Instance);
 
-        calls.Should().Equal(ladenMislukt ? ["probe", "wake", "cache"] : ["probe", "wake", "cache", "snapshot"]);
+        calls.Should().Equal(ladenMislukt ? ["probe", "wake", "load", "cache"] : ["probe", "wake", "load", "cache", "snapshot"]);
         if (ladenMislukt) result.Should().BeNull();
         else result.Should().Be(Snapshot());
     }
@@ -59,9 +61,10 @@ public sealed class EmailPollVoorbereidingTests
             return Task.FromResult(waarde);
         }
         var result = await EmailPollVoorbereiding.LeesInstellingenAsync(
-            () => Stap("probe", true),
+            () => Stap("probe", 2),
             async () => { await Stap("wake", true); },
             () => false,
+            () => Stap("load", true),
             () => Stap("snapshot", Snapshot()),
             NullLogger.Instance);
 
@@ -70,7 +73,7 @@ public sealed class EmailPollVoorbereidingTests
         {
             "probe" => ["probe"],
             "wake" => ["probe", "wake"],
-            _ => ["probe", "wake", "snapshot"]
+            _ => ["probe", "wake", "load", "snapshot"]
         });
     }
 
@@ -78,7 +81,8 @@ public sealed class EmailPollVoorbereidingTests
     public async Task UitgeschakeldeVerseSnapshot_LaatVerwerkingNietDoor()
     {
         var result = await EmailPollVoorbereiding.LeesInstellingenAsync(
-            () => Task.FromResult(true), () => Task.CompletedTask, () => false,
+            () => Task.FromResult(1), () => Task.CompletedTask, () => false,
+            () => Task.CompletedTask,
             () => Task.FromResult(Snapshot(false)), NullLogger.Instance);
 
         result.Should().BeNull();

@@ -24,7 +24,7 @@ namespace FunctionApp.Postgres.Email;
 public interface IEmailGraphService : IReplyGraph
 {
     /// <summary>Leest alleen het aantal ongelezen inboxitems vóór de databasepoort.</summary>
-    Task<bool> HeeftOngelezenInboxBerichtenAsync();
+    Task<int> TelOngelezenInboxBerichtenAsync();
     /// <summary>Haalt maximaal 10 ongelezen emails op uit de inbox van de coördinator-mailbox.</summary>
     Task<List<InkomendBericht>> GetUnreadEmailsAsync();
 
@@ -66,9 +66,12 @@ public sealed class EmailGraphService : IEmailGraphService
     }
 
     /// <summary>Alleen inbox-metadata; geen bericht of bericht-ID ophalen vóór de databasepoort.</summary>
-    public async Task<bool> HeeftOngelezenInboxBerichtenAsync() =>
-        EmailInboxMetadata.HeeftWerk((await _graphClient.Users[_mailbox].MailFolders["inbox"]
-            .GetAsync(config => config.QueryParameters.Select = ["unreadItemCount"]))?.UnreadItemCount);
+    public async Task<int> TelOngelezenInboxBerichtenAsync()
+    {
+        var inboxMetadata = await _graphClient.Users[_mailbox].MailFolders["inbox"]
+            .GetAsync(config => config.QueryParameters.Select = ["unreadItemCount"]);
+        return EmailInboxMetadata.LeesOngelezenAantal(inboxMetadata?.UnreadItemCount);
+    }
 
     public async Task<List<InkomendBericht>> GetUnreadEmailsAsync()
     {
