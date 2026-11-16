@@ -966,11 +966,16 @@ App-authenticatie niet. Lokale eigen hookpatronen blijven behouden bij een templ
 
 `bash scripts/ci/check-security-patterns.test.sh` gebruikt uitsluitend synthetische patronen.
 De placeholdertest bewijst eerst een treffer in een getrackt bestand en daarna de uitsluiting.
-`REQUIRE_CLUB_EXTRA_PATTERNS=true` maakt actieve privéconfiguratie verplicht; de workflow zet
-dit voor pushes in een basisrepository. Ontbrekende configuratie blokkeert dan met exit 2.
-Lokaal en bij forks blijft een ontbrekende optionele configuratie een expliciete overslag.
-Een ontbrekend secret bij een botrun is geen automatische vrijstelling: de eigenaar moet de
-beschikbaarheid veilig regelen. CRLF-regels worden vóór patroonverwerking genormaliseerd.
+`REQUIRE_CLUB_EXTRA_PATTERNS=true` maakt actieve privéconfiguratie verplicht. De Security Scan zet
+dit alleen bij een niet-fork `push` naar `refs/heads/main`; deze controle vindt dus na de merge
+plaats en beschermt de PR niet vooraf. Ontbrekende configuratie of een ongeldig patroon maakt de
+Security Gate op `main` rood. De deployworkflow voert dezelfde private scan bovendien uit in de
+voorafgaande `deploy-ref-guard` op niet-fork `main`, ook bij een handmatige dispatch. Daardoor
+beginnen build, migratie en deployment pas nadat de scan is geslaagd. Voor alle andere Security
+Scan-events wordt de private controle expliciet als niet van toepassing gemeld. De algemene
+structurele infrastructuurcontrole en overige Security Scan-jobs blijven actief. Lokaal blijft
+ontbrekende optionele configuratie een expliciete overslag. CRLF-regels worden vóór
+patroonverwerking genormaliseerd.
 Scanneruitvoer bevat uitsluitend klasse/aantal of een vaste foutmelding, nooit vindplaatsen.
 
 `node .github/scripts/issue-status.test.js` controleert ook dat een mislukte permissie-aanroep

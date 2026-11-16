@@ -220,11 +220,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Scan op Azure resource namen en infrastructuuridentifiers
-        env:
-          # Basisrepository-pushes vereisen privéconfiguratie; forks mogen expliciet overslaan.
-          # Regexes blijven uitsluitend in het secret en de scanneromgeving.
-          CLUB_EXTRA_PATTERNS: ${{ secrets.CLUB_EXTRA_PATTERNS || '' }}
-          REQUIRE_CLUB_EXTRA_PATTERNS: ${{ github.event_name == 'push' && !github.event.repository.fork }}
         run: |
           set -euo pipefail
           FOUND=0
@@ -244,14 +239,42 @@ jobs:
           }
 
           run_check infra-structural
-          run_check infra-private
 
           if [ "$FOUND" -eq 1 ]; then
             echo "::error::Security pattern scan detected findings; public output intentionally omits matched data and locations."
             echo "::error::Zie SECURITY.md § 'GitHub issues, PR's en comments'."
             exit 1
           fi
-          echo "✅ Shared infrastructure pattern scans completed."
+          echo "✅ Structural infrastructure pattern scan completed."
+
+      - name: Scan private infrastructure patterns on production pushes
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.fork == false
+        env:
+          # Alleen de productiebranch krijgt de private configuratie. Deze check faalt
+          # gesloten als de vereiste secret ontbreekt of een ongeldig patroon bevat.
+          CLUB_EXTRA_PATTERNS: ${{ secrets.CLUB_EXTRA_PATTERNS || '' }}
+          REQUIRE_CLUB_EXTRA_PATTERNS: 'true'
+        run: |
+          set -euo pipefail
+          if /bin/bash scripts/ci/check-security-patterns.sh infra-private; then
+            echo "✅ Production private infrastructure pattern scan completed."
+            exit 0
+          else
+            status=$?
+          fi
+
+          if [ "$status" -eq 1 ]; then
+            echo "::error::Security pattern scan detected findings; public output intentionally omits matched data and locations."
+            echo "::error::Zie SECURITY.md § 'GitHub issues, PR's en comments'."
+          else
+            echo "::error::Production private infrastructure pattern scan could not complete."
+          fi
+          exit 1
+
+      - name: Report private production scan as not applicable
+        if: github.event_name != 'push' || github.ref != 'refs/heads/main' || github.event.repository.fork == true
+        run: |
+          echo "Private production-only infrastructure pattern scan: not applicable for this event; structural infrastructure scan remains active."
 
   # ── 4. Dependency vulnerability scan (Trivy) ───────────────────────────────
   #

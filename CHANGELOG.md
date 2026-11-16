@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Fixed
+- Private infrastructuurpatronen worden alleen bij een push naar `main` in de basisrepository gecontroleerd; dit gebeurt na de merge en beschermt de PR niet vooraf. De deployworkflow controleert dezelfde patronen vóór build, migratie en deployment, ook bij een handmatige productiestart. Algemene securityscans blijven op alle bestaande events actief. Negatieve workflowmutaties bewaken deze koppeling en ontbrekende of ongeldige privéconfiguratie blokkeert de productiecontrole (#1980).
+
 ## [3.19.0.0] — 2026-11-15
 
 - **Speeltijden met aantal helften; 35+ en VR30+ met hun eigen speeltijd** (#1962). Op Instellingen > Speeltijden kiest u 1 of 2 helften; het totaal wordt berekend als helften × helft + rust, zonder buffer (de buffer stelt u in bij Veld optimalisatie). De senioren gaan daardoor van 115 naar 105 minuten. De KNVB-categorieën 35+ en VR30+ (1 × 20 minuten, geen rust, half veld, standaardtijd 20:00) worden toegevoegd voor elke club die al speeltijden heeft (de democlub krijgt ze via zijn kopie), en een team als `35+1` of `VR30+1` krijgt die speeltijd in de optimalisatie. Schemawijziging op beide databasetiers (Postgres-migratie 054, SQL Server `dbo.Speeltijden.WedstrijdHelften`); `wedstrijdHelften` in de speeltijden-API.
