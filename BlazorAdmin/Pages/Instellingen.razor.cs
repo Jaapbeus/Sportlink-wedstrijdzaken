@@ -396,6 +396,7 @@ public partial class Instellingen : ClubSelectorPageBase
                 ["AccommodatieLongitude"] = s.AccommodatieLongitude?.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 ["HerplanDeadlineDagen"] = s.HerplanDeadlineDagen?.ToString(),
                 ["BufferMinuten"] = s.BufferMinuten?.ToString(),
+                ["OptimalisatieAanvang"] = s.OptimalisatieAanvang,
                 ["PlannerAfzenderNaam"] = s.PlannerAfzenderNaam,
                 ["PlannerEmailAdres"] = s.PlannerEmailAdres,
                 ["CoordinatorNaam"] = s.CoordinatorNaam,

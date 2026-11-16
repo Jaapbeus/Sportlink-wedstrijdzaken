@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Database.Postgres.Tests;
 using Npgsql;
 using FunctionApp.Postgres.Admin;
+using FunctionApp.Postgres.Planner;
 using Xunit;
 
 namespace FunctionApp.Postgres.Tests;
@@ -11,6 +12,50 @@ public class AdminSettingsFieldContractTests
     [Fact]
     public void Postgres_AllowsSportlinkDryRunForSettingsUpdates()
         => AdminSettingsFunction.AllowedFields.Should().Contain("SportlinkDryRun");
+
+    [Fact]
+    public void Postgres_AllowsClubOptimalisatieAanvangForSettingsUpdates()
+        => AdminSettingsFunction.AllowedFields.Should().Contain("OptimalisatieAanvang");
+
+    [PostgresFact]
+    public async Task Postgres_OptimalisatieAanvangIsNullableAndClubScoped()
+    {
+        var clubA = "starta" + Guid.NewGuid().ToString("N")[..8];
+        var clubB = "startb" + Guid.NewGuid().ToString("N")[..8];
+        await using var connection = new NpgsqlConnection(PostgresTestEnvironment.ConnectionStringOrNull!);
+        await connection.OpenAsync();
+        try
+        {
+            await using (var insert = new NpgsqlCommand(@"
+                INSERT INTO public.appsettings (clubcode, seasonstartmonth, syncenabled, optimalisatieaanvang)
+                VALUES (@a, 7, FALSE, '08:00'), (@b, 7, FALSE, NULL)", connection))
+            {
+                insert.Parameters.AddWithValue("a", clubA);
+                insert.Parameters.AddWithValue("b", clubB);
+                await insert.ExecuteNonQueryAsync();
+            }
+
+            (await PlannerSettingsRepository.GetOptimalisatieAanvangAsync(
+                PostgresTestEnvironment.ConnectionStringOrNull!, clubA)).Should().Be(new TimeOnly(8, 0));
+            (await PlannerSettingsRepository.GetOptimalisatieAanvangAsync(
+                PostgresTestEnvironment.ConnectionStringOrNull!, clubB)).Should().BeNull();
+
+            await AdminSettingsFunction.ApplyChangesAsync(connection,
+                new Dictionary<string, string?> { ["OptimalisatieAanvang"] = null },
+                "test", clubA, new DateOnly(2026, 11, 10));
+            (await PlannerSettingsRepository.GetOptimalisatieAanvangAsync(
+                PostgresTestEnvironment.ConnectionStringOrNull!, clubA)).Should().BeNull();
+        }
+        finally
+        {
+            await using var cleanup = new NpgsqlCommand(@"
+                DELETE FROM public.appsettingsaudit WHERE clubcode IN (@a, @b);
+                DELETE FROM public.appsettings WHERE clubcode IN (@a, @b)", connection);
+            cleanup.Parameters.AddWithValue("a", clubA);
+            cleanup.Parameters.AddWithValue("b", clubB);
+            await cleanup.ExecuteNonQueryAsync();
+        }
+    }
 
     [PostgresFact]
     public async Task Postgres_FetchScheduleRestartFlagUsesStoredValueWhileOtherSettingsPersist()

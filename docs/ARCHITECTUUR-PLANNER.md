@@ -621,11 +621,15 @@ het in Sportlink staat (WZ-ADR-013, §8.8); de optimalisatie stelt voor hoe het 
 | Duur van een wedstrijd | **Speeltijden** (WZ Instellingen → Speeltijden): helften × helftduur + rust |
 | Buffer tussen wedstrijden | Het veld **Buffer (min)** op de pagina, altijd, voor elke wedstrijd |
 | Teambuffers en voorkeursveld | Teamregels (`BufferVoor`, `BufferNa`, `VoorkeurVeld`), altijd |
-| Streeftijd | Voorkeurstijden van het team, anders de standaardtijd van de leeftijdscategorie |
+| Streeftijd | Clubbrede `OptimalisatieAanvang`, daarna teamregel of teamvoorkeur; als de clubtijd leeg is, blijft de standaardtijd van de leeftijdscategorie de terugval (#1979) |
 | Velden en openingstijden | WZ Instellingen → Velden en de veldbeschikbaarheid |
 
 Sportlinks speelduur, de "+ 15" van de Sportlink-veldplanner en de veldplanner-overlay worden in de
 optimalisatie **niet** gebruikt. De speeltijd bevat geen buffer; de buffer staat alleen op de pagina.
+
+`OptimalisatieAanvang` is één optionele starttijd per club. Een teamvoorkeur later dan deze tijd blijft
+het doel; een eerdere voorkeur wordt tot deze tijd begrensd. Zonder clubtijd blijven de bestaande
+standaardtijden per categorie gelden. De reguliere Planning en directe Sportlink-planning gebruiken de instelling niet.
 
 **Volgorde.** Harde grenzen gaan voor: veldbeschikbaarheid, paginabuffer, `BufferVoor`/`BufferNa` en
 geen team dubbel geboekt. Daarna bepaalt de rangorde hierboven de streeftijd (laag 0 teamregel, laag 1

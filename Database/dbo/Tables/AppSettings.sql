@@ -6,6 +6,8 @@
 	[SportlinkApiUrl]		NVARCHAR(100)	NOT NULL,
 	[SportlinkClientId]		NVARCHAR(50)	NOT NULL,
 	[SeasonStartMonth]		[int]			NOT NULL,
+	-- #1979: clubbrede starttijd voor de veldoptimalisatie; leeg behoudt categorie-standaardtijden.
+	[OptimalisatieAanvang]	TIME			NULL,
 	[Accommodatie]			NVARCHAR(200)	NULL,
 	[LastSyncTimestamp]		DATETIME2		NULL,
 	[FetchSchedule]			NVARCHAR(50)	NOT NULL DEFAULT '0 0 4 * * *',

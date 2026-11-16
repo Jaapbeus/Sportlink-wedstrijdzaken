@@ -615,6 +615,15 @@ kloppen. Besluiten en meetwaarden: `docs/DOSSIER-SPEELTIJDEN-INLINE-FORMULIER.md
   een scenario ook rood kan worden, draai de suite dan tegen een build van vóór de fix (eigen tijdelijke worktree
   + eigen poort) — zie dossier §4.5.
 
+## Browsercheck clubbrede optimalisatie-aanvang (#1979)
+
+`scripts/dev/browsercheck-optimalisatie-aanvang.mjs` controleert op App instellingen dat de opgeslagen
+clubtijd wordt geladen, onafgemaakte invoer bij herladen vervalt, opslaan `HH:mm` verstuurt en wissen
+`null` opslaat. Draai tegen een eigen Development-BlazorAdmin-instantie en een lokale mock-API; het
+script blokkeert niet-lokaal netwerkverkeer en schrijft de screenshot naar de huidige werkmap.
+Als de geïnstalleerde Playwright-versie een andere Chromium verwacht, kan
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE` naar een al aanwezige headless Chromium wijzen.
+
 ## Database.Postgres.Tests — integratietests, env-gestuurd (#866)
 
 De integratietests in `Database.Postgres.Tests` (`PostgresMergeOrchestratorIntegrationTests`,

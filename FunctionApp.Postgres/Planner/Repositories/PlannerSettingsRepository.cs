@@ -58,6 +58,25 @@ internal static class PlannerSettingsRepository
         return await GetSpeeltijdenLookupAsync(conn, null, clubCode);
     }
 
+    /// <summary>Leest de starttijd uitsluitend uit AppSettings van de opgevraagde club (#1979).</summary>
+    internal static async Task<TimeOnly?> GetOptimalisatieAanvangAsync(
+        string connectionString, string clubCode)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            "SELECT optimalisatieaanvang FROM public.appsettings WHERE clubcode = @clubcode", conn);
+        cmd.Parameters.AddWithValue("clubcode", clubCode);
+        var waarde = await cmd.ExecuteScalarAsync();
+        return waarde switch
+        {
+            null or DBNull => null,
+            TimeOnly tijd => tijd,
+            TimeSpan span => TimeOnly.FromTimeSpan(span),
+            _ => TimeOnly.Parse(waarde.ToString()!, System.Globalization.CultureInfo.InvariantCulture)
+        };
+    }
+
     /// <summary>
     /// #1911: leesproef voor <c>/api/health</c> — leest de speeltijden-lookup van één club met dezelfde code als de
     /// Planning, bij voorkeur een club met een ingevulde voorkeurstijd (juist die loopt door de <c>time</c>-typemapping).

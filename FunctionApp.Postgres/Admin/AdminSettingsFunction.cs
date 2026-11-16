@@ -58,7 +58,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth"
+        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth", "OptimalisatieAanvang"
     };
 
     /// <summary>
@@ -82,6 +82,7 @@ public static class AdminSettingsFunction
         ["PdfExportIngeschakeld"] = "::boolean",
         ["ZekerheidspoortActief"] = "::boolean",
         ["SeasonStartMonth"] = "::integer",
+        ["OptimalisatieAanvang"] = "::time",
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -131,6 +132,7 @@ public static class AdminSettingsFunction
                         sportlinkspelactiviteit AS ""SportlinkSpelactiviteit"",
                         pdfexportingeschakeld AS ""PdfExportIngeschakeld"",
                         zekerheidspoortactief AS ""ZekerheidspoortActief"",
+                        to_char(optimalisatieaanvang, 'HH24:MI') AS ""OptimalisatieAanvang"",
                         {extensieKolom} AS ""SportlinkExtensionEnabled"",
                         {dryRunKolom} AS ""SportlinkDryRun""
                     FROM public.appsettings
@@ -256,7 +258,8 @@ public static class AdminSettingsFunction
                     log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", LogWaarde.Schoon(key));
                     continue;
                 }
-                changes[key] = value;
+                changes[key] = key.Equals("OptimalisatieAanvang", StringComparison.OrdinalIgnoreCase)
+                    && string.IsNullOrWhiteSpace(value) ? null : value;
             }
         }
 

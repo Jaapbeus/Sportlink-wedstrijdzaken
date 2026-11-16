@@ -105,7 +105,7 @@ verwerking plaats.
 | `GET` | `/beheer/health` | **Admin** | Gedetailleerde healthinformatie voor diagnose; via `AdminEndpoint.ExecuteZonderDatabaseAsync` |
 | `GET` | `/postgres/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **Postgres-tier (productie)**. Alleen de vastgelegde Sportlink-dataservice mag als bron zijn ingesteld; een andere basis-URL stopt de sync vóór uitgaand verkeer (`207`, fase `configuratie`). Antwoordt `200`, `207` (deelstappen mislukt, `lastsynctimestamp` niet bijgewerkt), `409` (andere sync actief) of `500`. Bestaat niet op de SQL Server-tier |
 | `GET` | `/sync-matches` | **Admin** | Handmatige Sportlink-synchronisatie — **SQL Server-tier**, dezelfde basis-URL-regel en parameters (`reset`, `season`). Antwoordt `200`, `207` (deelstappen mislukt, `LastSyncTimestamp` niet bijgewerkt, #1779), `409` (andere sync actief) of `500`. Bestaat niet op de Postgres-tier |
-| `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar en de seizoensstartmaand `SeasonStartMonth` 1–12 per club; wijzigen bouwt de seizoenen van die club opnieuw op). `FetchSchedule` in een PUT moet een niet-lege, uitvoerbare zesvelden-CRON van maximaal 50 tekens zijn; anders 400 zonder de invoer in de foutmelding. Een weggelaten veld blijft ongewijzigd |
+| `GET/PUT` | `/beheer/settings` | **Admin** | Club-instellingen ophalen/opslaan (incl. Sportlink Web Extension-schakelaar, seizoensstartmaand `SeasonStartMonth` 1–12 per club en `OptimalisatieAanvang` als nullable clubbrede starttijd voor veldoptimalisatie). De optimizer gebruikt deze tijd als basis, houdt latere teamvoorkeuren aan en valt bij leeg terug op de bestaande standaardtijden per leeftijdscategorie (#1979). `FetchSchedule` in een PUT moet een niet-lege, uitvoerbare zesvelden-CRON van maximaal 50 tekens zijn; anders 400 zonder de invoer in de foutmelding. Een weggelaten veld blijft ongewijzigd |
 | `GET` | `/beheer/geocode` | **Admin** | Adres → GPS-coördinaten opzoeken voor de accommodatie-instelling |
 | `GET` | `/beheer/sync/status` | **Admin** | Status van de laatste Sportlink-synchronisatie, plus optioneel `?jobId=` voor een specifieke sync-job (#1138) |
 | `POST` | `/beheer/sync/trigger` | **Admin** | Synchronisatie starten via een Storage Queue-job (#1138) — geeft direct een `jobId` terug, geen fire-and-forget meer. Optionele body `{"reset":true,"season":2025}` haalt het hele seizoen opnieuw op vanaf de seizoensstart (#1352); ongeldig seizoen of een seizoen zonder seizoensrij → 400 (#1461) |
@@ -913,6 +913,11 @@ Per wedstrijd wordt de streeftijd bepaald in deze vaste volgorde:
 
 Binnen elke laag beslist `Prioriteit` oplopend (**laag getal = belangrijker**) welk team zijn plek als
 eerste claimt. `BufferVoor`/`BufferNa` zijn geen laag maar gelden altijd.
+
+`OptimalisatieAanvang` is één optionele starttijd voor de hele club, ingesteld op App instellingen.
+Die tijd wordt de basis voor wedstrijden zonder latere teamvoorkeur en begrenst eerdere teamvoorkeuren;
+een latere teamvoorkeur blijft het doel. Leeg laat de bestaande standaardtijd per leeftijdscategorie
+gelden. De reguliere Planning en directe Sportlink-planning gebruiken deze instelling niet.
 
 ### Antwoord — JSON (200)
 
