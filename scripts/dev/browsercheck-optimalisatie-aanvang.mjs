@@ -1,7 +1,8 @@
 // #1979 browsercontrole voor de clubbrede starttijd op App instellingen.
 // Draait tegen een eigen Development-BlazorAdmin-instantie; alle API-verzoeken naar :7094 zijn mocks.
 // Extern verkeer wordt afgebroken. Playwright wordt vanaf de huidige werkmap geladen.
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -17,6 +18,12 @@ async function laadPlaywright() {
 
 const { chromium } = await laadPlaywright();
 const base = process.env.BLAZOR_URL || 'http://localhost:15079';
+const baseUrl = new URL(base);
+if (!['localhost', '127.0.0.1'].includes(baseUrl.hostname))
+  throw new Error('BLAZOR_URL moet naar de eigen lokale Blazor-instantie wijzen.');
+const artifactDir = process.env.BROWSER_ARTIFACT_DIR || path.join(os.tmpdir(), 'sportlink-1979-browsercheck');
+if (!path.isAbsolute(artifactDir)) throw new Error('BROWSER_ARTIFACT_DIR moet een absoluut pad zijn.');
+mkdirSync(artifactDir, { recursive: true });
 const state = { start: '08:00', updates: [] };
 const errors = [];
 const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined });
@@ -30,9 +37,9 @@ await page.route('**/*', async route => {
   if (url.port !== '7094') return route.continue();
   const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
   const path = url.pathname;
-  if (path === '/api/beheer/clubs') return json([{ ClubCode: 'TEST', ClubName: 'Testclub', SyncEnabled: false }]);
+  if (path === '/api/beheer/clubs') return json([{ ClubCode: 'TEST', ClubName: 'Synthetische testclub', SyncEnabled: false }]);
   if (path === '/api/beheer/settings' && route.request().method() === 'GET')
-    return json({ ClubName: 'Testclub', ClubCode: 'TEST', SeasonStartMonth: 7, OptimalisatieAanvang: state.start });
+    return json({ ClubName: 'Synthetische testclub', ClubCode: 'TEST', SeasonStartMonth: 7, OptimalisatieAanvang: state.start });
   if (path === '/api/beheer/settings' && route.request().method() === 'PUT') {
     const request = route.request().postDataJSON();
     const fields = request.Velden ?? request.velden ?? {};
@@ -81,7 +88,7 @@ try {
   check(await page.getByLabel('Optimalisatie aanvang', { exact: true }).inputValue() === '',
     'Na wissen blijft de instelling leeg');
   check(errors.length === 0, `Geen page- of console-errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
-  await page.screenshot({ path: 'optimalisatie-aanvang-instellingen.png', fullPage: true });
+  await page.screenshot({ path: path.join(artifactDir, 'optimalisatie-aanvang-instellingen.png'), fullPage: true });
 } finally {
   await browser.close();
 }

@@ -620,7 +620,11 @@ kloppen. Besluiten en meetwaarden: `docs/DOSSIER-SPEELTIJDEN-INLINE-FORMULIER.md
 `scripts/dev/browsercheck-optimalisatie-aanvang.mjs` controleert op App instellingen dat de opgeslagen
 clubtijd wordt geladen, onafgemaakte invoer bij herladen vervalt, opslaan `HH:mm` verstuurt en wissen
 `null` opslaat. Draai tegen een eigen Development-BlazorAdmin-instantie en een lokale mock-API; het
-script blokkeert niet-lokaal netwerkverkeer en schrijft de screenshot naar de huidige werkmap.
+script blokkeert niet-lokaal netwerkverkeer en gebruikt uitsluitend synthetische mockdata. De mockclub gebruikt code `TEST`,
+omdat ALLSTARS de instellingenpagina bewust verbergt. De screenshot
+komt standaard in `sportlink-1979-browsercheck` onder de tijdelijke systeemmap; met
+`BROWSER_ARTIFACT_DIR` kies je een eigen absoluut artefactpad. Een relatief pad wordt geweigerd.
+Playwright wordt uit de eigen werkmap geladen; de artefacten worden daar niet impliciet geschreven.
 Als de geïnstalleerde Playwright-versie een andere Chromium verwacht, kan
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` naar een al aanwezige headless Chromium wijzen.
 
