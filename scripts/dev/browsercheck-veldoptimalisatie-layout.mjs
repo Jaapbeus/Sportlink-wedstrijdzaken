@@ -419,9 +419,9 @@ try {
   `above-layout banner recalculates available height (${JSON.stringify(afterBanner)})`);
   await page.evaluate(() => document.getElementById('synthetic-layout-banner').remove());
 
+  planSize = 36;
   await checkTouch({ browser, base, stubRoute, ok });
   // Null codes must remain inert even when the component has a selection callback.
-  planSize = 36;
   wedstrijden[0].wedstrijdCode = null;
   const nullPage = await context.newPage();
   await nullPage.goto(`${base}/veld-optimalisatie`, { waitUntil: 'domcontentloaded' });

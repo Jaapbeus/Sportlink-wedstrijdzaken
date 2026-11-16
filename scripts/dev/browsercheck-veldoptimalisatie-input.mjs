@@ -25,6 +25,8 @@ export async function checkTouch({ browser, base, stubRoute, ok }) {
   const touchPage = await touchContext.newPage();
   await touchPage.goto(`${base}/veld-optimalisatie`, { waitUntil: 'domcontentloaded' });
   await touchPage.getByText('Synthetic wedstrijd 01', { exact: true }).waitFor({ timeout: 60000 });
+  const blockCount = await touchPage.locator('.gantt-blok').count();
+  if (blockCount < 13) throw new Error(`Touch fixture needs at least 13 Gantt blocks; found ${blockCount}`);
   for (const [index, tab] of ['Huidig', 'Optimaal'].entries()) {
     await touchPage.getByRole('button', { name: new RegExp(tab) }).tap();
     const touchBlock = touchPage.locator('.gantt-blok').nth(index);
