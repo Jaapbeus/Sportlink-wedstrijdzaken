@@ -88,6 +88,7 @@ internal static class AdminApiPadenAanroepen
             ("AutoPlanAsync", () => c.Planning.AutoPlanAsync(new AutoPlanRequestDto { Datum = "2026-03-14" })),
             ("AutoPlanToepassenAsync", () => c.Planning.AutoPlanToepassenAsync(new AutoPlanToepassenRequestDto { Datum = "2026-03-14" })),
             ("GetVeldbezettingAsync", () => c.Planning.GetVeldbezettingAsync("2026-03-14")),
+            ("GetVeldbezettingVoorafAsync", () => c.Planning.GetVeldbezettingVoorafAsync("2026-03-14", CancellationToken.None)),
             ("GetTeambegeleidingTeamsAsync", () => c.Teams.GetTeambegeleidingTeamsAsync()),
             ("GetTeambegeleidingAsync", () => c.Teams.GetTeambegeleidingAsync("JO 11-1")),
             ("StuurTeambegeleidingBerichtAsync", () => c.Teams.StuurTeambegeleidingBerichtAsync(new DoorsturenRequest())),

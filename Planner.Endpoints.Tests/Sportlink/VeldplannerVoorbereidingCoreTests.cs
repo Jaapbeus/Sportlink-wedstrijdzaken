@@ -228,6 +228,23 @@ public class VeldplannerVoorbereidingCoreTests
     }
 
     [Fact]
+    public async Task BekendeSpeeldag_WordtNietVerdrongenDoorDrieMislukteExtraZaterdagen()
+    {
+        var vandaag = new DateOnly(2031, 11, 3);
+        var speeldag = vandaag.AddDays(1);
+        var volgorde = new List<DateOnly>();
+        var client = Client("V-1994-volgorde", d =>
+        {
+            volgorde.Add(d);
+            return d == speeldag ? new[] { Blok("M-1994") } : null;
+        });
+        var datums = PlanningVooruitblik.VoorbereidDatums(vandaag, new[] { speeldag });
+        var resultaat = await Voer(client.Object, new GeheugenStore(), "V-1994-volgorde", datums);
+        volgorde.First().Should().Be(speeldag);
+        (resultaat.Toegevoegd, resultaat.Mislukt, resultaat.Datums).Should().Be((1, 3, 4));
+    }
+
+    [Fact]
     public void Timer_HeeftEenVasteNaamEnTweeRunsPerDag()
     {
         VeldplannerVoorbereidingCore.FunctieNaam.Should().Be("SportlinkVeldplannerVoorbereiding");

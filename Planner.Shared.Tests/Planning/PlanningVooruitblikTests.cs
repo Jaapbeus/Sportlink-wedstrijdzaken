@@ -25,8 +25,7 @@ public class PlanningVooruitblikTests
         var start = new DateOnly(2026, 11, 16);
         var dagen = PlanningVooruitblik.VoorbereidDatums(start,
             new[] { start.AddDays(-1), start.AddDays(50), start, start.AddDays(5), start });
-        dagen.Take(4).Should().Equal(PlanningVooruitblik.ZaterdagenVanaf(start));
-        dagen.Should().HaveCount(5).And.EndWith(start);
+        dagen.Should().Equal(new[] { start }.Concat(PlanningVooruitblik.ZaterdagenVanaf(start)));
     }
 
     [Fact]
@@ -37,10 +36,10 @@ public class PlanningVooruitblikTests
         {
             new EigenSleutel("bekend", 42), new EigenSleutel("bekend", 42),
             new EigenSleutel("dubbel", 1), new EigenSleutel("dubbel", 2),
-            new EigenSleutel("zonder", null), new EigenSleutel(null, 5)
+            new EigenSleutel("clubwedstrijd", 1), new EigenSleutel("nul", 0), new EigenSleutel("zonder", null), new EigenSleutel(null, 5)
         }, id => { opvragen.Add(id); return Task.FromResult<long?>(99); });
         (await haal("bekend")).Should().Be(42);
-        foreach (var id in new[] { "dubbel", "zonder", "onbekend", "BEKEND" }) await haal(id);
-        opvragen.Should().Equal("dubbel", "zonder", "onbekend", "BEKEND");
+        foreach (var id in new[] { "dubbel", "zonder", "onbekend", "BEKEND", "clubwedstrijd", "nul" }) await haal(id);
+        opvragen.Should().Equal("dubbel", "zonder", "onbekend", "BEKEND", "clubwedstrijd", "nul");
     }
 }

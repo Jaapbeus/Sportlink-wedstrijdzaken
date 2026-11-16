@@ -110,4 +110,20 @@ public class PlanningVoorlaadCacheTests
         await fout.LaadVolgendeZaterdagenAsync(new(2026, 11, 16));
         calls.Should().Be(2);
     }
+    [Fact]
+    public async Task AchtergrondGebruiktStilleAanroep_EnNaDisposeGeenWerk()
+    {
+        int zichtbaar = 0, stil = 0;
+        using var cache = new PlanningVoorlaadCache((_, _) => { zichtbaar++; return Task.FromResult(Goed()); },
+            haalVooraf: (_, _) => { stil++; return Task.FromResult(ApiResult<VeldbezettingAntwoordDto>.Fail("Sessie verlopen")); });
+        await cache.LaadVolgendeZaterdagenAsync(new(2026, 11, 16));
+        (zichtbaar, stil).Should().Be((0, 1));
+        await cache.LaadAsync("2026-11-21");
+        zichtbaar.Should().Be(1);
+        cache.Dispose();
+        cache.Wis();
+        await cache.LaadVolgendeZaterdagenAsync(new(2026, 11, 16));
+        (zichtbaar, stil).Should().Be((1, 1));
+    }
+
 }

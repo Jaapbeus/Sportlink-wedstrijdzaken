@@ -79,6 +79,7 @@ public static class VeldplannerVoorbereidingCore
         if (clubCode.Equals("ALLSTARS", StringComparison.OrdinalIgnoreCase) || datums.Count == 0)
             return new VeldplannerVoorbereidingResultaat(0, 0, 0, 0, 0, 0, 0);
 
+        var duur = System.Diagnostics.Stopwatch.StartNew();
         var dag = vandaag ?? DateOnly.FromDateTime(DateTime.UtcNow);
         var opvrager = VeldplannerOverlayCore.MaakExternIdOpvrager(client, rolNaam);
         int mislukt = 0, toegevoegd = 0, gewijzigd = 0, verwijderd = 0, opgevraagd = 0, onbekend = 0, opeenvolgend = 0, verwerkt = 0;
@@ -117,8 +118,8 @@ public static class VeldplannerVoorbereidingCore
         }
 
         log.LogInformation(
-            "Veldplanner voorbereid: {Datums} datums verwerkt, {Mislukt} mislukt; {Toegevoegd} toegevoegd, {Gewijzigd} gewijzigd, {Verwijderd} verwijderd; wedstrijdnummer {Opgevraagd} opgevraagd, {Onbekend} nog onbekend",
-            verwerkt, mislukt, toegevoegd, gewijzigd, verwijderd, opgevraagd, onbekend);
+            "Veldplanner voorbereid: {Datums} datums verwerkt, {Mislukt} mislukt; {Toegevoegd} toegevoegd, {Gewijzigd} gewijzigd, {Verwijderd} verwijderd; wedstrijdnummer {Opgevraagd} opgevraagd, {Onbekend} nog onbekend; duur {DuurMs} ms",
+            verwerkt, mislukt, toegevoegd, gewijzigd, verwijderd, opgevraagd, onbekend, duur.ElapsedMilliseconds);
         return new VeldplannerVoorbereidingResultaat(verwerkt, mislukt, toegevoegd, gewijzigd, verwijderd, opgevraagd, onbekend);
     }
 }

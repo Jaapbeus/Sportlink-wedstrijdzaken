@@ -54,7 +54,7 @@ public partial class Planning : ClubSelectorPageBase
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        _voorladen = new PlanningVoorlaadCache(PlanningApi.GetVeldbezettingAsync);
+        _voorladen = new PlanningVoorlaadCache(PlanningApi.GetVeldbezettingAsync, haalVooraf: PlanningApi.GetVeldbezettingVoorafAsync);
         _datumDt = DagplanningWeergaveHelpers.VolgendeZaterdag().ToDateTime(TimeOnly.MinValue);
     }
 
@@ -80,7 +80,14 @@ public partial class Planning : ClubSelectorPageBase
         return LaadPlanningAsync();
     }
 
-    private async Task LaadPlanningAsync()
+    private Task VerversNaVeldwijzigingAsync()
+    {
+        if (_planningDisposed) return Task.CompletedTask;
+        _voorladen.Wis();
+        return LaadPlanningAsync(behoudHuidigeDag: true);
+    }
+
+    private async Task LaadPlanningAsync(bool behoudHuidigeDag = false)
     {
         _voorladen.KiesClub(ClubSelector.SelectedClubCode);
         _voorladen.StopVoorladen();
@@ -88,11 +95,11 @@ public partial class Planning : ClubSelectorPageBase
         var club = ClubSelector.SelectedClubCode;
         var generatie = _veldbezettingLoadGuard.Start(club);
         var kopie = _voorladen.Lees(datum);
-        _veldbezetting = kopie?.Wedstrijden ?? new();
-        _sportlinkStatus = kopie?.Sportlink;
+        _veldbezetting = kopie?.Wedstrijden ?? (behoudHuidigeDag ? _veldbezetting : new());
+        _sportlinkStatus = kopie?.Sportlink ?? (behoudHuidigeDag ? _sportlinkStatus : null);
         _veldbezettingError = null;
-        _veldbezettingBezig = kopie == null;
-        _veldbezettingVernieuwen = kopie != null;
+        _veldbezettingBezig = kopie == null && !behoudHuidigeDag;
+        _veldbezettingVernieuwen = !_veldbezettingBezig;
         StateHasChanged(); // Laat een vooraf geladen dag zien vóór het netwerkantwoord.
         try
         {

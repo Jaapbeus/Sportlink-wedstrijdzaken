@@ -370,6 +370,16 @@ BEGIN
 END
 GO
 
+-- AppSettings: clubbrede starttijd voor veldoptimalisatie (#1979, nullable voor legacygedrag).
+IF NOT EXISTS (
+    SELECT 1 FROM [sys].[columns]
+    WHERE [object_id] = OBJECT_ID('[dbo].[AppSettings]') AND [name] = 'OptimalisatieAanvang'
+)
+BEGIN
+    ALTER TABLE [dbo].[AppSettings] ADD [OptimalisatieAanvang] TIME NULL
+END
+GO
+
 -- AppSettings: FaviconUrl en LogoUrl toevoegen voor club-thema (#339, idempotent)
 IF NOT EXISTS (
     SELECT 1 FROM [sys].[columns]

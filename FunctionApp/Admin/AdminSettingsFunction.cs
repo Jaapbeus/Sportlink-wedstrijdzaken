@@ -50,7 +50,7 @@ public static class AdminSettingsFunction
         "Accommodatie", "FetchSchedule", "EmailVoetnoot",
         "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
         "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth"
+        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth", "OptimalisatieAanvang"
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -81,7 +81,8 @@ public static class AdminSettingsFunction
                         [BufferMinuten], [EmailVoetnoot], [AccommodatiePlaats],
                         [AccommodatieLatitude], [AccommodatieLongitude],
                         [KnvbPdfBijlageIngeschakeld], [KnvbStandaardRegio], [SportlinkExtensionEnabled], [SportlinkDryRun],
-                        [SportlinkSpelactiviteit], [PdfExportIngeschakeld], [ZekerheidspoortActief]
+                        [SportlinkSpelactiviteit], [PdfExportIngeschakeld], [ZekerheidspoortActief],
+                        CONVERT(VARCHAR(5), [OptimalisatieAanvang]) AS [OptimalisatieAanvang]
                     FROM [dbo].[AppSettings]
                     WHERE [ClubCode] = @ClubCode", connection);
                 command.Parameters.AddWithValue("@ClubCode", clubCode);
@@ -201,7 +202,7 @@ public static class AdminSettingsFunction
                     log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", LogWaarde.Schoon(key));
                     continue;
                 }
-                changes[key] = value;
+                changes[key] = AppSettingsNormalisatie.NormaliseerWaarde(key, value);
             }
         }
         return changes;
@@ -473,7 +474,7 @@ public static class AdminSettingsFunction
             for (int i = 0; i < reader.FieldCount; i++)
             {
                 var name = reader.GetName(i);
-                result[name] = reader.IsDBNull(i) ? null : reader.GetValue(i).ToString();
+                result[name] = AppSettingsNormalisatie.FormatteerAuditWaarde(name, reader.GetValue(i));
             }
         }
         return result;

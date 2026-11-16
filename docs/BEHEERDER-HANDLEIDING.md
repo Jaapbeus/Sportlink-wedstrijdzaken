@@ -116,8 +116,9 @@ Volledige documentatie: [docs/TESTMODUS-ALLSTARS.md](TESTMODUS-ALLSTARS.md)
 ### Sneller wisselen tussen zaterdagen
 
 Planning haalt na het laden de volgende zaterdagen op de achtergrond op, tot vier zaterdagen vanaf de gekozen datum.
-Een reeds opgehaalde dag verschijnt direct met **Vooraf geladen; actuele stand controleren…** terwijl de pagina
-opnieuw de actuele stand vraagt. Het tijdstip bij de bron blijft het tijdstip waarop Sportlink is geraadpleegd.
+Een reeds opgehaalde dag verschijnt direct met **Actuele stand controleren…** terwijl de pagina
+opnieuw de actuele stand vraagt. De server kan een Sportlink-antwoord maximaal 60 seconden hergebruiken.
+Het tijdstip bij de bron blijft het tijdstip waarop Sportlink is geraadpleegd.
 Bij een mislukte controle verschijnt de fout of de bestaande waarschuwing; een kopie wordt nooit stil als actueel bevestigd.
 De tijdelijke kopieën blijven maximaal twee minuten in het geheugen van de geopende pagina en worden gewist bij
 clubwisseling, verlaten van de pagina, een wedstrijd die u via deze pagina toevoegt of een geslaagde echte

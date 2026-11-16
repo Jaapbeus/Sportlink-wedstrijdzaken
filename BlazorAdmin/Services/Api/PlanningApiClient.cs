@@ -21,6 +21,10 @@ public sealed class PlanningApiClient
     public async Task<ApiResult<VeldbezettingAntwoordDto>> GetVeldbezettingAsync(string datum, CancellationToken cancellationToken = default)
         => await _t.GetAsync<VeldbezettingAntwoordDto>($"api/planner/veldbezetting?datum={Uri.EscapeDataString(datum)}&status=true", cancellationToken);
 
+    /// <summary>Vooruitladen mag bij een verlopen token geen interactieve login starten.</summary>
+    public Task<ApiResult<VeldbezettingAntwoordDto>> GetVeldbezettingVoorafAsync(string datum, CancellationToken cancellationToken)
+        => _t.GetAsync<VeldbezettingAntwoordDto>($"api/planner/veldbezetting?datum={Uri.EscapeDataString(datum)}&status=true", cancellationToken, herauthenticeer: false);
+
     public Task<string> GetVeldbezettingHtmlAsync(string datum)
         => _t.GetTekstAsync($"api/planner/veldbezetting?datum={Uri.EscapeDataString(datum)}&format=html");
 

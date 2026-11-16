@@ -242,7 +242,6 @@ public sealed class ClubBoundLoadRaceMeerPaginasTests
         Set(page, "PlanningApi", new PlanningApiClient(transport));
 
         var loadA = CallAsync(page, "LoadVeldbezettingAsync");
-        for (var poging = 0; poging < 100 && handler.PendingCount == 0; poging++) await Task.Delay(5);
         Assert.Equal(1, handler.PendingCount);
         await club.SelectClubAsync("B", "Club B");
         await CallAsync(page, "LoadVeldbezettingAsync");

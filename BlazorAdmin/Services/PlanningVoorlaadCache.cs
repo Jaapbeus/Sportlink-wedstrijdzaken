@@ -12,6 +12,7 @@ public sealed class PlanningVoorlaadCache : IDisposable
 {
     private readonly Func<string, CancellationToken, Task<ApiResult<VeldbezettingAntwoordDto>>> _haal;
     private readonly Func<DateTime> _nu;
+    private readonly Func<string, CancellationToken, Task<ApiResult<VeldbezettingAntwoordDto>>> _haalVooraf;
     private readonly Dictionary<string, (VeldbezettingAntwoordDto Data, DateTime Tot)> _dagen = new();
     private readonly Dictionary<string, Task<ApiResult<VeldbezettingAntwoordDto>>> _lopend = new();
     private readonly SemaphoreSlim _achtergrond = new(1);
@@ -23,9 +24,11 @@ public sealed class PlanningVoorlaadCache : IDisposable
     public static readonly TimeSpan Geldigheid = TimeSpan.FromMinutes(2);
 
     public PlanningVoorlaadCache(Func<string, CancellationToken, Task<ApiResult<VeldbezettingAntwoordDto>>> haal,
-        Func<DateTime>? nu = null)
+        Func<DateTime>? nu = null,
+        Func<string, CancellationToken, Task<ApiResult<VeldbezettingAntwoordDto>>>? haalVooraf = null)
     {
         _haal = haal;
+        _haalVooraf = haalVooraf ?? haal;
         _nu = nu ?? (() => DateTime.UtcNow);
     }
 
@@ -41,6 +44,7 @@ public sealed class PlanningVoorlaadCache : IDisposable
     /// <summary>Ook bij een eigen mutatie: oude data en lopende antwoorden mogen de wijziging niet terugdraaien.</summary>
     public void Wis()
     {
+        if (_disposed) return;
         _generatie++;
         StopVoorladen();
         _clubLeven.Cancel();
@@ -53,24 +57,24 @@ public sealed class PlanningVoorlaadCache : IDisposable
     public VeldbezettingAntwoordDto? Lees(string datum)
         => _dagen.TryGetValue(datum, out var dag) && dag.Tot > _nu() ? dag.Data : null;
 
-    public Task<ApiResult<VeldbezettingAntwoordDto>> LaadAsync(string datum)
+    public Task<ApiResult<VeldbezettingAntwoordDto>> LaadAsync(string datum, bool vooraf = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_lopend.TryGetValue(datum, out var taak)) return taak;
         var generatie = _generatie;
-        var nieuw = HaalAsync(datum, generatie, _clubLeven.Token);
-        _lopend[datum] = nieuw;
-        return nieuw;
+        var klaar = new TaskCompletionSource<ApiResult<VeldbezettingAntwoordDto>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _lopend[datum] = klaar.Task;
+        _ = HaalAsync(datum, generatie, _clubLeven.Token, vooraf, klaar);
+        return klaar.Task;
     }
 
-    private async Task<ApiResult<VeldbezettingAntwoordDto>> HaalAsync(string datum, int generatie, CancellationToken ct)
+    private async Task HaalAsync(string datum, int generatie, CancellationToken ct, bool vooraf,
+        TaskCompletionSource<ApiResult<VeldbezettingAntwoordDto>> klaar)
     {
-        // Yield zorgt dat ook een synchroon afgeronde fake/cache eerst als lopend geregistreerd is.
-        await Task.Yield();
         try
         {
             ct.ThrowIfCancellationRequested();
-            var antwoord = await _haal(datum, ct);
+            var antwoord = await (vooraf ? _haalVooraf : _haal)(datum, ct);
             if (generatie == _generatie && !ct.IsCancellationRequested)
             {
                 _dagen.Remove(datum);
@@ -80,8 +84,10 @@ public sealed class PlanningVoorlaadCache : IDisposable
                     _dagen[datum] = (antwoord.Data, _nu() + Geldigheid);
                 }
             }
-            return antwoord;
+            klaar.TrySetResult(antwoord);
         }
+        catch (OperationCanceledException) { klaar.TrySetCanceled(ct); }
+        catch (Exception ex) { klaar.TrySetException(ex); }
         finally
         {
             if (generatie == _generatie) _lopend.Remove(datum);
@@ -90,6 +96,7 @@ public sealed class PlanningVoorlaadCache : IDisposable
 
     public async Task LaadVolgendeZaterdagenAsync(DateOnly vanaf)
     {
+        if (_disposed) return;
         var generatie = ++_voorlaadGeneratie;
         var ct = _clubLeven.Token;
         try
@@ -102,7 +109,7 @@ public sealed class PlanningVoorlaadCache : IDisposable
                     if (_disposed || ct.IsCancellationRequested || generatie != _voorlaadGeneratie) break;
                     var sleutel = datum.ToString("yyyy-MM-dd");
                     if (Lees(sleutel) != null) continue;
-                    var antwoord = await LaadAsync(sleutel);
+                    var antwoord = await LaadAsync(sleutel, vooraf: true);
                     if (!antwoord.Success || antwoord.Data?.Sportlink?.Geraadpleegd != true) break;
                 }
             }
@@ -114,8 +121,8 @@ public sealed class PlanningVoorlaadCache : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
         Wis();
+        _disposed = true;
         _clubLeven.Dispose();
         // Een al lopende achtergrondaanvraag moet zijn semaphore nog kunnen vrijgeven.
     }

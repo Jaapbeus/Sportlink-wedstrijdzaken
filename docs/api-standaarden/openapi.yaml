@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.19.0.0
+  version: 3.19.1.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -882,6 +882,15 @@ components:
         BufferMinuten:
           type: integer
           nullable: true
+        OptimalisatieAanvang:
+          type: string
+          nullable: true
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: |
+            Clubbrede starttijd voor de veldoptimalisatie (#1979). Teamvoorkeuren na deze tijd blijven
+            het doel; eerdere voorkeuren worden begrensd. Leeg laat de bestaande standaardtijden per
+            leeftijdscategorie gelden.
+          example: "08:00"
         EmailVoetnoot:
           type: string
           nullable: true
@@ -1546,8 +1555,9 @@ components:
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
         AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
         KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,
-        ZekerheidspoortActief, SeasonStartMonth
-        (waarde `0`/`1`/`true`/`false`, anders 400).
+        ZekerheidspoortActief, SeasonStartMonth en OptimalisatieAanvang.
+        `OptimalisatieAanvang` is `HH:mm` of null; null bewaart de bestaande terugval op de
+        leeftijdscategorie. Booleaanse velden accepteren `0`/`1`/`true`/`false`, anders 400.
 
         `SeasonStartMonth` (#1715): een geheel getal 1 t/m 12, anders 400. Bij een wijziging worden de
         seizoensrijen van de club opnieuw opgebouwd met de nieuwe startmaand en schuift het seizoenseinde
@@ -2823,6 +2833,11 @@ components:
           enum: [1, 2]
           description: Aantal helften (#1962); 1 voor toernooivormen zoals 35+ en VR30+
           example: 2
+        StandaardVoorkeurTijd:
+          type: string
+          nullable: true
+          description: Standaard voorkeurstijd voor teams zonder eigen teamvoorkeur.
+          example: "10:00"
 
     SpeeltijdRequest:
       type: object

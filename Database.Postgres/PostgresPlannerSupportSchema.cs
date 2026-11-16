@@ -19,10 +19,18 @@ namespace Database.Postgres;
 public static class PostgresPlannerSupportSchema
 {
     /// <summary>
-    /// Volledige inhoud van <c>migrations/001_baseline.sql</c>, als één uitvoerbaar SQL-statement-blok
-    /// (Npgsql voert een command met meerdere puntkomma-gescheiden statements gewoon in volgorde uit).
+    /// Test-DDL voor de planner: de bestaande 001-baseline en de additieve clubtijdmigratie.
+    /// Npgsql voert de puntkomma-gescheiden statements in volgorde uit.
     /// </summary>
-    public static string BaselineSql => File.ReadAllText(ResolveBaselinePath());
+    public static string BaselineSql
+    {
+        get
+        {
+            var baseline = ResolveBaselinePath();
+            return File.ReadAllText(baseline) + "\n" +
+                File.ReadAllText(Path.Combine(Path.GetDirectoryName(baseline)!, "055_optimalisatie_aanvang.sql"));
+        }
+    }
 
     private static string ResolveBaselinePath()
     {

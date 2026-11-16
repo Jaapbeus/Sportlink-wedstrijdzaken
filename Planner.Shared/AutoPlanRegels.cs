@@ -12,7 +12,8 @@ public record PlanDoel(
     TimeOnly? DoelTijd,
     int? VoorkeurVeldNummer,
     string? Bron,
-    string Leeftijd);
+    string Leeftijd,
+    TimeOnly? OndergrensTijd = null);
 
 /// <summary>
 /// De pure planningsregels achter AutoPlan: welk doel krijgt een wedstrijd, in welke volgorde worden
@@ -87,7 +88,8 @@ public static class AutoPlanRegels
             teamNaam, speeltijden);
 
     /// <summary>
-    /// Stelt het planningsdoel voor één wedstrijd samen uit de drie lagen (#666).
+    /// Stelt het planningsdoel voor één wedstrijd samen uit clubbrede starttijd, teamvoorkeuren en
+    /// de bestaande standaardtijd per leeftijdscategorie (#1979).
     /// </summary>
     /// <param name="teamNaam">Teamnaam zoals die in de bron staat.</param>
     /// <param name="leeftijdsCategorie">Leeftijdscategorie uit de bron; leeg/null is toegestaan.</param>
@@ -103,13 +105,15 @@ public static class AutoPlanRegels
         Dictionary<string, TeamVoorkeurVeld> voorkeurVelden,
         Dictionary<string, List<(TimeOnly Tijd, int Prioriteit)>> voorkeurLookup,
         Dictionary<string, Speeltijd> speeltijden,
-        string? clubPrefix = null)
+        string? clubPrefix = null,
+        TimeOnly? clubOptimalisatieAanvang = null)
     {
         var leeftijd = OptimalisatieSpeeltijdSleutel(teamNaam, leeftijdsCategorie, isAllstars, speeltijden);
 
         // Laag 2 — default per leeftijdscategorie (mag null zijn: dan géén streeftijd)
-        TimeOnly? defaultTijd = null;
-        if (leeftijd.Length > 0 && speeltijden.TryGetValue(leeftijd, out var st))
+        TimeOnly? ondergrens = clubOptimalisatieAanvang;
+        TimeOnly? defaultTijd = clubOptimalisatieAanvang;
+        if (!defaultTijd.HasValue && leeftijd.Length > 0 && speeltijden.TryGetValue(leeftijd, out var st))
             defaultTijd = st.StandaardVoorkeurTijd;
 
         // Laag 1 — eigen voorkeurstijd van het team voor deze speeldag
@@ -130,20 +134,26 @@ public static class AutoPlanRegels
             return new PlanDoel(
                 Laag: 0,
                 Prioriteit: vv.Prioriteit,
-                DoelTijd: vv.Tijd ?? teamTijd ?? defaultTijd,
+                DoelTijd: Begrens(vv.Tijd ?? teamTijd ?? defaultTijd, ondergrens),
                 VoorkeurVeldNummer: vv.VeldNummer,
-                Bron: vv.Tijd.HasValue ? "regel" : (teamTijd.HasValue ? "team" : (defaultTijd.HasValue ? "leeftijd" : null)),
-                Leeftijd: leeftijd);
+                Bron: vv.Tijd.HasValue ? "regel" : (teamTijd.HasValue ? "team" :
+                    (defaultTijd.HasValue ? (clubOptimalisatieAanvang.HasValue ? "club" : "leeftijd") : null)),
+                Leeftijd: leeftijd,
+                OndergrensTijd: ondergrens);
         }
 
         if (teamTijd.HasValue)
-            return new PlanDoel(1, teamPrioriteit, teamTijd, null, "team", leeftijd);
+            return new PlanDoel(1, teamPrioriteit, Begrens(teamTijd, ondergrens), null, "team", leeftijd, ondergrens);
 
         if (defaultTijd.HasValue)
-            return new PlanDoel(2, 0, defaultTijd, null, "leeftijd", leeftijd);
+            return new PlanDoel(2, 0, defaultTijd, null,
+                clubOptimalisatieAanvang.HasValue ? "club" : "leeftijd", leeftijd, ondergrens);
 
-        return new PlanDoel(3, 0, null, null, null, leeftijd);
+        return new PlanDoel(3, 0, null, null, null, leeftijd, ondergrens);
     }
+
+    private static TimeOnly? Begrens(TimeOnly? doel, TimeOnly? ondergrens) =>
+        ondergrens.HasValue && (!doel.HasValue || doel.Value < ondergrens.Value) ? ondergrens : doel;
 
     /// <summary>
     /// Beoordeelt de afwijking t.o.v. de voorkeurstijd (#666). Dezelfde drempels als de Gantt-legenda,

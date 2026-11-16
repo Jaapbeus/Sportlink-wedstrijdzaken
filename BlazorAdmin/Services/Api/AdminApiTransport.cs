@@ -23,8 +23,8 @@ public sealed class AdminApiTransport
         _telemetrie = telemetrie;
     }
 
-    public Task<ApiResult<T>> GetAsync<T>(string path, CancellationToken cancellationToken = default)
-        => SendAsync<T>("GET", path, () => _http.GetAsync(path, cancellationToken));
+    public Task<ApiResult<T>> GetAsync<T>(string path, CancellationToken cancellationToken = default, bool herauthenticeer = true)
+        => SendAsync<T>("GET", path, () => _http.GetAsync(path, cancellationToken), herauthenticeer);
 
     public Task<ApiResult<T>> PostAsync<T>(string path, object body)
         => SendAsync<T>("POST", path, () => _http.PostAsJsonAsync(path, body));
@@ -44,7 +44,7 @@ public sealed class AdminApiTransport
 
     public Task<byte[]> PostBytesAsync(string path, object body) => LeesBytesAsync(_http.PostAsJsonAsync(path, body));
 
-    private async Task<ApiResult<T>> SendAsync<T>(string methode, string pad, Func<Task<HttpResponseMessage>> send)
+    private async Task<ApiResult<T>> SendAsync<T>(string methode, string pad, Func<Task<HttpResponseMessage>> send, bool herauthenticeer = true)
     {
         try
         {
@@ -61,7 +61,7 @@ public sealed class AdminApiTransport
         // gewone netwerkfout te verzwijgen.
         catch (AccessTokenNotAvailableException ex)
         {
-            ex.Redirect();
+            if (herauthenticeer) ex.Redirect();
             return ApiResult<T>.Fail("Sessie verlopen: opnieuw inloggen.");
         }
         catch (Exception ex)

@@ -12,8 +12,8 @@ public static class PlanningVooruitblik
         return Enumerable.Range(0, AantalZaterdagen).Select(i => eerste.AddDays(7 * i)).ToArray();
     }
 
-    /// <summary>Zaterdagen eerst; overige bekende speeldagen blijven binnen het bestaande 28-dagenvenster.</summary>
+    /// <summary>Bekende speeldagen eerst, daarna ontbrekende zaterdagen; alles binnen het bestaande 28-dagenvenster.</summary>
     public static IReadOnlyList<DateOnly> VoorbereidDatums(DateOnly vandaag, IEnumerable<DateOnly> bekend)
-        => ZaterdagenVanaf(vandaag).Concat(bekend.Where(d => d >= vandaag && d <= vandaag.AddDays(28)).Order())
+        => bekend.Where(d => d >= vandaag && d <= vandaag.AddDays(28)).Order().Concat(ZaterdagenVanaf(vandaag))
             .Distinct().ToArray();
 }

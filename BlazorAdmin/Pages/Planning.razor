@@ -61,7 +61,7 @@
     <div class="card-body">
         @if (_veldbezettingVernieuwen)
         {
-            <div class="text-muted small mb-2" role="status">Vooraf geladen; actuele stand controleren…</div>
+            <div class="text-muted small mb-2" role="status">Actuele stand controleren…</div>
         }
         @if (!string.IsNullOrEmpty(_veldbezettingError))
         {
@@ -184,7 +184,7 @@
                                     @* #1388: bg-light schakelt niet mee met het donkere thema; kaart-thema-bg
                                        (Planning.razor.css) volgt var(--theme-card-bg). *@
                                     <td colspan="6" class="kaart-thema-bg tabel-compact">
-                                        <SportlinkMatchPanel WedstrijdCode="item.WedstrijdCode.Value" OnVeldGewijzigd="LoadVeldbezettingAsync" />
+                                        <SportlinkMatchPanel WedstrijdCode="item.WedstrijdCode.Value" OnVeldGewijzigd="VerversNaVeldwijzigingAsync" />
                                     </td>
                                 </tr>
                             }

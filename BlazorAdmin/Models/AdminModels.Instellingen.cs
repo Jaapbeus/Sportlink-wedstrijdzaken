@@ -15,6 +15,8 @@ public class AppSettingsDto
     public string? PlannerEmailAdres { get; set; }
     public int? HerplanDeadlineDagen { get; set; }
     public int? BufferMinuten { get; set; }
+    /// <summary>#1979: clubbrede optimizerstarttijd; null laat de bestaande categorie-standaardtijden gelden.</summary>
+    public string? OptimalisatieAanvang { get; set; }
     public string? EmailVoetnoot { get; set; }
     public string? AccommodatiePlaats { get; set; }
     public double? AccommodatieLatitude { get; set; }
