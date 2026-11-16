@@ -19,6 +19,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Changed
+- Architectuur/CI: .NET 11 is geen LTS en wordt voorlopig niet overgenomen; de stack blijft op .NET 10 (WZ-ADR-015). Dependabot negeert voortaan major-versies >= 11 voor aan .NET gekoppelde pakketten, zodat alleen .NET 10-updates binnenkomen; zie issue #1992 (onderzoek: #1988)
+
+### Changed
 - De elf eerder geteste minor- en patchupdates van AngleSharp, Coverlet, Blazor WebAssembly/MSAL, SqlClient, Logging, Microsoft Graph, Test SDK, OpenAI en Pkcs hersteld na het sluiten van de ongeïntegreerde Dependabot-PR (#1983).
 - De gerelateerde Microsoft.Extensions.AI.Abstractions-, Microsoft.Extensions.AI.OpenAI- en Microsoft.Extensions.Logging.Abstractions-pakketten gezamenlijk bijgewerkt naar 11.0.0; BlazorAdmin declareert Logging.Abstractions direct (#1986).
 - De Claude Code Action-pinnen bijgewerkt en de issue-labeltrigger expliciet afgestemd op `turn: claude-code`; de eerder bewust uitgesloten gh-commando's (`api`, `issue view`, `pr view`, `pr review`, `pr merge`, `pr ready`, `issue edit`) ook in auto mode expliciet geweigerd (#1989).
