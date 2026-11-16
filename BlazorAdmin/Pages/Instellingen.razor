@@ -227,6 +227,17 @@ else
 
         <div class="row">
             <div class="col-md-6 mb-3">
+                <label class="form-label" for="optimalisatie-aanvang">Optimalisatie aanvang</label>
+                <TimeInput id="optimalisatie-aanvang" @bind-Value="settings.OptimalisatieAanvang" Placeholder="bijv. 08:00" />
+                <small class="form-text text-muted">
+                    Clubbrede starttijd voor de veldoptimalisatie. Teamvoorkeuren later dan deze tijd blijven leidend.
+                    Laat leeg om de bestaande standaardtijden per leeftijdscategorie te gebruiken.
+                </small>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
                 <label class="form-label" for="seizoen-startmaand">Seizoen start in</label>
                 <select id="seizoen-startmaand" class="form-select" @bind="settings.SeasonStartMonth">
                     @for (var m = 1; m <= SeizoenStartMaand.Maandnamen.Count; m++)

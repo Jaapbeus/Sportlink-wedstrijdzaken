@@ -12,6 +12,10 @@ public class AdminSettingsFieldContractTests
     public void SqlServer_AllowsSportlinkDryRunForSettingsUpdates()
         => AdminSettingsFunction.AllowedFields.Should().Contain("SportlinkDryRun");
 
+    [Fact]
+    public void SqlServer_AllowsClubOptimalisatieAanvangForSettingsUpdates()
+        => AdminSettingsFunction.AllowedFields.Should().Contain("OptimalisatieAanvang");
+
     [SqlServerFact]
     public async Task SqlServer_FetchScheduleRestartFlagUsesStoredValueWhileOtherSettingsPersist()
     {

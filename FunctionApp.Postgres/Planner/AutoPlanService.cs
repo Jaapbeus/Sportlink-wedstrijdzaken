@@ -87,6 +87,8 @@ internal static class AutoPlanService
 
         // Speeltijden per club, met terugval op de primaire club (#573/#666).
         var speeltijden = await GetSpeeltijdenMetTerugvalAsync(connectionString, clubCode);
+        var optimalisatieAanvang = await PlannerSettingsRepository.GetOptimalisatieAanvangAsync(
+            connectionString, clubCode);
         var veldInfoLookup = velden.ToDictionary(v => v.VeldNummer);
         int dagVanWeek = IsoDagVanWeek(datum);
         var voorkeurLookup = await PlannerSettingsRepository.GetVoorkeurTijdenLookupAsync(connectionString, dagVanWeek, clubCode);
@@ -101,7 +103,8 @@ internal static class AutoPlanService
         // Paren i.p.v. een dictionary — zie de klasse-doc-comment over record-waardegelijkheid.
         var metDoel = alleWedstrijden
             .Select(w => (Wedstrijd: w, Doel: AutoPlanRegels.BepaalPlanDoel(
-                w.TeamNaam, w.LeeftijdsCategorie, isAllstars, voorkeurVelden, voorkeurLookup, speeltijden, clubCode)))
+                w.TeamNaam, w.LeeftijdsCategorie, isAllstars, voorkeurVelden, voorkeurLookup,
+                speeltijden, clubCode, optimalisatieAanvang)))
             .OrderBy(p => p.Doel.Laag)                 // regels vóór voorkeuren vóór defaults
             .ThenBy(p => p.Doel.Prioriteit)            // laag getal = belangrijker
             .ThenBy(p => p.Doel.DoelTijd.HasValue
@@ -241,7 +244,7 @@ internal static class AutoPlanService
                 voorkeurTijdStr = doelTijd.ToString("HH:mm");
                 slot = scheduler.FindAndOccupyNearTime(doelTijd, veldafmeting,
                     duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
-                    voorkeurVeldNummer: doel.VoorkeurVeldNummer);
+                    voorkeurVeldNummer: doel.VoorkeurVeldNummer, ondergrens: doel.OndergrensTijd);
                 if (slot != null)
                     voorkeurAfwijking = (int)(slot.AanvangsTijd.ToTimeSpan() - doelTijd.ToTimeSpan()).TotalMinutes;
             }
@@ -250,9 +253,9 @@ internal static class AutoPlanService
                 slot = doel.VoorkeurVeldNummer.HasValue
                     ? scheduler.FindAndOccupyNearTime(FieldScheduler.DagStart, veldafmeting,
                         duurMinuten, teamBufVoor, wedstrijd.TeamNaam,
-                        voorkeurVeldNummer: doel.VoorkeurVeldNummer)
+                        voorkeurVeldNummer: doel.VoorkeurVeldNummer, ondergrens: doel.OndergrensTijd)
                     : scheduler.FindAndOccupyNextSlot(veldafmeting, duurMinuten,
-                        teamBufVoor, wedstrijd.TeamNaam);
+                        teamBufVoor, wedstrijd.TeamNaam, doel.OndergrensTijd);
             }
 
             if (slot == null)

@@ -61,6 +61,12 @@ public static class AppSettingsValidatieCore
         if (changes.TryGetValue("SeasonStartMonth", out var nieuweMaand) && !SeizoenStartMaand.TryParse(nieuweMaand, out _))
             return Fout("SeasonStartMonth moet een maandnummer van 1 (januari) tot en met 12 (december) zijn.");
 
+        if (changes.TryGetValue("OptimalisatieAanvang", out var aanvang)
+            && !string.IsNullOrWhiteSpace(aanvang)
+            && !TimeOnly.TryParseExact(aanvang, "HH:mm", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out _))
+            return Fout("OptimalisatieAanvang moet een tijd in HH:mm zijn.");
+
         return null;
     }
 

@@ -35,6 +35,19 @@ internal static class PlannerSettingsRepository
         return null;
     }
 
+    /// <summary>Leest de starttijd uitsluitend uit AppSettings van de opgevraagde club (#1979).</summary>
+    internal static async Task<TimeOnly?> GetOptimalisatieAanvangAsync(string clubCode)
+    {
+        var cc = SystemUtilities.AppSettings.RequireClubCode(clubCode);
+        using var conn = new SqlConnection(Cs);
+        await conn.OpenAsync();
+        using var cmd = new SqlCommand(
+            "SELECT [OptimalisatieAanvang] FROM [dbo].[AppSettings] WHERE [ClubCode] = @cc", conn);
+        cmd.Parameters.AddWithValue("@cc", cc);
+        var waarde = await cmd.ExecuteScalarAsync();
+        return waarde is null or DBNull ? null : TimeOnly.FromTimeSpan((TimeSpan)waarde);
+    }
+
     internal static async Task<List<VeldInfo>> GetVeldenAsync(string? clubCode = null)
     {
         clubCode = SystemUtilities.AppSettings.RequireClubCode(clubCode);

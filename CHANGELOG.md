@@ -18,6 +18,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+### Added
+- **Clubbrede optimalisatie-aanvang** (#1979). Beheerders stellen op App instellingen één nullable starttijd voor de veldoptimalisatie in. Latere teamvoorkeuren blijven leidend; bij een lege instelling blijven de standaardtijden per leeftijdscategorie gelden. Op beide databasetiers; de reguliere Planning blijft ongewijzigd.
+
 ### Changed
 - Architectuur/CI: .NET 11 is geen LTS en wordt voorlopig niet overgenomen; de stack blijft op .NET 10 (WZ-ADR-015). Dependabot negeert voortaan major-versies >= 11 voor aan .NET gekoppelde pakketten, zodat alleen .NET 10-updates binnenkomen; zie issue #1992 (onderzoek: #1988)
 
@@ -27,7 +30,9 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 - De Claude Code Action-pinnen bijgewerkt en de issue-labeltrigger expliciet afgestemd op `turn: claude-code`; de eerder bewust uitgesloten gh-commando's (`api`, `issue view`, `pr view`, `pr review`, `pr merge`, `pr ready`, `issue edit`) ook in auto mode expliciet geweigerd (#1989).
 
 ### Fixed
+- Auditwaarden voor de clubbrede optimalisatie-aanvang gebruiken op beide tiers consequent `HH:mm`. Het OpenAPI-schema is aangevuld met het al bestaande antwoordveld `StandaardVoorkeurTijd` van de speeltijden-API; dit documenteert bestaand gedrag en voegt geen responseveld toe (#1979).
 - Private infrastructuurpatronen worden alleen bij een push naar `main` in de basisrepository gecontroleerd; dit gebeurt na de merge en beschermt de PR niet vooraf. De deployworkflow controleert dezelfde patronen vóór build, migratie en deployment, ook bij een handmatige productiestart. Algemene securityscans blijven op alle bestaande events actief. Negatieve workflowmutaties bewaken deze koppeling en ontbrekende of ongeldige privéconfiguratie blokkeert de productiecontrole (#1980).
+
 
 ## [3.19.0.0] — 2026-11-15
 
