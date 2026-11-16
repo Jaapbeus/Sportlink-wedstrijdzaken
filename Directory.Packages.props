@@ -44,7 +44,7 @@
     -->
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.15" />
 
-    <!-- AI-adapter/provider — #1129: 10.10.0 vereist exact OpenAI 2.13.0, geen NU1608 meer -->
+    <!-- AI-adapter/provider — #1986: AI.OpenAI 11.0.0 vereist OpenAI >= 2.14.0 op net10.0; 2.15.0 voldoet. -->
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="11.0.0" />
     <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="11.0.0" />
     <PackageVersion Include="OpenAI" Version="2.15.0" />
