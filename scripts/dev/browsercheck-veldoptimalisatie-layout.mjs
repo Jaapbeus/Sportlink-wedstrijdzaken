@@ -340,6 +340,15 @@ try {
     scrollY: window.scrollY,
     viewport: window.innerHeight
   }));
+  // A viewport change can precede the layout's resize handler. Establish the new geometry
+  // before comparing it with the geometry after scrolling.
+  await page.waitForFunction(() => {
+    const element = document.querySelector('.veldoptimalisatie-layout');
+    if (!element) return false;
+    const height = Number.parseFloat(getComputedStyle(element).getPropertyValue('--veld-layout-height'));
+    const documentTop = element.getBoundingClientRect().top + window.scrollY;
+    return Math.abs(height - Math.max(280, window.innerHeight - documentTop - 8)) <= 2;
+  }, null, { timeout: 3000 });
   const beforeScrollResize = await viewportHeight();
   await page.evaluate(() => window.scrollTo(0, 10000));
   await page.evaluate(() => window.dispatchEvent(new Event('resize')));
