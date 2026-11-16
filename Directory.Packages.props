@@ -46,7 +46,7 @@
 
     <!-- AI-adapter/provider — #1129: 10.10.0 vereist exact OpenAI 2.13.0, geen NU1608 meer -->
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="10.11.0" />
-    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="10.11.0" />
+    <PackageVersion Include="Microsoft.Extensions.AI.OpenAI" Version="11.0.0" />
     <PackageVersion Include="OpenAI" Version="2.15.0" />
 
     <!-- Overig gedeeld -->
