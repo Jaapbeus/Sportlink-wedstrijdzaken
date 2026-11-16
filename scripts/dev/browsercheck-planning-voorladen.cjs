@@ -68,6 +68,7 @@ if (!base || new URL(base).hostname !== 'localhost') throw new Error('Een eigen 
     await page.getByRole('button', { name: 'Veld wijzigen', exact: true }).click();
     await page.getByText('Veld gewijzigd in Sportlink Club.', { exact: true }).waitFor();
     await page.getByRole('cell', { name: 'veld 2', exact: true }).waitFor();
+    assert(await page.getByText('Veld gewijzigd in Sportlink Club.', { exact: true }).isVisible());
     assert.equal(mutated, true);
     assert.equal(calls.get(second), 3, 'veldmutatie haalt dezelfde dag opnieuw op');
     await page.goto(base + '/instellingen');

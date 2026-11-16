@@ -103,7 +103,7 @@ public partial class Planning : ClubSelectorPageBase
         StateHasChanged(); // Laat een vooraf geladen dag zien vóór het netwerkantwoord.
         try
         {
-            var result = await _voorladen.LaadAsync(datum);
+            var result = await _voorladen.LaadZichtbaarAsync(datum);
             if (_planningDisposed || !IsActueleClubLoad(_veldbezettingLoadGuard, generatie, club)) return;
             _veldbezetting = result.Success ? result.Data?.Wedstrijden ?? new() : new();
             _sportlinkStatus = result.Success ? result.Data?.Sportlink : null;

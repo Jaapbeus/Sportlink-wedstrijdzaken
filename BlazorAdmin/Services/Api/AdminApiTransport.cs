@@ -13,6 +13,7 @@ namespace BlazorAdmin.Services;
 /// </summary>
 public sealed class AdminApiTransport
 {
+    public const string VoorlaadSessieVerlopen = "voorladen_sessie_verlopen";
     private readonly HttpClient _http;
     private readonly ClientTelemetryService? _telemetrie;
     private static readonly JsonSerializerOptions _jsonOpts = new(JsonSerializerDefaults.Web);
@@ -62,7 +63,7 @@ public sealed class AdminApiTransport
         catch (AccessTokenNotAvailableException ex)
         {
             if (herauthenticeer) ex.Redirect();
-            return ApiResult<T>.Fail("Sessie verlopen: opnieuw inloggen.");
+            return ApiResult<T>.Fail("Sessie verlopen: opnieuw inloggen.", code: herauthenticeer ? null : VoorlaadSessieVerlopen);
         }
         catch (Exception ex)
         {

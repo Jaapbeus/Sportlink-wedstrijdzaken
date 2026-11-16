@@ -68,6 +68,17 @@ public sealed class PlanningVoorlaadCache : IDisposable
         return klaar.Task;
     }
 
+    /// <summary>Een gedeelde stille tokenfout krijgt uitsluitend op de zichtbare pagina één interactieve herkansing.</summary>
+    public async Task<ApiResult<VeldbezettingAntwoordDto>> LaadZichtbaarAsync(string datum)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var ct = _clubLeven.Token;
+        var antwoord = await LaadAsync(datum);
+        if (antwoord.Code != AdminApiTransport.VoorlaadSessieVerlopen || ct.IsCancellationRequested || _disposed)
+            return antwoord;
+        return await _haal(datum, ct);
+    }
+
     private async Task HaalAsync(string datum, int generatie, CancellationToken ct, bool vooraf,
         TaskCompletionSource<ApiResult<VeldbezettingAntwoordDto>> klaar)
     {

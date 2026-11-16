@@ -126,4 +126,24 @@ public class PlanningVoorlaadCacheTests
         (zichtbaar, stil).Should().Be((1, 1));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ZichtbareGedeeldeStilleTokenfout_HerkansingAlleenZolangClubNogActiefIs(bool wisselClub)
+    {
+        var wacht = new TaskCompletionSource<ApiResult<VeldbezettingAntwoordDto>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int zichtbaar = 0;
+        using var cache = new PlanningVoorlaadCache((_, _) => { zichtbaar++; return Task.FromResult(Goed()); },
+            haalVooraf: (_, _) => wacht.Task);
+        cache.KiesClub("CLUB-A");
+        var vooraf = cache.LaadAsync("2026-11-21", vooraf: true);
+        var pagina = cache.LaadZichtbaarAsync("2026-11-21");
+        if (wisselClub) cache.KiesClub("CLUB-B");
+        wacht.SetResult(ApiResult<VeldbezettingAntwoordDto>.Fail("Sessie verlopen", code: AdminApiTransport.VoorlaadSessieVerlopen));
+        await vooraf;
+        var resultaat = await pagina;
+        zichtbaar.Should().Be(wisselClub ? 0 : 1);
+        resultaat.Success.Should().Be(!wisselClub);
+    }
+
 }

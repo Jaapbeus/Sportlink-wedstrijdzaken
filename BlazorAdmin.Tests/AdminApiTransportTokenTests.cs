@@ -45,6 +45,7 @@ public class AdminApiTransportTokenTests
         var resultaat = await planning.GetVeldbezettingVoorafAsync("2026-11-21", CancellationToken.None);
         resultaat.Success.Should().BeFalse();
         nav.Doel.Should().BeNull();
+        resultaat.Code.Should().Be(AdminApiTransport.VoorlaadSessieVerlopen);
         await planning.GetVeldbezettingAsync("2026-11-21");
         nav.Doel.Should().NotBeNull("de zichtbare aanvraag behoudt de bestaande sessieafhandeling");
     }
