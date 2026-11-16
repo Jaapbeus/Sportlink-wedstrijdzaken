@@ -19,7 +19,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageVersion Include="AngleSharp" Version="1.10.3" />
+    <PackageVersion Include="AngleSharp" Version="1.10.4" />
     <!-- Azure Functions (beide tiers) -->
     <PackageVersion Include="Azure.Data.Tables" Version="12.13.0" />
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
