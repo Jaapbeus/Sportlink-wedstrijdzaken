@@ -18,6 +18,76 @@ export async function checkActivation({ page, block, wedstrijden, ok }) {
 
  }
 
+export async function checkSkipShortcutFocus({ browser, base, stubRoute, ok, artifactDir }) {
+  const scenarios = [
+    { name: 'mobile 360x640', width: 360, height: 640, resize: false },
+    { name: 'desktop after manual resize', width: 1360, height: 900, resize: true }
+  ];
+  for (const scenario of scenarios) {
+    const context = await browser.newContext({ viewport: { width: scenario.width, height: scenario.height } });
+    await context.addInitScript(() => localStorage.setItem('selectedClubCode', 'ALLSTARS'));
+    await context.route('**/*', stubRoute);
+    const page = await context.newPage();
+    try {
+      await page.goto(`${base}/veld-optimalisatie`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await page.getByText('Synthetic wedstrijd 01', { exact: true }).waitFor({ timeout: 60000 });
+      const pane = page.locator('.veldoptimalisatie-boven-paneel');
+      const splitter = page.locator('.veldoptimalisatie-splitter');
+      const shortcut = page.locator('[data-veld-skip-splitter]');
+      let resize = null;
+      if (scenario.resize) {
+        const before = Number(await splitter.getAttribute('aria-valuenow'));
+        const box = await splitter.boundingBox();
+        if (!box) throw new Error(`${scenario.name}: splitter has no bounding box`);
+        const x = box.x + box.width / 2;
+        const y = box.y + box.height / 2;
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x, y - 210, { steps: 12 });
+        await page.mouse.up();
+        const after = Number(await splitter.getAttribute('aria-valuenow'));
+        resize = { before, after };
+        ok(after < before, `${scenario.name}: pointer drag manually shrinks the upper pane (${before} -> ${after})`);
+      }
+      await pane.evaluate(el => { el.scrollTop = el.scrollHeight; });
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const before = await pane.evaluate(el => ({ scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight }));
+      ok(before.scrollTop > 0, `${scenario.name}: upper pane is scrolled before keyboard navigation (${JSON.stringify(before)})`);
+      let tabs = 0;
+      let focused = false;
+      while (tabs < 40 && !focused) {
+        await page.keyboard.press('Tab');
+        tabs++;
+        focused = await shortcut.evaluate(el => el === document.activeElement);
+      }
+      const after = await page.evaluate(() => {
+        const pane = document.querySelector('.veldoptimalisatie-boven-paneel');
+        const button = document.querySelector('[data-veld-skip-splitter]');
+        const rect = button.getBoundingClientRect();
+        const paneRect = pane.getBoundingClientRect();
+        const inViewport = rect.left >= 0 && rect.top >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight;
+        const inPane = rect.left >= paneRect.left && rect.top >= paneRect.top
+          && rect.right <= paneRect.right && rect.bottom <= paneRect.bottom;
+        const centerInsideViewport = rect.width > 0 && rect.height > 0
+          && rect.left + rect.width / 2 >= 0 && rect.left + rect.width / 2 < innerWidth
+          && rect.top + rect.height / 2 >= 0 && rect.top + rect.height / 2 < innerHeight;
+        const hit = centerInsideViewport ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
+        return { viewport: { width: innerWidth, height: innerHeight }, pane: paneRect.toJSON(), button: rect.toJSON(),
+          scrollTop: pane.scrollTop, focused: button === document.activeElement, focusVisible: button.matches(':focus-visible'),
+          inViewport, inPane, hitTestShortcut: hit === button || button.contains(hit), hitTag: hit?.tagName ?? null };
+      });
+      const artifactName = scenario.resize ? 'shortcut-focus-desktop-resized.png' : 'shortcut-focus-mobile-360x640.png';
+      await page.screenshot({ path: `${artifactDir}/${artifactName}` });
+      console.log(`INFO skip-shortcut focus ${JSON.stringify({ scenario: scenario.name, resize, before, tabs, ...after })}`);
+      ok(focused && after.focusVisible, `${scenario.name}: Tab reaches the skip shortcut with keyboard focus visible`);
+      ok(after.inViewport && after.inPane && after.hitTestShortcut,
+        `${scenario.name}: focused skip shortcut is inside the viewport and pane and receives the center hit-test (${JSON.stringify({ button: after.button, pane: after.pane, hitTag: after.hitTag })})`);
+    } finally {
+      await context.close();
+    }
+  }
+}
+
 export async function checkTouch({ browser, base, stubRoute, ok }) {
   const touchContext = await browser.newContext({ viewport: { width: 900, height: 700 }, hasTouch: true });
   await touchContext.addInitScript(() => localStorage.setItem('selectedClubCode', 'ALLSTARS'));

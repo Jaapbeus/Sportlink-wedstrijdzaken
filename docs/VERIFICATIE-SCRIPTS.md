@@ -632,7 +632,10 @@ Als de geïnstalleerde Playwright-versie een andere Chromium verwacht, kan
 
 Playwright-check voor de gesplitste Veld optimalisatie-weergave. De suite controleert de twee scrollgebieden,
 sticky tabelkop, selectie en scrollen zonder paginaverschuiving, filterbehoud, tabwissel, toetsenbordselectie
-en -resize, gesynthetiseerde assistive klik, geëmuleerde touch-tap en touch-pan. De touch-regressietest
+en -resize, toetsenbordfocus van de snelkoppeling na scrollen op 360×640 en na handmatig verkleinen op desktop,
+gesynthetiseerde assistive klik, geëmuleerde touch-tap en touch-pan. De focuscontrole gebruikt Tab en
+controleert dat de snelkoppeling zichtbaar binnen viewport en bovenpaneel valt en op het midden klikbaar is.
+De touch-regressietest
 controleert ook de browservarianten waarin de bijbehorende klik geen `pointerType` heeft of als muis wordt
 gemeld. Alleen een korte, voltooide touchreeks op hetzelfde blok activeert; annulering, verplaatsing,
 een ander doel en een verlopen reeks blijven inert. De lifecyclecontrole verifieert dat de touchlisteners

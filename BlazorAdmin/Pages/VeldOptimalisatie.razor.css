@@ -71,6 +71,7 @@
 }
 
 .veldoptimalisatie-boven-paneel {
+    position: relative;
     overflow: auto;
     padding: 0 0.15rem 0.25rem;
 }
