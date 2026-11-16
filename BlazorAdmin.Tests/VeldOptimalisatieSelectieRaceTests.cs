@@ -57,12 +57,13 @@ public sealed class VeldOptimalisatieSelectieRaceTests
 
             var request = AutoPlanAsync(page);
             Assert.Equal(1, handler.PendingCount);
-            selectie.Selecteer(42); // Simuleert een Gantt-selectie terwijl het oude plan zichtbaar blijft.
+            selectie.Selecteer(1); // Selecteert een bestaande rij uit het oude plan tijdens de aanvraag.
             handler.Complete(0, PlanResponse(2));
             await request;
 
             Assert.Equal(2, Get<AutoPlanResponseDto>(page, "_plan").Wedstrijden.Single().WedstrijdCode);
             Assert.Null(selectie.WedstrijdCode);
+            Assert.False(GetProperty<bool>(page, "IsSelectedOutsideFilter"));
         }
     }
 
@@ -124,6 +125,9 @@ public sealed class VeldOptimalisatieSelectieRaceTests
 
     private static T Get<T>(object instance, string name) =>
         (T)instance.GetType().GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(instance)!;
+
+    private static T GetProperty<T>(object instance, string name) =>
+        (T)instance.GetType().GetProperty(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(instance)!;
 
     private static void Set(object instance, string name, object value)
     {
