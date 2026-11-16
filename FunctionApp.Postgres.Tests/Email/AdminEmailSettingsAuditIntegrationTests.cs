@@ -45,16 +45,20 @@ public sealed class AdminEmailSettingsAuditIntegrationTests
                 "test", club, new DateOnly(2026, 11, 16), bevestigReviewUitzetten: true);
 
             await using var audit = new NpgsqlCommand(@"
-                SELECT veld, nieuwewaarde FROM public.appsettingsaudit
+                SELECT veld, oudewaarde, nieuwewaarde FROM public.appsettingsaudit
                 WHERE clubcode = @club ORDER BY id", connection);
             audit.Parameters.AddWithValue("club", club);
             await using var reader = await audit.ExecuteReaderAsync();
-            var rows = new List<(string Veld, string? Waarde)>();
-            while (await reader.ReadAsync()) rows.Add((reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1)));
+            var rows = new List<(string Veld, string? Oud, string? Nieuw)>();
+            while (await reader.ReadAsync()) rows.Add((reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2)));
             rows.Select(row => row.Veld).Should().Equal(
                 "EmailReviewOntvanger", "EmailReviewModusActief", "EmailReviewUitschakelingBevestigd");
-            rows[0].Waarde.Should().Be("[ingesteld]");
-            rows.Select(row => row.Waarde).Should().NotContain("trainer@voorbeeld.nl");
+            rows[0].Nieuw.Should().Be("[ingesteld]");
+            rows[1].Oud.Should().Be("1");
+            rows[1].Nieuw.Should().Be("0");
+            rows.SelectMany(row => new[] { row.Oud, row.Nieuw }).Should().NotContain("trainer@voorbeeld.nl");
         }
         finally
         {

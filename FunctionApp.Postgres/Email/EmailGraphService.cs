@@ -66,12 +66,9 @@ public sealed class EmailGraphService : IEmailGraphService
     }
 
     /// <summary>Alleen inbox-metadata; geen bericht of bericht-ID ophalen vóór de databasepoort.</summary>
-    public async Task<int> TelOngelezenInboxBerichtenAsync()
-    {
-        var inboxMetadata = await _graphClient.Users[_mailbox].MailFolders["inbox"]
-            .GetAsync(config => config.QueryParameters.Select = ["unreadItemCount"]);
-        return EmailInboxMetadata.LeesOngelezenAantal(inboxMetadata?.UnreadItemCount);
-    }
+    public async Task<int> TelOngelezenInboxBerichtenAsync() =>
+        EmailInboxMetadata.LeesOngelezenAantal((await _graphClient.Users[_mailbox].MailFolders["inbox"]
+            .GetAsync(config => config.QueryParameters.Select = ["unreadItemCount"]))?.UnreadItemCount);
 
     public async Task<List<InkomendBericht>> GetUnreadEmailsAsync()
     {

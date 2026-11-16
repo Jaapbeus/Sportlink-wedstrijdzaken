@@ -49,12 +49,9 @@ public static class PostgresSystemUtilities
 
     /// <summary>Wekt Postgres zonder instellingen of schema te laden.</summary>
     public static Task WaitForDatabaseConnectionAsync(ILogger log) => DatabaseVerbindingsWacht.WachtAsync(
-        async () =>
-        {
-            await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
-            await connection.OpenAsync();
-            LogTlsWarningOnce(log);
-        }, GetConfiguredInt("DbWaitMaxRetries", 5), GetConfiguredInt("DbWaitDelayMs", 3000), log);
+        () => new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString),
+        GetConfiguredInt("DbWaitMaxRetries", 5), GetConfiguredInt("DbWaitDelayMs", 3000), log,
+        () => LogTlsWarningOnce(log));
 
     private static void LogTlsWarningOnce(ILogger log)
     {
