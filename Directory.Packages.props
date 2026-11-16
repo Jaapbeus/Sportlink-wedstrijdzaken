@@ -64,7 +64,7 @@
       2. Geen puur managed pakket: levert per platform een native Skia- en qpdf-bibliotheek mee
          (runtimes/<rid>/native/). Voor linux-x64 ~11 MB.
     -->
-    <PackageVersion Include="QuestPDF" Version="2026.9.1" />
+    <PackageVersion Include="QuestPDF" Version="2026.9.2" />
 
     <!-- BlazorAdmin (WASM + MSAL) -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.15" />
