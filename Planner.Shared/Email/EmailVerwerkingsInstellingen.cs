@@ -60,6 +60,30 @@ public static class EmailVerwerkingsInstellingenLezer
             EmailVerwerkingsInstellingenLeesStatus.Beschikbaar);
     }
 
+    public static async Task<EmailVerwerkingsInstellingenLeesResultaat> ProbeerLezenAsync(
+        Func<Task<EmailVerwerkingsInstellingenLeesResultaat>> lezen, Action meldFout)
+    {
+        try { return await lezen(); }
+        catch (Exception)
+        {
+            meldFout();
+            return LeesVeilig(null, false);
+        }
+    }
+
+    public static EmailVerwerkingsInstellingenLeesResultaat VanRij(System.Data.Common.DbDataReader reader) =>
+        LeesVeilig(new EmailVerwerkingsInstellingen(
+            reader.GetBoolean(0), reader.GetBoolean(1), reader.IsDBNull(2) ? null : reader.GetString(2),
+            reader.GetBoolean(3), reader.GetBoolean(4)), true);
+
+    public static bool VerwerkingToegestaan(EmailVerwerkingsInstellingenLeesResultaat gelezen,
+        Action<EmailVerwerkingsInstellingenLeesStatus> meldUitgeschakeld)
+    {
+        if (gelezen.Instellingen.VerwerkingIngeschakeld) return true;
+        meldUitgeschakeld(gelezen.Status);
+        return false;
+    }
+
     private static EmailVerwerkingsInstellingenLeesResultaat Onveilig(
         EmailVerwerkingsInstellingenLeesStatus status) =>
         new(EmailVerwerkingsInstellingen.VeiligeStandaard, status);
@@ -68,6 +92,8 @@ public static class EmailVerwerkingsInstellingenLezer
 public enum EmailVerwerkingsInstellingenValidatieFout
 {
     OntvangerOngeldig,
+    SchakelaarOngeldig,
+    ClubRijOntbreekt,
     BevestigingReviewUitzettenVereist
 }
 
@@ -110,7 +136,7 @@ public static class EmailVerwerkingsInstellingenValidatie
     }
 }
 
-public sealed record EmailOntvangerAuditWaardes(string OudeWaarde, string NieuweWaarde);
+public sealed record EmailOntvangerAuditWaardes(string? OudeWaarde, string? NieuweWaarde);
 
 /// <summary>Audit projection that never returns or persists an email address.</summary>
 public static class EmailOntvangerAuditRedactie
@@ -159,4 +185,148 @@ public static class EmailVerwerkingsInstellingenImport
         instellingen.VerwerkingIngeschakeld
         || !instellingen.ReviewModusActief
         || !string.IsNullOrWhiteSpace(instellingen.ReviewOntvanger);
+}
+
+/// <summary>Typed, value-free error for the admin settings endpoint.</summary>
+public sealed class EmailVerwerkingsInstellingenWijzigingException : Exception
+{
+    public EmailVerwerkingsInstellingenWijzigingException(EmailVerwerkingsInstellingenValidatieFout fout)
+        : base(fout.ToString()) => Fout = fout;
+
+    public EmailVerwerkingsInstellingenValidatieFout Fout { get; }
+
+    public string VeiligeMelding => Fout switch
+    {
+        EmailVerwerkingsInstellingenValidatieFout.OntvangerOngeldig => "Vul hoogstens één kaal, geldig reviewadres in.",
+        EmailVerwerkingsInstellingenValidatieFout.SchakelaarOngeldig => "Gebruik aan of uit voor de e-mailschakelaars.",
+        EmailVerwerkingsInstellingenValidatieFout.ClubRijOntbreekt => "Instellingenrij voor deze club ontbreekt.",
+        _ => "Bevestig expliciet dat reviewmodus wordt uitgeschakeld."
+    };
+}
+
+/// <summary>Builds an admin update from an effective database snapshot.</summary>
+public static class EmailVerwerkingsInstellingenWijziging
+{
+    public static bool BevatEmailVeld(IDictionary<string, string?> velden) =>
+        velden.ContainsKey("EmailVerwerkingIngeschakeld")
+        || velden.ContainsKey("EmailReviewModusActief")
+        || velden.ContainsKey("EmailReviewOntvanger");
+
+    public static EmailVerwerkingsInstellingen Bouw(
+        EmailVerwerkingsInstellingenLeesResultaat huidig,
+        IDictionary<string, string?> velden,
+        bool reviewUitzettenBevestigd)
+    {
+        var verwerking = LeesSchakelaar(velden, "EmailVerwerkingIngeschakeld", huidig.Instellingen.VerwerkingIngeschakeld);
+        var review = LeesSchakelaar(velden, "EmailReviewModusActief", huidig.Instellingen.ReviewModusActief);
+        var ontvanger = velden.TryGetValue("EmailReviewOntvanger", out var ingevoerd)
+            ? ingevoerd : huidig.Instellingen.ReviewOntvanger;
+        var nieuw = huidig.Instellingen with
+        {
+            VerwerkingIngeschakeld = verwerking,
+            ReviewModusActief = review,
+            ReviewOntvanger = ontvanger,
+            DoorBeheerderGewijzigd = true
+        };
+        var fouten = EmailVerwerkingsInstellingenValidatie.ValideerWijziging(
+            huidig, nieuw, reviewUitzettenBevestigd);
+        if (fouten.Count > 0)
+            throw new EmailVerwerkingsInstellingenWijzigingException(fouten[0]);
+
+        EmailVerwerkingsInstellingenValidatie.TryNormaliseerOntvanger(ontvanger, out var schoon);
+        if (velden.ContainsKey("EmailReviewOntvanger"))
+            velden["EmailReviewOntvanger"] = schoon;
+        return nieuw with { ReviewOntvanger = schoon };
+    }
+
+    public static void VulVeldenAan(IDictionary<string, string?> velden, EmailVerwerkingsInstellingen nieuw)
+    {
+        velden["EmailVerwerkingIngeschakeld"] = nieuw.VerwerkingIngeschakeld ? "1" : "0";
+        velden["EmailReviewModusActief"] = nieuw.ReviewModusActief ? "1" : "0";
+        velden["EmailReviewOntvanger"] = nieuw.ReviewOntvanger;
+    }
+
+    public static EmailOntvangerAuditWaardes AuditWaarden(string veld, string? oud, string? nieuw) =>
+        string.Equals(veld, "EmailReviewOntvanger", StringComparison.OrdinalIgnoreCase)
+            ? EmailOntvangerAuditRedactie.Redigeer(oud, nieuw)
+            : new(oud, nieuw);
+
+    private static bool LeesSchakelaar(IDictionary<string, string?> velden, string naam, bool huidigeWaarde)
+    {
+        if (!velden.TryGetValue(naam, out var invoer)) return huidigeWaarde;
+        return invoer?.ToLowerInvariant() switch
+        {
+            "1" or "true" => true,
+            "0" or "false" => false,
+            _ => throw new EmailVerwerkingsInstellingenWijzigingException(
+                EmailVerwerkingsInstellingenValidatieFout.SchakelaarOngeldig)
+        };
+    }
+}
+
+/// <summary>Tier-independent projection and review confirmation for the admin endpoint.</summary>
+public static class EmailInstellingenAdminCore
+{
+    public static void VulGetResult(IDictionary<string, object?> result,
+        EmailVerwerkingsInstellingenLeesResultaat gelezen)
+    {
+        result["EmailVerwerkingIngeschakeld"] = gelezen.Instellingen.VerwerkingIngeschakeld;
+        result["EmailReviewModusActief"] = gelezen.Instellingen.ReviewModusActief;
+        result["EmailReviewOntvanger"] = gelezen.Instellingen.ReviewOntvanger;
+        result["EmailInstellingenStatus"] = gelezen.Status.ToString();
+    }
+
+    public static EmailInstellingenAdminWijziging? BereidVoor(
+        EmailVerwerkingsInstellingenLeesResultaat oud,
+        IDictionary<string, string?> changes, bool bevestigd)
+    {
+        if (oud.Status == EmailVerwerkingsInstellingenLeesStatus.RijOntbreekt)
+            throw new EmailVerwerkingsInstellingenWijzigingException(
+                EmailVerwerkingsInstellingenValidatieFout.ClubRijOntbreekt);
+        var nieuw = EmailVerwerkingsInstellingenWijziging.Bouw(oud, changes, bevestigd);
+        EmailVerwerkingsInstellingenWijziging.VulVeldenAan(changes, nieuw);
+        return new(oud, nieuw);
+    }
+
+    public static async Task<EmailInstellingenAdminWijziging?> BereidVoorAsync(
+        IDictionary<string, string?> changes, bool bevestigd,
+        Func<Task<EmailVerwerkingsInstellingenLeesResultaat>> leesVergrendeld)
+    {
+        if (!EmailVerwerkingsInstellingenWijziging.BevatEmailVeld(changes)) return null;
+        return BereidVoor(await leesVergrendeld(), changes, bevestigd);
+    }
+
+    public static Dictionary<string, string?> LeesWaarden(System.Data.Common.DbDataReader reader)
+    {
+        var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < reader.FieldCount; i++)
+            result[reader.GetName(i)] = AppSettingsNormalisatie.FormatteerAuditWaarde(reader.GetName(i), reader.GetValue(i));
+        return result;
+    }
+
+    public static bool BevestigingAuditen(EmailInstellingenAdminWijziging wijziging) =>
+        wijziging.Oud.Instellingen.ReviewModusActief && !wijziging.Nieuw.ReviewModusActief;
+}
+
+public sealed record EmailInstellingenAdminWijziging(
+    EmailVerwerkingsInstellingenLeesResultaat Oud,
+    EmailVerwerkingsInstellingen Nieuw);
+
+/// <summary>Fail-safe timer gate before any Graph or mailbox operation.</summary>
+public static class EmailTimerInstellingenGate
+{
+    public static async Task<EmailVerwerkingsInstellingenLeesResultaat?> LeesVoorVerwerkingAsync(
+        Func<Task<EmailVerwerkingsInstellingenLeesResultaat>> leesSnapshot,
+        Action meldLeesfout, Action<EmailVerwerkingsInstellingenLeesStatus> meldUitgeschakeld)
+    {
+        EmailVerwerkingsInstellingenLeesResultaat gelezen;
+        try { gelezen = await leesSnapshot(); }
+        catch (Exception)
+        {
+            meldLeesfout();
+            return null;
+        }
+        return EmailVerwerkingsInstellingenLezer.VerwerkingToegestaan(gelezen, meldUitgeschakeld)
+            ? gelezen : null;
+    }
 }

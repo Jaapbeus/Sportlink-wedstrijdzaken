@@ -184,4 +184,52 @@ public sealed class EmailVerwerkingsInstellingenTests
             .Should().Be(EmailVerwerkingsInstellingenImportBeslissing.HuidigeWaardenGewijzigd);
     }
 
+    [Fact]
+    public void Beheerwijziging_VereistBevestigingVanVeiligeStandEnNormaliseertAdres()
+    {
+        var huidig = EmailVerwerkingsInstellingenLezer.LeesVeilig(
+            EmailVerwerkingsInstellingen.VeiligeStandaard with { ReviewModusActief = false }, true);
+        var velden = new Dictionary<string, string?>
+        {
+            ["EmailVerwerkingIngeschakeld"] = "1",
+            ["EmailReviewModusActief"] = "0",
+            ["EmailReviewOntvanger"] = " trainer@voorbeeld.nl "
+        };
+
+        var fout = () => EmailVerwerkingsInstellingenWijziging.Bouw(huidig, velden, false);
+        fout.Should().Throw<EmailVerwerkingsInstellingenWijzigingException>()
+            .Which.Fout.Should().Be(EmailVerwerkingsInstellingenValidatieFout.BevestigingReviewUitzettenVereist);
+
+        var nieuw = EmailVerwerkingsInstellingenWijziging.Bouw(huidig, velden, true);
+        EmailVerwerkingsInstellingenWijziging.VulVeldenAan(velden, nieuw);
+        nieuw.DoorBeheerderGewijzigd.Should().BeTrue();
+        nieuw.ReviewOntvanger.Should().Be("trainer@voorbeeld.nl");
+        velden["EmailReviewOntvanger"].Should().Be("trainer@voorbeeld.nl");
+    }
+
+    [Fact]
+    public void Beheerwijziging_OngeldigAdresGeeftGeenAdresInFoutOfAudit()
+    {
+        var huidig = EmailVerwerkingsInstellingenLezer.LeesVeilig(Geimporteerd, true);
+        var velden = new Dictionary<string, string?> { ["EmailReviewOntvanger"] = "ongeldig@" };
+
+        var fout = () => EmailVerwerkingsInstellingenWijziging.Bouw(huidig, velden, false);
+        var uitzondering = fout.Should().Throw<EmailVerwerkingsInstellingenWijzigingException>().Which;
+        uitzondering.VeiligeMelding.Should().NotContain("ongeldig@");
+        EmailVerwerkingsInstellingenWijziging.AuditWaarden(
+            "EmailReviewOntvanger", Geimporteerd.ReviewOntvanger, "ongeldig@")
+            .ToString().Should().NotContain("@");
+    }
+
+    [Fact]
+    public void Beheerwijziging_WeigertOngeldigeSchakelaar()
+    {
+        var huidig = EmailVerwerkingsInstellingenLezer.LeesVeilig(Geimporteerd, true);
+        var velden = new Dictionary<string, string?> { ["EmailVerwerkingIngeschakeld"] = "aan misschien" };
+
+        var fout = () => EmailVerwerkingsInstellingenWijziging.Bouw(huidig, velden, false);
+        fout.Should().Throw<EmailVerwerkingsInstellingenWijzigingException>()
+            .Which.Fout.Should().Be(EmailVerwerkingsInstellingenValidatieFout.SchakelaarOngeldig);
+    }
+
 }

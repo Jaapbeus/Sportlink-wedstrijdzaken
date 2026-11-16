@@ -19,6 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Added
+- **E-mailverwerking per club** (#1977). De beheerder stelt verwerking, reviewmodus en één review-ontvanger per club in. Ontbrekende of onleesbare instellingen zetten verwerking veilig uit en review aan; review uitzetten vergt bevestiging en audit zonder adreswaarde. Een privé-importpad kan bestaande procesinstellingen eenmaal naar een expliciet gekozen club overnemen, zonder beheerderwijzigingen te overschrijven. Beide databasetiers; geen automatische productie-import.
 - **Clubbrede optimalisatie-aanvang** (#1979). Beheerders stellen op App instellingen één nullable starttijd voor de veldoptimalisatie in. Latere teamvoorkeuren blijven leidend; bij een lege instelling blijven de standaardtijden per leeftijdscategorie gelden. Op beide databasetiers; de reguliere Planning blijft ongewijzigd.
 
 ### Changed

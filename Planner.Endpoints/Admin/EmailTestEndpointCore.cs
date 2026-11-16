@@ -23,8 +23,8 @@ public sealed class TestEmailRequest
 
 /// <summary>
 /// De beleidsgegevens die het eindoordeel van de tester bepalen (#1583): de actuele clubinstelling
-/// <c>ZekerheidspoortActief</c>, de uitkomst van het reply-beleid (dat per tier een eigen type heeft) en de algemene
-/// reviewmodus (<c>EmailReviewMode</c>, gelezen met <see cref="Planner.Shared.Email.EmailReviewModus"/> zoals de processor).
+/// <c>ZekerheidspoortActief</c>, de uitkomst van het reply-beleid (dat per tier een eigen type heeft) en clubgebonden
+/// reviewmodus uit dezelfde database-snapshot als de processor.
 /// </summary>
 public sealed record TesterBeleid(bool PoortActief, bool ReplyMoetVersturen, string? ReplyReden, bool ReviewModus);
 

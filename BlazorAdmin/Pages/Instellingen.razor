@@ -320,8 +320,8 @@ else
             </div>
         </div>
 
-        <hr />
-        <h5>E-mailantwoorden</h5>
+        <EmailVerwerkingInstellingen Settings="settings" ToonBevestiging="_toonEmailReviewBevestiging"
+                                    Bevestig="BevestigEmailReviewUitzettenAsync" Annuleer="AnnuleerEmailReviewUitzetten" />
         <div class="row">
             <div class="col-md-8 mb-3">
                 <div class="form-check form-switch mt-2">
@@ -406,6 +406,10 @@ else
         @if (!string.IsNullOrEmpty(successMessage))
         {
             <div class="alert alert-success mt-3">@successMessage</div>
+        }
+        @if (!string.IsNullOrEmpty(saveErrorMessage))
+        {
+            <div class="alert alert-danger mt-3">@saveErrorMessage</div>
         }
         @if (!string.IsNullOrEmpty(herstartMessage))
         {

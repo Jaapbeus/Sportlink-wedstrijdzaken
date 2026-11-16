@@ -30,4 +30,22 @@ public class VerwerkingsBesluitRegelsTests
 
     [Fact]
     public void MaxPogingen_IsDrie() => VerwerkingsBesluitRegels.MaxPogingen.Should().Be(3);
+
+    [Theory]
+    [InlineData("AntwoordVerstuurd", false, true)]
+    [InlineData("GeenAntwoordNodig", false, true)]
+    [InlineData("BuitenScope", false, true)]
+    [InlineData("Fout", false, false)]
+    [InlineData("Onbekend", false, false)]
+    [InlineData("fout", false, false)]
+    [InlineData("Fout", true, true)]
+    [InlineData("Onbekend", true, true)]
+    public void DefinitieveStatus_BehoudtEnumParsingEnVerzendvlag(
+        string status, bool verzonden, bool verwacht)
+        => VerwerkingsBesluitRegels.IsDefinitief(verzonden, status).Should().Be(verwacht);
+
+    [Fact]
+    public void VolledigBesluit_BewaartPrioriteitVanOnbeslisteVerzendpoging()
+        => VerwerkingsBesluitRegels.Bepaal(false, "Fout", true, VerwerkingsBesluitRegels.MaxPogingen)
+            .Should().Be(VerwerkingsBesluit.OnbeslistNaVerzendPoging);
 }

@@ -51,7 +51,7 @@ public sealed record TesterEindoordeel(
             return new TesterEindoordeel(
                 TesterUitkomst.Review,
                 "Gaat naar Review — er wordt géén antwoord verstuurd",
-                "De algemene reviewmodus (EmailReviewMode) staat aan: elk antwoord wordt ter beoordeling opgeslagen en gaat nooit naar de afzender, ook niet bij een zeker oordeel.",
+                "De reviewmodus van deze club staat aan: elk antwoord wordt ter beoordeling opgeslagen en gaat nooit naar de afzender, ook niet bij een zeker oordeel.",
                 false,
                 "Concept-antwoord (alleen zichtbaar bij review, wordt niet naar de afzender verstuurd)");
 

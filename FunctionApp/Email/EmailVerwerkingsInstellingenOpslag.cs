@@ -10,17 +10,12 @@ internal static class EmailVerwerkingsInstellingenOpslag
     internal static async Task<EmailVerwerkingsInstellingenLeesResultaat> LeesAsync(
         string connectionString, string clubCode, ILogger log)
     {
-        try
+        return await EmailVerwerkingsInstellingenLezer.ProbeerLezenAsync(async () =>
         {
             using var connection = new SqlConnection(connectionString);
             await connection.OpenAsync();
             return await LeesAsync(connection, clubCode);
-        }
-        catch (Exception)
-        {
-            log.LogWarning("E-mailinstellingen niet leesbaar; verwerking uit, review aan");
-            return EmailVerwerkingsInstellingenLezer.LeesVeilig(null, false);
-        }
+        }, () => log.LogWarning("E-mailinstellingen niet leesbaar; verwerking uit, review aan"));
     }
 
     internal static async Task<EmailVerwerkingsInstellingenLeesResultaat> LeesAsync(
@@ -36,9 +31,6 @@ internal static class EmailVerwerkingsInstellingenOpslag
         using var reader = await command.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
             return EmailVerwerkingsInstellingenLezer.LeesVeilig(null, true);
-        var opgeslagen = new EmailVerwerkingsInstellingen(
-            reader.GetBoolean(0), reader.GetBoolean(1), reader.IsDBNull(2) ? null : reader.GetString(2),
-            reader.GetBoolean(3), reader.GetBoolean(4));
-        return EmailVerwerkingsInstellingenLezer.LeesVeilig(opgeslagen, true);
+        return EmailVerwerkingsInstellingenLezer.VanRij(reader);
     }
 }

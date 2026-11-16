@@ -33,6 +33,16 @@
 > Elke bewering hieronder is geverifieerd door de aangehaalde broncode te lezen; waar dat niet kon
 > (met name de OBO-tokenmechaniek in §4.6), staat dat expliciet als open vraag en niet als feit.
 
+## Clubgebonden verwerkingsinstellingen (#1977)
+
+De bestaande automatische e-mailverwerking gebruikt per poll één snapshot uit de AppSettings-rij
+van de primaire club op beide tiers. Verwerking staat uit en review aan als de rij ontbreekt,
+onleesbaar of niet geïnitialiseerd is. De e-mailtester leest dezelfde instelling voor de gekozen
+club. De review-ontvanger is één kaal adres; audit bewaart alleen ingesteld/niet ingesteld.
+Beheerderwijzigingen en de eenmalige, expliciet per club aangeroepen privé-import zetten een
+verschillende marker. De import overschrijft nooit een beheerderwijziging. De bestaande
+`EmailGraphService` blijft de enige Graph-adapter; er is geen nieuw verzendpad.
+
 ## Waarom dit document bestaat
 
 E-mailfunctionaliteit is in dit project organisch gegroeid vanuit één feature (automatische

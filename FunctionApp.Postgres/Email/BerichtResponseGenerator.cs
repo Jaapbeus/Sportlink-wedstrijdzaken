@@ -81,23 +81,9 @@ public static class BerichtResponseGenerator
         => BerichtAntwoordGenerator.BouwAangepasteAntwoord(
             template, classificatie, email, Instellingen(clubSettings), extraPlaceholders, gecontroleerdDagdeel);
 
-    /// <summary>De instellingenbron van deze tier; zie <see cref="AntwoordInstellingen"/>.</summary>
-    internal static IAntwoordInstellingen Instellingen(ClubAppSettingsSnapshot? clubSettings) => new AntwoordInstellingen(clubSettings);
-
-    /// <summary>
-    /// Leest per veld uit de club-snapshot (dry-run pad van de e-mailtester) wanneer die er is, anders uit de
-    /// procesbrede cache (de echte e-mailpipeline, één club). Binnen een snapshot valt een ontbrekend veld NIET
-    /// terug op de globale cache: dat zou de echte productieclub laten lekken in een democlub-dry-run (#677).
-    /// Elk veld wordt pas gelezen als de gedeelde generator het nodig heeft, net als voorheen.
-    /// </summary>
-    private sealed class AntwoordInstellingen(ClubAppSettingsSnapshot? club) : IAntwoordInstellingen
-    {
-        public string? EmailVoetnoot => club != null ? club.EmailVoetnoot : PostgresAppSettings.GetSetting("emailVoetnoot");
-        public string? PlannerAfzenderNaam => club != null ? club.PlannerAfzenderNaam : PostgresAppSettings.GetSetting("plannerAfzenderNaam");
-        public string? CoordinatorNaam => club != null ? club.CoordinatorNaam : PostgresAppSettings.GetSetting("coordinatorNaam");
-        public string? CoordinatorFunctie => club != null ? club.CoordinatorFunctie : PostgresAppSettings.GetSetting("coordinatorFunctie");
-        public string OntbrekendeAfzenderNaamMelding => club != null
-            ? "Vereiste instelling 'PlannerAfzenderNaam' ontbreekt in public.appsettings voor de opgegeven club"
-            : "Vereiste instelling 'plannerAfzenderNaam' ontbreekt in public.appsettings";
-    }
+    /// <summary>De instellingenbron van deze tier; de snapshot blijft leidend.</summary>
+    internal static IAntwoordInstellingen Instellingen(ClubAppSettingsSnapshot? clubSettings) =>
+        new SnapshotAntwoordInstellingen(clubSettings, PostgresAppSettings.GetSetting,
+            "Vereiste instelling 'PlannerAfzenderNaam' ontbreekt in public.appsettings voor de opgegeven club",
+            "Vereiste instelling 'plannerAfzenderNaam' ontbreekt in public.appsettings");
 }

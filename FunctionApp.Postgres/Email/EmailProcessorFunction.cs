@@ -21,36 +21,15 @@ namespace FunctionApp.Postgres.Email;
 /// </summary>
 internal static class EmailIdempotentie
 {
-    /// <summary>Maximaal aantal verwerkingspogingen per bericht; de waarde en onderbouwing staan in <see cref="VerwerkingsBesluitRegels.MaxPogingen"/> (#1650).</summary>
     internal const int MaxPogingen = VerwerkingsBesluitRegels.MaxPogingen;
 
-    /// <summary>Statussen waarna een bericht niet opnieuw verwerkt mag worden.</summary>
-    private static readonly EmailStatus[] DefinitieveStatussen =
-    [
-        EmailStatus.AntwoordVerstuurd,
-        EmailStatus.GeenAntwoordNodig,
-        EmailStatus.BuitenScope
-    ];
+    internal static VerwerkingsBesluit Bepaal(EmailVerwerkingStand? stand) =>
+        stand is null ? VerwerkingsBesluit.NieuweVerwerking :
+        VerwerkingsBesluitRegels.Bepaal(stand.AntwoordVerstuurd, stand.Status,
+            stand.VerzendPogingOnbeslist, stand.Pogingen);
 
-    /// <summary>
-    /// Is deze verwerking definitief afgerond? <c>AntwoordVerstuurd</c> is hier leidend: dat wordt
-    /// uitsluitend vastgelegd nádat een antwoord echt verstuurd is, dus een gezette waarde sluit een
-    /// tweede antwoord uit — ook als de status daarna nog op 'Fout' is gezet of onbekend is.
-    /// </summary>
-    internal static bool IsDefinitief(EmailVerwerkingStand stand)
-        => stand.AntwoordVerstuurd
-           || (Enum.TryParse<EmailStatus>(stand.Status, out var status)
-               && DefinitieveStatussen.Contains(status));
-
-    /// <summary>De volgorde van de regels staat in <see cref="VerwerkingsBesluitRegels"/> (#1650).</summary>
-    internal static VerwerkingsBesluit Bepaal(EmailVerwerkingStand? stand)
-        => stand is null
-            ? VerwerkingsBesluit.NieuweVerwerking
-            : VerwerkingsBesluitRegels.BepaalVoorBestaandeRij(IsDefinitief(stand), stand.VerzendPogingOnbeslist, stand.Pogingen);
-
-    /// <summary>Typevrije stand voor <see cref="EmailVerwerkingsAfhandeling"/> (#1650), inclusief besluit.</summary>
-    internal static EmailVerwerkingStandInfo? NaarStandInfo(EmailVerwerkingStand? stand)
-        => stand is null ? null : new(stand.VerwerkingId, stand.Status, stand.Pogingen, Bepaal(stand));
+    internal static EmailVerwerkingStandInfo? NaarStandInfo(EmailVerwerkingStand? stand) =>
+        stand is null ? null : new(stand.VerwerkingId, stand.Status, stand.Pogingen, Bepaal(stand));
 }
 
 public partial class EmailProcessorFunction
@@ -66,23 +45,14 @@ public partial class EmailProcessorFunction
         var log = context.GetLogger("ProcessIncomingEmails");
 
         // Lees de clubgebonden snapshot vóór Graph of enige mailboxmutatie.
-        EmailVerwerkingsInstellingenLeesResultaat instellingen;
-        try
+        var instellingen = await EmailTimerInstellingenGate.LeesVoorVerwerkingAsync(async () =>
         {
             await PostgresAppSettings.LoadSettingsAsync(log);
-            instellingen = await EmailVerwerkingsInstellingenOpslag.LeesAsync(
+            return await EmailVerwerkingsInstellingenOpslag.LeesAsync(
                 PostgresDatabaseConfig.ConnectionString, PostgresClubScope.Primary, log);
-        }
-        catch (Exception)
-        {
-            log.LogWarning("E-mailinstellingen niet beschikbaar; verwerking uit");
-            return;
-        }
-        if (!instellingen.Instellingen.VerwerkingIngeschakeld)
-        {
-            log.LogInformation("Email processor uitgeschakeld voor deze club ({Status})", instellingen.Status);
-            return;
-        }
+        }, () => log.LogWarning("E-mailinstellingen niet beschikbaar; verwerking uit"),
+            status => log.LogInformation("Email processor uitgeschakeld voor deze club ({Status})", status));
+        if (instellingen is null) return;
 
         // IEmailGraphService is alleen geregistreerd als Graph geconfigureerd is én
         // EgressGuard.ExternalIntegrationsAllowed() true is (Program.cs, #857) — buiten productie

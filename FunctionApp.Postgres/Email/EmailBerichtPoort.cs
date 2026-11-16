@@ -15,6 +15,8 @@ internal sealed class EmailBerichtPoort(
     EmailVerwerkingsInstellingen? emailInstellingen = null)
     : IEmailBerichtPoort<InkomendBericht>
 {
+    private readonly ClubAppSettingsSnapshot _clubSettings = ClubAppSettingsSnapshot.VanInstellingen(
+        PostgresAppSettings.GetSetting, emailInstellingen?.ReviewModusActief ?? true);
     private string AppVersie => EmailTraceRecord.VersieVan(typeof(EmailProcessorFunction).Assembly);
     public IReplyGraph Graph => graph;
     public EmailVerwerkingsInstellingen EmailInstellingen => emailInstellingen ?? EmailVerwerkingsInstellingen.VeiligeStandaard;
@@ -45,7 +47,7 @@ internal sealed class EmailBerichtPoort(
     public Task UpdateStatusAsync(int verwerkingId, EmailStatus status, string? classificatieJson)
         => SqlEmailPersistenceRepository.UpdateStatusAsync(cs, verwerkingId, status, classificatieJson);
     public Task<string> VerwerkMetPlannerAsync(InkomendBericht bericht, BerichtClassificatie classificatie, TraceBuilder trace, ILogger log)
-        => BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, log, teamResolver, clubCode, trace: trace);
+        => BerichtPipeline.VerwerkMetPlannerAsync(classificatie, bericht, log, teamResolver, clubCode, _clubSettings, trace: trace);
     public Task UpdatePlannerResponseAsync(int verwerkingId, string plannerResponseJson)
         => SqlEmailPersistenceRepository.UpdatePlannerResponseAsync(cs, verwerkingId, plannerResponseJson);
     public Task<ReplyVerwerkingUitkomst> HandelReplyFlowAfAsync(int verwerkingId, InkomendBericht bericht,
@@ -60,7 +62,7 @@ internal sealed class EmailBerichtPoort(
     public Task<(string onderwerp, string body)> BouwTemplateAntwoordAsync(InkomendBericht bericht,
         BerichtClassificatie classificatie, string plannerResponseJson, ILogger log, TraceBuilder trace)
         => BerichtPipeline.BouwTemplateAntwoord(classificatie, plannerResponseJson,
-            bericht, log, null, clubCode, trace);
+            bericht, log, _clubSettings, clubCode, trace);
     public Task BewaarKorteTraceAsync(int verwerkingId, string verzoekType, BeslissingsTrace trace, ILogger log)
         => EmailTraceRepository.UpsertAsync(cs, EmailTraceRecord.Van(verwerkingId, clubCode,
             verzoekType, trace, AppVersie));

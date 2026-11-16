@@ -71,6 +71,9 @@ public static class EmailTestFunction
         // AllStars-dry-run nooit de instellingen (afzendernaam/coördinator) van de echte
         // productieclub gebruikt.
         var clubSettings = await LoadClubSettingsSnapshotAsync(clubCode);
+        var emailInstellingen = await EmailVerwerkingsInstellingenOpslag.LeesAsync(
+            SystemUtilities.DatabaseConfig.ConnectionString, clubCode, log);
+        clubSettings = clubSettings with { EmailReviewModusActief = emailInstellingen.Instellingen.ReviewModusActief };
 
         var onderwerp = dto.Onderwerp ?? "";
         var afzender = dto.Afzender ?? "trainer@voorbeeld.nl";
@@ -119,9 +122,6 @@ public static class EmailTestFunction
         // #1583: het eindoordeel weegt de ACTUELE zekerheidspoort-instelling van de gekozen club mee en volgt de
         // volgorde van de productieverwerking (reply-beleid, dan poort). Alleen lezen; de dry-run slaat niets op.
         var (poortActief, reply) = (await ZekerheidspoortInstelling.IsActiefAsync(clubCode, log), ReplyPolicy.Bepaal(classificatie, plannerResponseJson));
-
-        var emailInstellingen = await EmailVerwerkingsInstellingenOpslag.LeesAsync(
-            SystemUtilities.DatabaseConfig.ConnectionString, clubCode, log);
 
         return EmailTestEndpointCore.Antwoord(classificatie, classificatie.Type.ToString(), classificatie.Samenvatting,
             plannerResponseJson, trace, new TesterBeleid(poortActief, reply.MoetVersturen, reply.Reden, emailInstellingen.Instellingen.ReviewModusActief), voorbeeldOnderwerp, voorbeeldBody);

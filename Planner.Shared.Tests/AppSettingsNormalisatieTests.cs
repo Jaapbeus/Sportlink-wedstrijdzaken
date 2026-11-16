@@ -1,5 +1,6 @@
 using System.Globalization;
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Planner.Shared.Tests;
@@ -50,5 +51,26 @@ public class AppSettingsNormalisatieTests
         AppSettingsNormalisatie.FormatteerAuditWaarde("AnderVeld", DBNull.Value).Should().BeNull();
         AppSettingsNormalisatie.FormatteerAuditWaarde("Accommodatie", "  ").Should().Be("  ");
         AppSettingsNormalisatie.FormatteerAuditWaarde("SeasonStartMonth", 8).Should().Be("8");
+    }
+
+    [Fact]
+    public void FilterBehoudtMailveldenEnNormaliseertAlleenDaarvoorBedoeldeWaarden()
+    {
+        var velden = new Dictionary<string, string?>
+        {
+            ["EmailReviewModusActief"] = "0",
+            ["EmailReviewOntvanger"] = "trainer@voorbeeld.nl",
+            ["OptimalisatieAanvang"] = "  ",
+            ["Onbekend"] = "waarde",
+            ["Fout-veld"] = "waarde"
+        };
+        var toegestaan = new[] { "EmailReviewModusActief", "EmailReviewOntvanger", "OptimalisatieAanvang", "Fout-veld" };
+
+        var resultaat = AppSettingsNormalisatie.FilterToegestaneVelden(velden, toegestaan, NullLogger.Instance);
+
+        resultaat.Should().HaveCount(3);
+        resultaat["EmailReviewModusActief"].Should().Be("0");
+        resultaat["EmailReviewOntvanger"].Should().Be("trainer@voorbeeld.nl");
+        resultaat["OptimalisatieAanvang"].Should().BeNull();
     }
 }

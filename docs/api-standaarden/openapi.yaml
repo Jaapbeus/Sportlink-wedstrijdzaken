@@ -34,7 +34,7 @@ info:
     `/sync-matches` op de SQL Server-tier. Op de andere tier geeft die route `404`.
 
     Alle `/beheer/`- en `/feedback/`-endpoints retourneren de header `x-correlation-id` in het antwoord.
-  version: 3.19.1.0
+  version: 3.19.3.0
   contact:
     name: Sportlink Wedstrijdzaken
     url: https://github.com/jaapbeus/Sportlink-wedstrijdzaken
@@ -891,6 +891,23 @@ components:
             het doel; eerdere voorkeuren worden begrensd. Leeg laat de bestaande standaardtijden per
             leeftijdscategorie gelden.
           example: "08:00"
+        EmailVerwerkingIngeschakeld:
+          type: boolean
+          default: false
+          description: Clubgebonden schakelaar; ontbrekende of onleesbare configuratie schakelt verwerking uit (#1977).
+        EmailReviewModusActief:
+          type: boolean
+          default: true
+          description: Clubgebonden reviewmodus; uitschakelen vergt expliciete bevestiging en audit (#1977).
+        EmailReviewOntvanger:
+          type: string
+          format: email
+          nullable: true
+          description: Optioneel enkel kaal reviewadres; audit bewaart uitsluitend ingesteld of niet ingesteld.
+        EmailInstellingenStatus:
+          type: string
+          enum: [Beschikbaar, RijOntbreekt, NietGeinitialiseerd, Onleesbaar, OntvangerOngeldig]
+          description: Veilige leesstatus van de clubinstellingen.
         EmailVoetnoot:
           type: string
           nullable: true
@@ -1555,7 +1572,8 @@ components:
         CoordinatorFunctie, PlannerEmailAdres, Accommodatie, FetchSchedule, EmailVoetnoot,
         AccommodatiePlaats, AccommodatieLatitude, AccommodatieLongitude, UseRealtimeApi,
         KnvbPdfBijlageIngeschakeld, KnvbStandaardRegio, SportlinkExtensionEnabled, PdfExportIngeschakeld,
-        ZekerheidspoortActief, SeasonStartMonth en OptimalisatieAanvang.
+        ZekerheidspoortActief, SeasonStartMonth, OptimalisatieAanvang, EmailVerwerkingIngeschakeld,
+        EmailReviewModusActief en EmailReviewOntvanger.
         `OptimalisatieAanvang` is `HH:mm` of null; null bewaart de bestaande terugval op de
         leeftijdscategorie. Booleaanse velden accepteren `0`/`1`/`true`/`false`, anders 400.
 
@@ -1568,9 +1586,17 @@ components:
         50 tekens. Een ontbrekend volgend UTC-uitvoermoment of ongeldige waarde geeft 400;
         de foutmelding herhaalt de ingevoerde waarde niet. Een weggelaten veld blijft ongewijzigd.
 
+        `EmailReviewOntvanger` accepteert leeg of precies één kaal adres; adreswaarden worden niet
+        in de audit opgenomen. De status van de clubrij blijft fail-safe tot import of beheerderwijziging.
+        `bevestigReviewUitzetten=true` is verplicht bij effectief aan naar uit.
+
         De audit-actor (wie de wijziging doorvoerde) wordt uitsluitend server-side bepaald uit de
         door Easy Auth gevalideerde claims — dit contract kent daarom geen "wie"-veld (#1003).
       properties:
+        bevestigReviewUitzetten:
+          type: boolean
+          default: false
+          description: Vereist wanneer de effectieve reviewmodus van aan naar uit gaat; de server auditeert de bevestiging.
         velden:
           type: object
           additionalProperties:

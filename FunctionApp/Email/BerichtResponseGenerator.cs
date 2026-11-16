@@ -81,23 +81,9 @@ public static class BerichtResponseGenerator
         => BerichtAntwoordGenerator.BouwAangepasteAntwoord(
             template, classificatie, email, Instellingen(clubSettings), extraPlaceholders, gecontroleerdDagdeel);
 
-    /// <summary>De instellingenbron van deze tier; zie <see cref="AntwoordInstellingen"/>.</summary>
-    internal static IAntwoordInstellingen Instellingen(ClubAppSettingsSnapshot? clubSettings) => new AntwoordInstellingen(clubSettings);
-
-    /// <summary>
-    /// Leest per veld uit de club-snapshot (dry-run pad van de e-mailtester) wanneer die er is, anders uit de
-    /// procesbrede cache (de echte e-mailpipeline, één club). Binnen een snapshot valt een ontbrekend veld NIET
-    /// terug op de globale cache: dat zou de echte productieclub laten lekken in een democlub-dry-run (#677).
-    /// Elk veld wordt pas gelezen als de gedeelde generator het nodig heeft, net als voorheen.
-    /// </summary>
-    private sealed class AntwoordInstellingen(ClubAppSettingsSnapshot? club) : IAntwoordInstellingen
-    {
-        public string? EmailVoetnoot => club != null ? club.EmailVoetnoot : SystemUtilities.AppSettings.GetSetting("emailVoetnoot");
-        public string? PlannerAfzenderNaam => club != null ? club.PlannerAfzenderNaam : SystemUtilities.AppSettings.GetSetting("plannerAfzenderNaam");
-        public string? CoordinatorNaam => club != null ? club.CoordinatorNaam : SystemUtilities.AppSettings.GetSetting("coordinatorNaam");
-        public string? CoordinatorFunctie => club != null ? club.CoordinatorFunctie : SystemUtilities.AppSettings.GetSetting("coordinatorFunctie");
-        public string OntbrekendeAfzenderNaamMelding => club != null
-            ? "Vereiste instelling 'PlannerAfzenderNaam' ontbreekt in dbo.AppSettings voor de opgegeven club"
-            : "Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings";
-    }
+    /// <summary>De instellingenbron van deze tier; de snapshot blijft leidend.</summary>
+    internal static IAntwoordInstellingen Instellingen(ClubAppSettingsSnapshot? clubSettings) =>
+        new SnapshotAntwoordInstellingen(clubSettings, SystemUtilities.AppSettings.GetSetting,
+            "Vereiste instelling 'PlannerAfzenderNaam' ontbreekt in dbo.AppSettings voor de opgegeven club",
+            "Vereiste instelling 'plannerAfzenderNaam' ontbreekt in dbo.AppSettings");
 }
