@@ -19,7 +19,7 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 ## [Unreleased]
 
 ### Fixed
-- De private infrastructuurpatronen worden alleen ingelezen en verplicht gecontroleerd bij een push naar `main` in de basisrepository; structurele infrastructuur- en overige securityscans blijven actief bij alle bestaande events. Synthetische regressietests bewaken de eventscope en het fail-closed gedrag (#1980).
+- Private infrastructuurpatronen worden alleen bij een push naar `main` in de basisrepository gecontroleerd; dit gebeurt na de merge en beschermt de PR niet vooraf. De deployworkflow controleert dezelfde patronen vóór build, migratie en deployment, ook bij een handmatige productiestart. Algemene securityscans blijven op alle bestaande events actief. Negatieve workflowmutaties bewaken deze koppeling en ontbrekende of ongeldige privéconfiguratie blokkeert de productiecontrole (#1980).
 
 ## [3.19.0.0] — 2026-11-15
 

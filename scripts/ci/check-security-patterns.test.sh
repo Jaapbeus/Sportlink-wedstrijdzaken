@@ -315,59 +315,111 @@ done
 
 echo "PASS: security pattern matcher handles unusual tracked paths, preserves pattern classes, and keeps public output value-free."
 
-# Private patterns are eligible only for a push to the base repository's production main branch.
+# Keep the assertions scoped to executable lines of the named YAML steps. Exact
+# conditions are checked instead of duplicating the predicate in shell.
 WORKFLOW="$ROOT/.github/workflows/security-scan.yml"
-PRODUCTION_GATE="if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.fork == false"
-NOT_APPLICABLE_GATE="if: github.event_name != 'push' || github.ref != 'refs/heads/main' || github.event.repository.fork == true"
-PRIVATE_STEP=$(awk '
-  /name: Scan private infrastructure patterns on production pushes/ { capture = 1 }
-  capture { print }
-  capture && /^      - name:/ && !/name: Scan private infrastructure patterns on production pushes/ { exit }
-' "$WORKFLOW")
-NOT_APPLICABLE_STEP=$(awk '
-  /name: Report private production scan as not applicable/ { capture = 1 }
-  capture { print }
-  capture && /^      - name:/ && !/name: Report private production scan as not applicable/ { exit }
-' "$WORKFLOW")
+DEPLOY_WORKFLOW="$ROOT/.github/workflows/deploy.yml"
+PRODUCTION_GATE="        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.fork == false"
+NOT_APPLICABLE_GATE="        if: github.event_name != 'push' || github.ref != 'refs/heads/main' || github.event.repository.fork == true"
+DEPLOY_GATE="        if: github.ref == 'refs/heads/main' && github.event.repository.fork == false"
+SECRET_ENV="          CLUB_EXTRA_PATTERNS: \${{ secrets.CLUB_EXTRA_PATTERNS || '' }}"
+REQUIRED_ENV="          REQUIRE_CLUB_EXTRA_PATTERNS: 'true'"
 
-grep -Fq "$PRODUCTION_GATE" <<< "$PRIVATE_STEP" \
-  || fail "private patterns are not gated to a non-fork push to refs/heads/main"
-grep -Fq 'secrets.CLUB_EXTRA_PATTERNS' <<< "$PRIVATE_STEP" \
-  || fail "production-only scan does not receive its private pattern secret"
-grep -Fq "REQUIRE_CLUB_EXTRA_PATTERNS: 'true'" <<< "$PRIVATE_STEP" \
-  || fail "production-only scan is not fail-closed"
-[ "$(grep -Fc 'secrets.CLUB_EXTRA_PATTERNS' "$WORKFLOW")" -eq 1 ] \
-  || fail "private pattern secret is referenced outside the production-only step"
-grep -Fq "$NOT_APPLICABLE_GATE" <<< "$NOT_APPLICABLE_STEP" \
-  || fail "non-production events do not explicitly report the private scan as not applicable"
-grep -Fq 'not applicable for this event' <<< "$NOT_APPLICABLE_STEP" \
-  || fail "non-production private scan status is not explicit"
-grep -Fq 'run_check infra-structural' "$WORKFLOW" \
-  || fail "the general structural infrastructure scan was removed"
-
-assert_production_scope() {
-  event_name="$1"
-  ref="$2"
-  fork="$3"
-  expected="$4"
-  actual=false
-  if [ "$event_name" = push ] && [ "$ref" = refs/heads/main ] && [ "$fork" = false ]; then
-    actual=true
-  fi
-  [ "$actual" = "$expected" ] \
-    || fail "production scope mismatch for synthetic event matrix case"
+extract_step() {
+  awk -v wanted="$2" '
+    $0 == "      - name: " wanted { active = 1; print; next }
+    active && (/^      - name:/ || /^  [A-Za-z][A-Za-z0-9_-]*:/) { exit }
+    active { print }
+  ' "$1"
 }
 
-assert_production_scope push refs/heads/main false true
-assert_production_scope push refs/heads/develop false false
-assert_production_scope push refs/heads/feature-synthetic false false
-assert_production_scope push refs/heads/dependabot/synthetic false false
-assert_production_scope pull_request refs/pull/1/merge false false
-assert_production_scope pull_request refs/pull/2/merge true false
-assert_production_scope push refs/heads/main true false
+extract_job() {
+  awk -v wanted="$2" '
+    $0 == "  " wanted ":" { active = 1; print; next }
+    active && /^  [a-z][a-z0-9-]*:/ { exit }
+    active { print }
+  ' "$1"
+}
 
-# The fail-closed scanner behavior is exercised above for both missing and invalid patterns.
-echo "PASS: private infrastructure patterns are limited to production main pushes across the synthetic event matrix."
+exactly_once() {
+  [ "$(grep -Fxc "$2" <<< "$1" || true)" -eq 1 ]
+}
+
+verify_workflow_wiring() {
+  local scan_workflow="$1" deploy_workflow="$2" structural private skipped preflight guard_job job name dependency
+  structural="$(extract_step "$scan_workflow" 'Scan op Azure resource namen en infrastructuuridentifiers')"
+  private="$(extract_step "$scan_workflow" 'Scan private infrastructure patterns on production pushes')"
+  skipped="$(extract_step "$scan_workflow" 'Report private production scan as not applicable')"
+  preflight="$(extract_step "$deploy_workflow" 'Controleer private infrastructuurpatronen vóór productiehandelingen')"
+  guard_job="$(extract_job "$deploy_workflow" deploy-ref-guard)"
+
+  [ -n "$structural" ] && [ -n "$private" ] && [ -n "$skipped" ] && [ -n "$preflight" ] || return 1
+  grep -Fqx "    branches: ['**']" "$scan_workflow" || return 1
+  grep -Fqx '  pull_request:' "$scan_workflow" || return 1
+  grep -Fqx '    types: [opened, synchronize, reopened, ready_for_review]' "$scan_workflow" || return 1
+  grep -Fqx '    branches: [main]' "$deploy_workflow" || return 1
+  grep -Fqx '  workflow_dispatch:' "$deploy_workflow" || return 1
+  # The generic scan must run on every event, never as a comment or behind an if.
+  ! grep -Eq '^        if:' <<< "$structural" || return 1
+  exactly_once "$structural" '          run_check infra-structural' || return 1
+  ! grep -Fq 'infra-private' <<< "$structural" || return 1
+  exactly_once "$private" "$PRODUCTION_GATE" || return 1
+  exactly_once "$private" "$SECRET_ENV" || return 1
+  exactly_once "$private" "$REQUIRED_ENV" || return 1
+  exactly_once "$private" '          if /bin/bash scripts/ci/check-security-patterns.sh infra-private; then' || return 1
+  [ "$(grep -Fc 'secrets.CLUB_EXTRA_PATTERNS' "$scan_workflow" || true)" -eq 1 ] || return 1
+  exactly_once "$skipped" "$NOT_APPLICABLE_GATE" || return 1
+  exactly_once "$skipped" '          echo "Private production-only infrastructure pattern scan: not applicable for this event; structural infrastructure scan remains active."' || return 1
+  exactly_once "$preflight" "$DEPLOY_GATE" || return 1
+  exactly_once "$preflight" "$SECRET_ENV" || return 1
+  exactly_once "$preflight" "$REQUIRED_ENV" || return 1
+  exactly_once "$preflight" '        run: /bin/bash scripts/ci/check-security-patterns.sh infra-private' || return 1
+  [ "$(grep -Fc 'secrets.CLUB_EXTRA_PATTERNS' "$deploy_workflow" || true)" -eq 1 ] || return 1
+  for name in db-check build; do
+    job="$(extract_job "$deploy_workflow" "$name")"
+    exactly_once "$job" '    needs: [deploy-ref-guard]' || return 1
+  done
+  for name in deploy db-migrate db-migrate-postgres; do
+    case "$name" in
+      deploy) dependency='    needs: [build, db-check, db-migrate, db-migrate-postgres, deploy-ref-guard]' ;;
+      db-migrate) dependency='    needs: [build, db-check, deploy-ref-guard]' ;;
+      db-migrate-postgres) dependency='    needs: [build, deploy-ref-guard]' ;;
+    esac
+    job="$(extract_job "$deploy_workflow" "$name")"
+    exactly_once "$job" "$dependency" || return 1
+  done
+  job="$(extract_job "$deploy_workflow" test)"
+  exactly_once "$job" '    needs: [deploy]' || return 1
+  job="$(extract_job "$deploy_workflow" blazor-deploy)"
+  exactly_once "$job" '    needs: [build, deploy]' || return 1
+  exactly_once "$guard_job" '        run: /bin/bash scripts/ci/check-security-patterns.sh infra-private' || return 1
+}
+
+verify_workflow_wiring "$WORKFLOW" "$DEPLOY_WORKFLOW" \
+  || fail "security or deployment workflow wiring changed"
+
+# Prove the guard rejects meaningful workflow mutations, including the three
+# regressions reproduced during review. These copies never touch the worktree.
+mutated_scan="$TEMP_ROOT/security-scan-mutated.yml"
+mutated_deploy="$TEMP_ROOT/deploy-mutated.yml"
+sed 's/^          run_check infra-structural$/          # run_check infra-structural/' "$WORKFLOW" > "$mutated_scan"
+cmp -s "$mutated_scan" "$WORKFLOW" && fail "structural mutation did not change workflow"
+if verify_workflow_wiring "$mutated_scan" "$DEPLOY_WORKFLOW"; then fail "commented structural scan escaped guard"; fi
+sed "s/^        if: github.event_name == 'push' && github.ref == 'refs\/heads\/main' && github.event.repository.fork == false$/        if: github.event_name == 'push' \&\& github.ref == 'refs\/heads\/main' \&\& github.event.repository.fork == false || github.actor == 'synthetic'/" "$WORKFLOW" > "$mutated_scan"
+cmp -s "$mutated_scan" "$WORKFLOW" && fail "production gate mutation did not change workflow"
+if verify_workflow_wiring "$mutated_scan" "$DEPLOY_WORKFLOW"; then fail "broadened production gate escaped guard"; fi
+awk '
+  { print }
+  $0 == "      - name: Scan op Azure resource namen en infrastructuuridentifiers" { print "        if: github.event_name == '\''push'\''" }
+' "$WORKFLOW" > "$mutated_scan"
+cmp -s "$mutated_scan" "$WORKFLOW" && fail "structural scope mutation did not change workflow"
+if verify_workflow_wiring "$mutated_scan" "$DEPLOY_WORKFLOW"; then fail "restricted structural scan escaped guard"; fi
+sed 's|^        run: /bin/bash scripts/ci/check-security-patterns.sh infra-private$|        run: echo skipped|' "$DEPLOY_WORKFLOW" > "$mutated_deploy"
+cmp -s "$mutated_deploy" "$DEPLOY_WORKFLOW" && fail "deployment mutation did not change workflow"
+if verify_workflow_wiring "$WORKFLOW" "$mutated_deploy"; then fail "disabled deployment preflight escaped guard"; fi
+
+# Missing and invalid private configuration are exercised by the scanner tests above.
+echo "PASS: workflow wiring and four negative mutations protect generic scans and production preflight."
 
 # #1940: ook fragmenten en releasemanifest vallen onder de documentatiescan.
 new_repo changelog-fragment
