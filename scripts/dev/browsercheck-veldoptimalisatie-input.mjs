@@ -160,8 +160,15 @@ export async function checkMobileMenuLayout({ browser, base, stubRoute, ok, arti
     await menuToggle.click();
     const adminGroup = page.getByRole('button', { name: /^Admin/ }).first();
     await adminGroup.waitFor({ state: 'visible' });
+    const adminSubmenu = adminGroup.locator('xpath=..').locator('.nav-subitems');
+    ok(!(await adminSubmenu.isVisible()), 'mobile navigation Admin group starts collapsed');
     await adminGroup.click();
+    await adminSubmenu.waitFor({ state: 'visible' });
+    const settingsLink = adminSubmenu.locator('a[title="App instellingen"]');
+    await settingsLink.waitFor({ state: 'visible' });
     const expandedMenuSizing = await waitForExpandedMobileMenu(page);
+    ok(await settingsLink.isVisible(),
+      'mobile navigation Admin group opens its settings submenu before menu close');
     await menuToggle.click();
     await page.waitForTimeout(500);
 
