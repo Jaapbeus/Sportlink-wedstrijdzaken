@@ -52,11 +52,15 @@ Postgres-definities staan in `Database.Postgres/migrations/`.
 
 ## Verwerkingsstroom (overzicht)
 
-De verwerking heeft twee fasen. Voor een batch die na de voorfilters geclassificeerd wordt, laadt
+Vóór beide fasen leest de timer alleen inboxmetadata. Ontbreekt Graph, is de inbox leeg of mislukt
+die probe, dan raakt hij database noch throttle. Bij ongelezen mail opent hij eerst uitsluitend
+een databaseverbinding en leest vervolgens verse clubinstellingen; zie de fail-safe standaard hieronder.
+
+De verwerking heeft daarna twee fasen. Voor een batch die na de voorfilters geclassificeerd wordt, laadt
 fase 1 eerst de goedgekeurde few-shot-voorbeelden via de bestaande database-/instellingenroute. De
-database kan daardoor al vóór de AI-aanroep wakker worden; de volledige verwerkingslus en
-idempotentie-check (§1d) blijven in fase 2. Een lege of vooraf volledig gefilterde inbox raakt de
-database nog steeds niet. Een succesvol geladen lege voorbeeldset is geldig. Als de bron niet
+volledige verwerkingslus en idempotentie-check (§1d) blijven in fase 2. De instellingenpoort heeft
+bij een niet-lege inbox de database dan al geraakt, ook wanneer voorfilters later alle berichten
+uitsluiten. Een succesvol geladen lege voorbeeldset is geldig. Als de bron niet
 beschikbaar is, stopt de poll vóór classificatie en de buiten-scope-mutaties; de bestaande
 database-noodmail met uitval-throttle meldt de storing.
 
@@ -269,10 +273,14 @@ Er wordt niets stil weggegooid: het bericht wordt normaal verwerkt en gelogd in
 die check komt vóór de reply-policy.
 
 **Fail-safe standaard (#1977):** de timer leest eerst alleen het aantal ongelezen items van de
-Graph-inbox. Bij nul of een metadatafout stopt hij zonder database. Bij ongelezen mail gebruikt hij
-de bestaande database-wachtroute en leest één verse clubgebonden snapshot vóór het volledig ophalen
-van berichten, AI en mailboxmutaties. Ook bij uitgeschakelde verwerking kost een inbox met ongelezen
-mail dus een databaselezing. Een ontbrekende rij, niet toegepaste migratie, niet-geïnitialiseerde rij, ongeldige review-ontvanger
+Graph-inbox. Bij nul of een metadatafout stopt hij zonder database of throttle. Bij ongelezen mail
+gebruikt hij een verbindingscontrole met het bestaande wachtvenster van de tier. Uitgeputte
+verbindingspogingen lopen via de bestaande database-noodmail, Graph-adapter en persistente sleutel
+`database-noodmail`; het aantal in die mail heet "Ongelezen inboxitems (metadata)". Een geslaagde
+verbinding wist die sleutel. Instellingen-/schemafouten geven geen verbindingsuitvalmelding.
+Daarna leest hij één verse clubgebonden snapshot vóór het volledig ophalen van berichten, AI en
+mailboxmutaties. Ook bij uitgeschakelde verwerking kost een inbox met ongelezen mail op iedere poll
+een databaselezing; er is geen negatieve cache. Een ontbrekende rij, niet toegepaste migratie, niet-geïnitialiseerde rij, ongeldige review-ontvanger
 of leesfout zet de verwerking uit en review aan. De oude procesinstellingen
 `EmailProcessorEnabled`, `EmailReviewMode` en `EmailReviewRecipient` worden tijdens de normale
 verwerking niet gelezen. De e-mailtester gebruikt dezelfde clubgebonden leesregel en bouwt de

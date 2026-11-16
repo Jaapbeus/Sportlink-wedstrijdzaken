@@ -51,10 +51,8 @@ public partial class EmailProcessorFunction
         // De metadata-check raakt geen berichtinhoud of database. Alleen werk in de inbox
         // wekt de database; vóór volledige Graph-ophaal/AI/mutaties is één verse clubsnapshot vereist.
         var graphService = context.InstanceServices.GetService<IEmailGraphService>();
-        var instellingen = await EmailPollNoodmailCallbacksFactory.LeesInstellingenAsync(
-            graphService,
-            graphService is null ? null : graphService.TelOngelezenInboxBerichtenAsync,
-            () => context.InstanceServices.GetRequiredService<INoodmailThrottleStore>(),
+        var instellingen = await EmailPollNoodmailCallbacksFactory.LeesInstellingenAsync<INoodmailThrottleStore>(
+            graphService, context.InstanceServices,
             () => SystemUtilities.WaitForDatabaseConnectionAsync(log),
             () => SystemUtilities.AppSettings.LastLoadFailed,
             () => SystemUtilities.AppSettings.LoadSettingsAsync(log),

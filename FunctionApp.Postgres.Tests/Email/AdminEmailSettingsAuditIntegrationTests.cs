@@ -33,6 +33,11 @@ public sealed class AdminEmailSettingsAuditIntegrationTests
                 "test", club, new DateOnly(2026, 11, 16));
             alleenOntvanger.Keys.Should().ContainSingle().Which.Should().Be("EmailReviewOntvanger");
 
+            var andereOntvanger = new Dictionary<string, string?>
+                { ["EmailReviewOntvanger"] = "trainer@allstars-fc.test" };
+            await AdminSettingsFunction.ApplyChangesAsync(connection, andereOntvanger,
+                "test", club, new DateOnly(2026, 11, 16));
+
             var ongewijzigd = new Dictionary<string, string?>
                 { ["EmailVerwerkingIngeschakeld"] = "false" };
             await AdminSettingsFunction.ApplyChangesAsync(connection, ongewijzigd,
@@ -54,11 +59,13 @@ public sealed class AdminEmailSettingsAuditIntegrationTests
                 reader.IsDBNull(1) ? null : reader.GetString(1),
                 reader.IsDBNull(2) ? null : reader.GetString(2)));
             rows.Select(row => row.Veld).Should().Equal(
-                "EmailReviewOntvanger", "EmailReviewModusActief", "EmailReviewUitschakelingBevestigd");
+                "EmailReviewOntvanger", "EmailReviewOntvanger", "EmailReviewModusActief", "EmailReviewUitschakelingBevestigd");
             rows[0].Nieuw.Should().Be("[ingesteld]");
-            rows[1].Oud.Should().Be("1");
-            rows[1].Nieuw.Should().Be("0");
-            rows.SelectMany(row => new[] { row.Oud, row.Nieuw }).Should().NotContain("trainer@voorbeeld.nl");
+            rows[1].Oud.Should().Be("[ingesteld]");
+            rows[1].Nieuw.Should().Be("[ingesteld]");
+            rows[2].Oud.Should().Be("1");
+            rows[2].Nieuw.Should().Be("0");
+            rows.SelectMany(row => new[] { row.Oud, row.Nieuw }).Should().NotContain(new[] { "trainer@voorbeeld.nl", "trainer@allstars-fc.test" });
         }
         finally
         {

@@ -21,10 +21,8 @@ namespace FunctionApp.Postgres.Email;
 /// van 2026-09-04. Zie <c>FunctionApp.Postgres/Email/EmailProcessorFunction.cs</c>.
 /// </para>
 /// </summary>
-public interface IEmailGraphService : IReplyGraph
+public interface IEmailGraphService : IEmailPollGraph
 {
-    /// <summary>Leest alleen het aantal ongelezen inboxitems vóór de databasepoort.</summary>
-    Task<int> TelOngelezenInboxBerichtenAsync();
     /// <summary>Haalt maximaal 10 ongelezen emails op uit de inbox van de coördinator-mailbox.</summary>
     Task<List<InkomendBericht>> GetUnreadEmailsAsync();
 

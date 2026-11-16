@@ -1,4 +1,6 @@
+using System.Data;
 using System.Data.Common;
+using System.Diagnostics.CodeAnalysis;
 using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Planner.Shared.Monitoring;
@@ -55,4 +57,53 @@ public sealed class DatabaseVerbindingsWachtTests
         else await actie.Should().ThrowAsync<InvalidOperationException>();
         pogingen.Should().Be(1);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OpenPogingen_SluitenElkeVerbinding_EnSignalerenAlleenNaSucces(bool blijvendeFout)
+    {
+        var verbindingen = new List<ProefVerbinding>();
+        var naOpen = 0;
+        var actie = () => DatabaseVerbindingsWacht.WachtAsync(() =>
+        {
+            var verbinding = new ProefVerbinding(blijvendeFout || verbindingen.Count == 0);
+            verbindingen.Add(verbinding);
+            return verbinding;
+        }, 2, 0, NullLogger.Instance, () => naOpen++);
+
+        if (blijvendeFout) await actie.Should().ThrowAsync<DatabaseVerbindingOnbeschikbaarException>();
+        else await actie();
+
+        verbindingen.Should().HaveCount(2);
+        verbindingen.Should().OnlyContain(v => v.OpenPogingen == 1 && v.Opgeruimd);
+        naOpen.Should().Be(blijvendeFout ? 0 : 1);
+    }
+
+    private sealed class ProefVerbinding(bool faalt) : DbConnection
+    {
+        public int OpenPogingen { get; private set; }
+        public bool Opgeruimd { get; private set; }
+        [AllowNull] public override string ConnectionString { get; set; } = "";
+        public override string Database => "";
+        public override string DataSource => "";
+        public override string ServerVersion => "";
+        public override ConnectionState State => ConnectionState.Closed;
+        public override Task OpenAsync(CancellationToken cancellationToken)
+        {
+            OpenPogingen++;
+            return faalt ? Task.FromException(new TestDbException()) : Task.CompletedTask;
+        }
+        public override ValueTask DisposeAsync()
+        {
+            Opgeruimd = true;
+            return ValueTask.CompletedTask;
+        }
+        public override void Open() => throw new NotSupportedException();
+        public override void Close() => throw new NotSupportedException();
+        public override void ChangeDatabase(string databaseName) => throw new NotSupportedException();
+        protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel) => throw new NotSupportedException();
+        protected override DbCommand CreateDbCommand() => throw new NotSupportedException();
+    }
+
 }

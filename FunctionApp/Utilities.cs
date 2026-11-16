@@ -322,9 +322,12 @@ namespace SportlinkFunction
         }
 
         /// <summary>Wekt SQL Server zonder de instellingen-/schemalaadfout als verbindingsuitval te classificeren.</summary>
-        public static Task WaitForDatabaseConnectionAsync(ILogger log) => DatabaseVerbindingsWacht.WachtAsync(
-            () => new SqlConnection(DatabaseConfig.ConnectionString),
-            MaxDatabaseConnectRetries, DatabaseConnectRetryDelayMs, log);
+        public static Task WaitForDatabaseConnectionAsync(ILogger log)
+        {
+            return DatabaseVerbindingsWacht.WachtAsync(
+                () => new SqlConnection(DatabaseConfig.ConnectionString),
+                MaxDatabaseConnectRetries, DatabaseConnectRetryDelayMs, log);
+        }
 
         public static class SeasonHelper
         {

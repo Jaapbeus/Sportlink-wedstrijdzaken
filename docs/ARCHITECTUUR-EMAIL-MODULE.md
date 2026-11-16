@@ -36,13 +36,23 @@
 ## Clubgebonden verwerkingsinstellingen (#1977)
 
 De timer vraagt eerst uitsluitend het aantal ongelezen items in de Graph-inbox op. Een lege inbox
-of mislukte metadata-lezing raakt de database niet. Bij ongelezen mail wacht hij op de bestaande
-database-wachtpogingen en gebruikt daarna per poll één verse snapshot uit de AppSettings-rij
+of mislukte metadata-lezing raakt de database en de noodmail-throttle niet. Bij ongelezen mail
+opent hij eerst uitsluitend een verbinding, met het bestaande wachtvenster van de eigen tier.
+Alleen uitgeputte verbindingspogingen geven een getypeerde, gesaneerde uitvalmelding. Die gebruikt
+`EmailNoodmailMelding`, dezelfde persistente throttle-sleutel en dezelfde Graph-adapter als de
+verwerkingsfasen; het aantal heet expliciet "Ongelezen inboxitems (metadata)" en is geen telling
+van volledig opgehaalde berichten. Verbindingsherstel wist de bestaande throttle-sleutel.
+Daarna laadt hij instellingen en gebruikt per poll één verse snapshot uit de AppSettings-rij
 van de primaire club op beide tiers, vóór volledig berichten ophalen, AI of mailboxmutaties.
-Ook als verwerking uit staat wordt bij ongelezen mail de database gelezen; de lege-inbox-poll
-verbruikt daardoor geen SQL-serverless vCore-tijd. Verwerking staat uit en review aan als de rij ontbreekt,
+Ook als verwerking uit staat wordt bij ongelezen mail de database gelezen. Bij een lege inbox
+opent dit pad geen databaseverbinding. Verwerking staat uit en review aan als de rij ontbreekt,
 onleesbaar of niet geïnitialiseerd is. De e-mailtester leest dezelfde instelling voor de gekozen
-club. De review-ontvanger is één kaal adres; audit bewaart alleen ingesteld/niet ingesteld.
+club. Zonder negatieve cache wekt blijvend ongelezen mail ook bij uitgeschakelde verwerking
+op elke poll de database. Instellingen- of schemafouten stoppen veilig vóór berichtinhoud, AI en mailboxmutaties
+en gelden niet als verbindingsuitval. De algemene `WaitForDatabaseAsync` blijft ongewijzigd.
+De review-ontvanger is één kaal adres; audit bewaart alleen ingesteld/niet ingesteld. Ook een
+adreswijziging van ingesteld naar ingesteld krijgt een auditrij, zonder de adreswaarden of een
+nieuwe onderscheidende marker. De twee e-mailschakelaars gebruiken oud/nieuw consequent `0`/`1`.
 Beheerderwijzigingen en de eenmalige, expliciet per club aangeroepen privé-import zetten een
 verschillende marker. De import overschrijft nooit een beheerderwijziging. De bestaande
 `EmailGraphService` blijft de enige Graph-adapter; er is geen nieuw verzendpad.

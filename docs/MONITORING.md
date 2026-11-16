@@ -443,6 +443,14 @@ dagen durende uitval van 25-30 augustus 2026 (#799/#808) bleek dát de reden dat
 melding is aangekomen: geen relevante e-mail → databaseverbinding nooit geprobeerd → uitval nooit
 gedetecteerd.
 
+Sinds #1977 doet de e-mailpoll op beide tiers eerst uitsluitend een inbox-metadataprobe en bij
+ongelezen items een afzonderlijke verbindingscontrole. Alleen uitgeputte verbindingspogingen
+roepen de bestaande `EmailNoodmailMelding` aan met dezelfde persistente `database-noodmail`-sleutel.
+Het gemelde aantal heet "Ongelezen inboxitems (metadata)"; er zijn dan nog geen berichten opgehaald.
+Een geslaagde verbinding wist de bestaande sleutel. Een ontbrekende Graph-adapter, lege inbox of
+probe-fout raakt de throttle niet; instellingen- en schemafouten worden niet als verbindingsuitval
+gemeld. De onafhankelijke monitor hieronder blijft ongewijzigd.
+
 `DatabaseUitvalMonitorFunction` (`FunctionApp/Monitoring/`) lost dit op met een losstaande,
 dagelijkse timer die de management-plane status van de database opvraagt via de Azure SQL Database
 REST API (`GET .../providers/Microsoft.Sql/servers/{server}/databases/{database}`) — een
