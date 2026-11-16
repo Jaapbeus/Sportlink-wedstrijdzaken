@@ -58,12 +58,12 @@ public class AdminApiPadenTests
 
         await c.Instellingen.UpdateSettingsAsync(new SettingsUpdateDto
         {
-            Velden = new() { ["EmailReviewMode"] = "false" },
+            Velden = new() { ["EmailReviewModusActief"] = "false" },
             BevestigReviewUitzetten = bevestigd
         });
 
         handler.Regels.Should().Equal(
-            "UpdateSettingsAsync | PUT api/beheer/settings | {\"velden\":{\"EmailReviewMode\":\"false\"},\"bevestigReviewUitzetten\":"
+            "UpdateSettingsAsync | PUT api/beheer/settings | {\"velden\":{\"EmailReviewModusActief\":\"false\"},\"bevestigReviewUitzetten\":"
             + verwachteJsonWaarde + "}");
     }
 
