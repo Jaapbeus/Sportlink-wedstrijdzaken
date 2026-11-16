@@ -163,6 +163,13 @@ public enum EmailVerwerkingsInstellingenImportBeslissing
 /// <summary>Pure one-time import decision. The caller must apply it transactionally per club.</summary>
 public static class EmailVerwerkingsInstellingenImport
 {
+    // Match the legacy switches exactly apart from case. Never trim: " false " did not disable review.
+    public static bool TryLeesLegacySchakelaar(string? bron, out bool waarde)
+    {
+        waarde = string.Equals(bron, "true", StringComparison.OrdinalIgnoreCase);
+        return waarde || string.Equals(bron, "false", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static EmailVerwerkingsInstellingenImportBeslissing Bepaal(
         EmailVerwerkingsInstellingen? huidig,
         bool legacyBronBeschikbaar)

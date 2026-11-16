@@ -40,13 +40,12 @@ if (string.IsNullOrWhiteSpace(connectionString) || legacyProcessor is null || le
     throw new InvalidOperationException("Private bron onvolledig; import niet uitgevoerd.");
 if (!EmailVerwerkingsInstellingenValidatie.TryNormaliseerOntvanger(legacyRecipient, out var ontvanger))
     throw new InvalidOperationException("Private review-ontvanger ongeldig; import niet uitgevoerd.");
-if (legacyProcessor is not ("true" or "false" or "True" or "False")
-    || legacyReview is not ("true" or "false" or "True" or "False"))
+if (!EmailVerwerkingsInstellingenImport.TryLeesLegacySchakelaar(legacyProcessor, out var verwerking)
+    || !EmailVerwerkingsInstellingenImport.TryLeesLegacySchakelaar(legacyReview, out var review))
     throw new InvalidOperationException("Private schakelaarwaarde ongeldig; import niet uitgevoerd.");
 
 return new ImportConfig(tier, clubCode, connectionString,
-    string.Equals(legacyProcessor, "true", StringComparison.OrdinalIgnoreCase),
-    EmailReviewModus.IsActief(legacyReview), ontvanger, args.Length == 5);
+    verwerking, review, ontvanger, args.Length == 5);
 }
 
 private static async Task ImporteerAsync(ImportConfig config)

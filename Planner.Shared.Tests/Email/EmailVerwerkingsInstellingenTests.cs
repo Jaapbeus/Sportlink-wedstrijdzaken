@@ -6,6 +6,39 @@ namespace Planner.Shared.Tests.Email;
 
 public sealed class EmailVerwerkingsInstellingenTests
 {
+    [Theory]
+    [InlineData("true", true)]
+    [InlineData("True", true)]
+    [InlineData("TRUE", true)]
+    [InlineData("tRuE", true)]
+    [InlineData("false", false)]
+    [InlineData("False", false)]
+    [InlineData("FALSE", false)]
+    [InlineData("fAlSe", false)]
+    public void PrivateImport_AccepteertLegacyBooleansHoofdletterongevoelig(string bron, bool verwacht)
+    {
+        EmailVerwerkingsInstellingenImport.TryLeesLegacySchakelaar(bron, out var waarde).Should().BeTrue();
+        waarde.Should().Be(verwacht);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData(" true")]
+    [InlineData("true ")]
+    [InlineData(" false ")]
+    [InlineData("FALSE\t")]
+    [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("yes")]
+    public void PrivateImport_WeigertOntbrekendeOngeldigeEnWitruimteBron(string? bron)
+    {
+        EmailVerwerkingsInstellingenImport.TryLeesLegacySchakelaar(bron, out var waarde).Should().BeFalse();
+        waarde.Should().BeFalse();
+        EmailReviewModus.IsActief(bron).Should().BeTrue();
+    }
+
     private static readonly EmailVerwerkingsInstellingen Geimporteerd =
         new(true, true, "trainer@voorbeeld.nl", true, false);
 
