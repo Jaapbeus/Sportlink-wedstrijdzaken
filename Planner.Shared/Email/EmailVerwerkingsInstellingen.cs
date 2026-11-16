@@ -1,5 +1,3 @@
-using System.Net.Mail;
-
 namespace Planner.Shared.Email;
 
 /// <summary>Typed per-club switches for processing incoming email.</summary>
@@ -17,6 +15,12 @@ public sealed record EmailVerwerkingsInstellingen(
 
     public EmailVerwerkingsInstellingen NaBeheerderWijziging() =>
         this with { DoorBeheerderGewijzigd = true };
+
+    public override string ToString() =>
+        $"EmailVerwerkingsInstellingen {{ VerwerkingIngeschakeld = {VerwerkingIngeschakeld}, " +
+        $"ReviewModusActief = {ReviewModusActief}, ReviewOntvanger = " +
+        $"{(string.IsNullOrWhiteSpace(ReviewOntvanger) ? EmailOntvangerAuditRedactie.NietIngesteld : EmailOntvangerAuditRedactie.Ingesteld)}, " +
+        $"EenmaligeImportVoltooid = {EenmaligeImportVoltooid}, DoorBeheerderGewijzigd = {DoorBeheerderGewijzigd} }}";
 }
 
 public enum EmailVerwerkingsInstellingenLeesStatus
@@ -70,7 +74,7 @@ public enum EmailVerwerkingsInstellingenValidatieFout
 public static class EmailVerwerkingsInstellingenValidatie
 {
     public static IReadOnlyList<EmailVerwerkingsInstellingenValidatieFout> ValideerWijziging(
-        EmailVerwerkingsInstellingen? huidig,
+        EmailVerwerkingsInstellingenLeesResultaat huidig,
         EmailVerwerkingsInstellingen nieuw,
         bool reviewUitzettenBevestigd)
     {
@@ -78,7 +82,8 @@ public static class EmailVerwerkingsInstellingenValidatie
         if (!TryNormaliseerOntvanger(nieuw.ReviewOntvanger, out _))
             fouten.Add(EmailVerwerkingsInstellingenValidatieFout.OntvangerOngeldig);
 
-        var wasReviewActief = huidig?.ReviewModusActief ?? true;
+        var wasReviewActief = huidig.Status != EmailVerwerkingsInstellingenLeesStatus.Beschikbaar
+            || huidig.Instellingen.ReviewModusActief;
         if (wasReviewActief && !nieuw.ReviewModusActief && !reviewUitzettenBevestigd)
             fouten.Add(EmailVerwerkingsInstellingenValidatieFout.BevestigingReviewUitzettenVereist);
 
@@ -92,12 +97,15 @@ public static class EmailVerwerkingsInstellingenValidatie
             return true;
 
         var opgeschoond = waarde.Trim();
-        if (!MailAddress.TryCreate(opgeschoond, out var adres)
-            || !string.IsNullOrEmpty(adres.DisplayName)
-            || !string.Equals(adres.Address, opgeschoond, StringComparison.OrdinalIgnoreCase))
+        var resultaat = OntvangerParser.Parse(opgeschoond);
+        // The shared parser also accepts display names and recipient lists. This setting accepts
+        // exactly one bare address; never expose FoutMelding because it may repeat the input.
+        if (!resultaat.IsValid
+            || resultaat.Emailadressen.Count != 1
+            || !string.Equals(resultaat.Emailadressen[0], opgeschoond, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        ontvanger = adres.Address;
+        ontvanger = resultaat.Emailadressen[0];
         return true;
     }
 }

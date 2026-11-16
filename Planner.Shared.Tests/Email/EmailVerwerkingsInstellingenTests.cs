@@ -73,11 +73,12 @@ public sealed class EmailVerwerkingsInstellingenTests
     {
         var uit = Geimporteerd with { ReviewModusActief = false };
 
-        EmailVerwerkingsInstellingenValidatie.ValideerWijziging(Geimporteerd, uit, false)
+        var huidig = EmailVerwerkingsInstellingenLezer.LeesVeilig(Geimporteerd, true);
+        EmailVerwerkingsInstellingenValidatie.ValideerWijziging(huidig, uit, false)
             .Should().ContainSingle().Which
             .Should().Be(EmailVerwerkingsInstellingenValidatieFout.BevestigingReviewUitzettenVereist);
 
-        EmailVerwerkingsInstellingenValidatie.ValideerWijziging(Geimporteerd, uit, true)
+        EmailVerwerkingsInstellingenValidatie.ValideerWijziging(huidig, uit, true)
             .Should().BeEmpty();
     }
 
@@ -86,8 +87,34 @@ public sealed class EmailVerwerkingsInstellingenTests
     {
         var uit = Geimporteerd with { ReviewModusActief = false };
 
-        EmailVerwerkingsInstellingenValidatie.ValideerWijziging(null, uit, false)
+        var huidig = EmailVerwerkingsInstellingenLezer.LeesVeilig(null, true);
+        EmailVerwerkingsInstellingenValidatie.ValideerWijziging(huidig, uit, false)
             .Should().Contain(EmailVerwerkingsInstellingenValidatieFout.BevestigingReviewUitzettenVereist);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ValideerWijziging_GebruiktVeiligeStandBijOngeinitialiseerdeOfOnleesbareRij(bool lezingGelukt)
+    {
+        var opgeslagen = EmailVerwerkingsInstellingen.VeiligeStandaard with { ReviewModusActief = false };
+        var huidig = EmailVerwerkingsInstellingenLezer.LeesVeilig(opgeslagen, lezingGelukt);
+
+        huidig.Instellingen.ReviewModusActief.Should().BeTrue();
+        EmailVerwerkingsInstellingenValidatie.ValideerWijziging(
+                huidig, opgeslagen.NaBeheerderWijziging(), reviewUitzettenBevestigd: false)
+            .Should().Contain(EmailVerwerkingsInstellingenValidatieFout.BevestigingReviewUitzettenVereist);
+    }
+
+    [Fact]
+    public void ValideerWijziging_VraagtGeenTweedeBevestigingAlsReviewAlEffectiefUitStaat()
+    {
+        var opgeslagen = Geimporteerd with { ReviewModusActief = false };
+        var huidig = EmailVerwerkingsInstellingenLezer.LeesVeilig(opgeslagen, true);
+
+        EmailVerwerkingsInstellingenValidatie.ValideerWijziging(
+                huidig, opgeslagen.NaBeheerderWijziging(), reviewUitzettenBevestigd: false)
+            .Should().BeEmpty();
     }
 
     [Theory]
@@ -95,6 +122,8 @@ public sealed class EmailVerwerkingsInstellingenTests
     [InlineData("  ", null, true)]
     [InlineData("trainer@voorbeeld.nl", "trainer@voorbeeld.nl", true)]
     [InlineData("display <trainer@voorbeeld.nl>", null, false)]
+    [InlineData("trainer@voorbeeld.nl; ander@voorbeeld.nl", null, false)]
+    [InlineData("trainer@voorbeeld.nl, ander@voorbeeld.nl", null, false)]
     [InlineData("geen-adres", null, false)]
     public void TryNormaliseerOntvanger_ValideertEenOptioneelKaalEmailadres(
         string? invoer,
@@ -115,6 +144,15 @@ public sealed class EmailVerwerkingsInstellingenTests
         resultaat.OudeWaarde.Should().Be(EmailOntvangerAuditRedactie.NietIngesteld);
         resultaat.NieuweWaarde.Should().Be(EmailOntvangerAuditRedactie.Ingesteld);
         (resultaat.OudeWaarde + resultaat.NieuweWaarde).Should().NotContain("trainer@voorbeeld.nl");
+    }
+
+    [Fact]
+    public void DiagnostischeTekst_BevatGeenOntvangeradres()
+    {
+        var tekst = Geimporteerd.ToString();
+
+        tekst.Should().Contain(EmailOntvangerAuditRedactie.Ingesteld);
+        tekst.Should().NotContain("trainer@voorbeeld.nl");
     }
 
     [Theory]
