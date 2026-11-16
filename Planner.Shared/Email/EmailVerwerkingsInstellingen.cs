@@ -99,6 +99,8 @@ public enum EmailVerwerkingsInstellingenValidatieFout
 
 public static class EmailVerwerkingsInstellingenValidatie
 {
+    public const int MaxOntvangerLengte = 320;
+
     public static IReadOnlyList<EmailVerwerkingsInstellingenValidatieFout> ValideerWijziging(
         EmailVerwerkingsInstellingenLeesResultaat huidig,
         EmailVerwerkingsInstellingen nieuw,
@@ -123,6 +125,9 @@ public static class EmailVerwerkingsInstellingenValidatie
             return true;
 
         var opgeschoond = waarde.Trim();
+        if (opgeschoond.Length > MaxOntvangerLengte)
+            return false;
+
         var resultaat = OntvangerParser.Parse(opgeschoond);
         // The shared parser also accepts display names and recipient lists. This setting accepts
         // exactly one bare address; never expose FoutMelding because it may repeat the input.

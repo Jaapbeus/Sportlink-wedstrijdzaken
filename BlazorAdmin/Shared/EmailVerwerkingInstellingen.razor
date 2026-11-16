@@ -21,6 +21,7 @@
                 </div>
                 <label class="form-label mt-2" for="email-review-ontvanger">Review-ontvanger (optioneel)</label>
                 <input class="form-control" type="email" id="email-review-ontvanger"
+                       maxlength="320"
                        @bind="Settings.EmailReviewOntvanger" autocomplete="off" />
                 <small class="form-text text-muted">Eén e-mailadres zonder naam. Leeg betekent dat voorstellen alleen in het e-maillog staan.</small>
                 @if (ToonBevestiging)
