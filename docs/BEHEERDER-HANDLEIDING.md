@@ -237,6 +237,18 @@ De kolom **Voorkeurstijd** toont in de tab Optimaal de gewenste tijd mét de afw
 Huidig alleen de gewenste tijd. Die afwijking is namelijk berekend op de optimale planning — hem bij
 de huidige stand tonen zou een getal beweren dat daar niet op is berekend.
 
+De bediening, samenvatting en tijdlijn staan boven de wedstrijdenlijst. De lijst heeft een eigen
+scrollbalk; de kolomkop blijft zichtbaar terwijl u door wedstrijden bladert. Dubbelklik op een
+wedstrijdblok om die wedstrijd in de lijst te markeren en ernaartoe te scrollen. De selectie blijft
+staan wanneer u tussen Huidig en Optimaal wisselt. Valt de geselecteerde wedstrijd buiten het actieve
+filter, dan blijft het filter actief en wordt alleen die wedstrijd tijdelijk toegevoegd met de badge
+**Buiten filter**.
+
+Sleep de balk tussen de tijdlijn en de lijst om de verdeling aan te passen. U kunt de balk ook met het
+toetsenbord bedienen: Tab naar de balk, gebruik de pijltjestoetsen om de hoogte te wijzigen, Home en
+End voor de kleinste en grootste hoogte. Op smalle schermen kan het bovenste deel zelf scrollen zodat
+de bediening en tijdlijn bereikbaar blijven.
+
 ### Veld optimalisatie — status-badges
 
 Veld optimalisatie heeft **twee losse kolommen** die makkelijk verward worden (#666):

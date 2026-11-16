@@ -54,3 +54,96 @@
 .tabel-extra-compact {
     font-size: 0.75rem;
 }
+
+.veldoptimalisatie-layout {
+    --veld-layout-height: 70vh;
+    display: grid;
+    grid-template-rows: minmax(0, var(--veld-boven-hoogte, 48%)) 0.75rem minmax(0, 1fr);
+    height: var(--veld-layout-height);
+    min-height: 20rem;
+    margin-bottom: 1rem;
+}
+
+.veldoptimalisatie-boven-paneel,
+.veldoptimalisatie-wedstrijden-paneel {
+    min-height: 0;
+    min-width: 0;
+}
+
+.veldoptimalisatie-boven-paneel {
+    overflow: auto;
+    padding: 0 0.15rem 0.25rem;
+}
+
+.veldoptimalisatie-wedstrijden-paneel {
+    overflow: hidden;
+}
+
+.veldoptimalisatie-gantt-kaart {
+    min-width: 0;
+}
+
+.veldoptimalisatie-splitter {
+    position: relative;
+    cursor: row-resize;
+    touch-action: none;
+    user-select: none;
+    outline: none;
+}
+
+.veldoptimalisatie-splitter::after {
+    content: "";
+    position: absolute;
+    inset: 0.3rem 0;
+    border-radius: 0.25rem;
+    background: var(--bs-border-color);
+}
+
+.veldoptimalisatie-splitter:hover::after,
+.veldoptimalisatie-splitter:focus-visible::after,
+.veldoptimalisatie-splitter.is-resizing::after {
+    background: var(--theme-primary);
+}
+
+.veldoptimalisatie-wedstrijden-paneel .card,
+.veldoptimalisatie-wedstrijden-paneel .card-body {
+    min-height: 0;
+}
+
+.veldoptimalisatie-wedstrijden-paneel .card-body {
+    overflow: hidden;
+}
+
+.veldoptimalisatie-tabel-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+.veldoptimalisatie-tabel-scroll thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background-color: var(--bs-tertiary-bg) !important;
+}
+
+.veldoptimalisatie-tabel-scroll:focus-visible {
+    outline: 2px solid var(--theme-primary);
+    outline-offset: -2px;
+}
+
+.gantt-rij-geselecteerd > td {
+    background-color: var(--theme-hover-highlight-bg) !important;
+    box-shadow: inset 0 2px 0 var(--theme-primary), inset 0 -2px 0 var(--theme-primary);
+}
+
+@media (max-width: 640.98px) {
+    .veldoptimalisatie-layout {
+        min-height: 26rem;
+        grid-template-rows: minmax(0, var(--veld-boven-hoogte, 48%)) 0.85rem minmax(0, 1fr);
+    }
+
+    .veldoptimalisatie-tabel-scroll {
+        overscroll-behavior: contain;
+    }
+}

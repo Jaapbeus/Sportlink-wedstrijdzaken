@@ -5,6 +5,8 @@
 // dus geblokkeerd, waardoor window.blazorHelpers niet bestond en clipboard, downloadHtml en
 // getUserAgent stil faalden. Een extern bestand van dezelfde origin valt onder 'self' en mag wel.
 // Zie #659. Lokaal was dit onzichtbaar: de dev-server past staticwebapp.config.json niet toe.
+var veldOptimalisatieLayouts = new WeakMap();
+
 window.blazorHelpers = {
     copyToClipboard: function (text) {
         return navigator.clipboard.writeText(text);
@@ -54,5 +56,129 @@ window.blazorHelpers = {
     // want de URL is pas bekend na een async API-call, niet vooraf in de markup beschikbaar.
     openInNewTab: function (url) {
         window.open(url, '_blank', 'noopener');
+    },
+    // Resizable two-pane layout for Veld optimalisatie. Keyboard handling is scoped to the
+    // separator and selectable Gantt blocks so Tab navigation keeps its native behavior.
+    initializeVeldOptimalisatie: function (layout, separator) {
+        if (!layout || !separator || veldOptimalisatieLayouts.has(layout)) return;
+        var upperPane = layout.querySelector('.veldoptimalisatie-boven-paneel');
+        var initialLayoutApplied = false;
+        var userAdjusted = false;
+
+        function bounds() {
+            var usable = Math.max(280, layout.clientHeight - separator.offsetHeight);
+            var minBottom = Math.min(window.innerWidth <= 640 ? 220 : 180, usable * 0.55);
+            var max = usable - minBottom;
+            var min = Math.min(max, Math.max(160, usable * 0.2));
+            return { usable: usable, min: min, max: max };
+        }
+
+        function setHeight(value) {
+            var limits = bounds();
+            var height = Math.max(limits.min, Math.min(limits.max, value));
+            layout.style.setProperty('--veld-boven-hoogte', height + 'px');
+            separator.setAttribute('aria-valuemin', String(Math.round(limits.min / limits.usable * 100)));
+            separator.setAttribute('aria-valuemax', String(Math.round(limits.max / limits.usable * 100)));
+            separator.setAttribute('aria-valuenow', String(Math.round(height / limits.usable * 100)));
+            return height;
+        }
+
+        function fitViewport() {
+            var top = layout.getBoundingClientRect().top;
+            layout.style.setProperty('--veld-layout-height', Math.max(280, window.innerHeight - top - 8) + 'px');
+            var current = Number.parseFloat(getComputedStyle(layout).getPropertyValue('--veld-boven-hoogte'));
+            setHeight(Number.isFinite(current) ? current : bounds().usable * (window.innerWidth <= 640 ? 0.44 : 0.62));
+        }
+
+        function fitInitialPlan() {
+            if (initialLayoutApplied || userAdjusted || !upperPane
+                || !upperPane.querySelector('.veldoptimalisatie-gantt-kaart')) return;
+            initialLayoutApplied = true;
+            setHeight(upperPane.scrollHeight + 4);
+        }
+
+        var dragging = false;
+        function pointerDown(event) {
+            if (event.button !== 0) return;
+            userAdjusted = true;
+            dragging = true;
+            separator.classList.add('is-resizing');
+            separator.setPointerCapture(event.pointerId);
+            event.preventDefault();
+        }
+        function pointerMove(event) {
+            if (dragging) setHeight(event.clientY - layout.getBoundingClientRect().top);
+        }
+        function pointerEnd(event) {
+            if (!dragging) return;
+            dragging = false;
+            separator.classList.remove('is-resizing');
+            if (separator.hasPointerCapture(event.pointerId)) separator.releasePointerCapture(event.pointerId);
+        }
+        function keyDown(event) {
+            if (event.target === separator) {
+                var limits = bounds();
+                var current = Number.parseFloat(getComputedStyle(layout).getPropertyValue('--veld-boven-hoogte')) || limits.usable * 0.48;
+                var step = event.shiftKey ? 64 : 24;
+                var next;
+                switch (event.key) {
+                    case 'ArrowUp': case 'PageUp': next = current - step; break;
+                    case 'ArrowDown': case 'PageDown': next = current + step; break;
+                    case 'Home': next = limits.min; break;
+                    case 'End': next = limits.max; break;
+                    default: return;
+                }
+                event.preventDefault();
+                userAdjusted = true;
+                setHeight(next);
+                return;
+            }
+            if (event.target.closest && event.target.closest('.gantt-blok[role="button"]')
+                && (event.key === ' ' || event.key === 'Enter')) {
+                event.preventDefault();
+            }
+        }
+
+        separator.addEventListener('pointerdown', pointerDown);
+        separator.addEventListener('pointermove', pointerMove);
+        separator.addEventListener('pointerup', pointerEnd);
+        separator.addEventListener('pointercancel', pointerEnd);
+        layout.addEventListener('keydown', keyDown, true);
+        window.addEventListener('resize', fitViewport);
+        fitViewport();
+        var planObserver = upperPane ? new MutationObserver(fitInitialPlan) : null;
+        if (planObserver) {
+            planObserver.observe(upperPane, { childList: true, subtree: true });
+            fitInitialPlan();
+        }
+        veldOptimalisatieLayouts.set(layout, function () {
+            separator.removeEventListener('pointerdown', pointerDown);
+            separator.removeEventListener('pointermove', pointerMove);
+            separator.removeEventListener('pointerup', pointerEnd);
+            separator.removeEventListener('pointercancel', pointerEnd);
+            layout.removeEventListener('keydown', keyDown, true);
+            window.removeEventListener('resize', fitViewport);
+            if (planObserver) planObserver.disconnect();
+        });
+    },
+    destroyVeldOptimalisatie: function (layout) {
+        var cleanup = layout && veldOptimalisatieLayouts.get(layout);
+        if (cleanup) {
+            cleanup();
+            veldOptimalisatieLayouts.delete(layout);
+        }
+    },
+    // Adjusts only the table's own scroll offset. scrollIntoView would also move the page and
+    // could hide the controls, so calculate the relative offset and write to this container only.
+    scrollWedstrijdInLijst: function (container, rowId) {
+        if (!container) return;
+        var row = document.getElementById(rowId);
+        if (!row || !container.contains(row)) return;
+        var containerRect = container.getBoundingClientRect();
+        var rowRect = row.getBoundingClientRect();
+        var header = container.querySelector('thead');
+        var visibleTop = header ? Math.max(containerRect.top, header.getBoundingClientRect().bottom) : containerRect.top;
+        if (rowRect.top < visibleTop) container.scrollTop += rowRect.top - visibleTop;
+        else if (rowRect.bottom > containerRect.bottom) container.scrollTop += rowRect.bottom - containerRect.bottom;
     }
 };

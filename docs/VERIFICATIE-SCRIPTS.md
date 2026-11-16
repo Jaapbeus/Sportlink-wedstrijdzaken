@@ -628,6 +628,24 @@ Playwright wordt uit de eigen werkmap geladen; de artefacten worden daar niet im
 Als de geïnstalleerde Playwright-versie een andere Chromium verwacht, kan
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` naar een al aanwezige headless Chromium wijzen.
 
+## Browsercheck Veld optimalisatie-layout (`scripts/dev/browsercheck-veldoptimalisatie-layout.mjs`, #1978)
+
+Playwright-check voor de gesplitste Veld optimalisatie-weergave. De suite controleert de twee scrollgebieden,
+sticky tabelkop, selectie en scrollen zonder paginaverschuiving, filterbehoud, tabwissel, toetsenbordselectie
+en -resize, pointer-resize, 360×640-weergave en echt slepen in de Optimaal-tijdlijn. De volledige API is
+synthetisch; externe verzoeken worden afgebroken en de dragcontrole controleert uitsluitend de lokale
+weergave, zonder de planning toe te passen of Sportlink te schrijven.
+
+Start BlazorAdmin op een eigen gereserveerde poort en voer vanuit een map met Playwright uit:
+
+```sh
+ASPNETCORE_ENVIRONMENT=Development dotnet run --no-launch-profile --urls http://localhost:<poort>
+BLAZOR_URL=http://localhost:<poort> node <repo>/scripts/dev/browsercheck-veldoptimalisatie-layout.mjs
+```
+
+Exit 0 betekent dat alle browserasserties zijn geslaagd. Het script schrijft geen screenshots of testdata
+naar de repository.
+
 ## Database.Postgres.Tests — integratietests, env-gestuurd (#866)
 
 De integratietests in `Database.Postgres.Tests` (`PostgresMergeOrchestratorIntegrationTests`,
