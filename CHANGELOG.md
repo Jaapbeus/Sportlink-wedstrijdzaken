@@ -18,6 +18,8 @@ Versienummering volgt het 4-cijferig schema `MAJOR.MINOR.PATCH.REVISION` — zie
 
 ## [Unreleased]
 
+- Clientcontracttests bewaken de expliciete bevestiging voor het uitzetten van e-mailreview, zowel zonder als met bevestiging (zie issue #1977).
+
 - Private import van mailinstellingen behoudt hoofdletterongevoelige legacy-booleans en weigert afwijkende witruimte veilig (zie issue #1977).
 
 ### Added

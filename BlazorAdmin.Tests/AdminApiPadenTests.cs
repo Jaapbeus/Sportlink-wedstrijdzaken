@@ -47,6 +47,26 @@ public class AdminApiPadenTests
         werkelijk.Should().Equal(AdminApiPadenGolden.Regels);
     }
 
+    [Theory]
+    [InlineData(false, "false")]
+    [InlineData(true, "true")]
+    public async Task UpdateSettingsAsync_StuurtExplicieteReviewBevestigingMee(bool bevestigd, string verwachteJsonWaarde)
+    {
+        var handler = new OpnameHandler { Huidig = "UpdateSettingsAsync" };
+        var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/") };
+        var c = AdminApiPadenAanroepen.Maak(http);
+
+        await c.Instellingen.UpdateSettingsAsync(new SettingsUpdateDto
+        {
+            Velden = new() { ["EmailReviewMode"] = "false" },
+            BevestigReviewUitzetten = bevestigd
+        });
+
+        handler.Regels.Should().Equal(
+            "UpdateSettingsAsync | PUT api/beheer/settings | {\"velden\":{\"EmailReviewMode\":\"false\"},\"bevestigReviewUitzetten\":"
+            + verwachteJsonWaarde + "}");
+    }
+
     [Fact]
     public void ElkePubliekeClientMethode_StaatInDeGoldenAanroepen()
     {
