@@ -365,7 +365,12 @@ const run = (github, extra = {}) => applyEndLabel({
   console.log('\nclaude-issue-turn.yml (#1692):');
   {
     const yml = require('fs').readFileSync(require('path').join(__dirname, '../workflows/claude-issue-turn.yml'), 'utf8');
-    check('gh issue edit is expliciet geweigerd in --disallowedTools', /--disallowedTools "[^"]*Bash\(gh issue edit \*\)/.test(yml), true);
+    const actionStep = yml.split(/\n(?=      - name: )/).find((step) => step.includes('      - name: Claude Code\n')) || '';
+    const agentAllowed = actionStep.match(/--allowedTools "([^"]*)"/)?.[1].split(',') || [];
+    const disallowed = actionStep.match(/--disallowedTools "([^"]*)"/)?.[1].split(',') || [];
+    check('gh issue edit is niet vooraf toegestaan', agentAllowed.includes('Bash(gh issue edit *)'), false);
+    check('geen brede gh-allowregel', agentAllowed.includes('Bash(gh *)'), false);
+    check('gh issue edit is expliciet geweigerd in --disallowedTools', disallowed.includes('Bash(gh issue edit *)'), true);
     check('prompt laat de agent geen label zetten', /--add-label|--remove-label/.test(yml), false);
     check('job eindlabel draait ook na een falende agent', /\n  eindlabel:[\s\S]*?\n    if: always\(\) && needs\.gate\.outputs\.proceed == 'true' && needs\.gate\.outputs\.phase != 'review'\n/.test(yml), true);
 

@@ -19,18 +19,7 @@ function check(name, actual, expected) {
   else { console.log(`  FAIL  ${name}\n        verwacht: ${e}\n        kreeg:    ${a}`); failures++; }
 }
 
-// Upstream v1.0.275 src/github/trigger.ts: for issues/labeled with a prompt, a
-// configured label_trigger must match the event label case-insensitively or the
-// action skips. action.yml defaults label_trigger to "claude" when omitted.
-function upstreamLabelMatches(eventLabel, labelTrigger) {
-  return Boolean(labelTrigger) && eventLabel.toLowerCase() === labelTrigger.toLowerCase();
-}
-
-function upstreamStartsForPromptedIssueLabel(eventLabel, labelTrigger) {
-  const effectiveTrigger = labelTrigger || 'claude';
-  return upstreamLabelMatches(eventLabel, effectiveTrigger);
-}
-
+// Statische configuratieguard. De echte action-uitvoering vereist een aparte labeled-run.
 function workflowActionSteps(workflow) {
   return workflow
     .split(/\n(?=      - name: )/)
@@ -88,6 +77,9 @@ function fakeGithub({
     const workflow = fs.readFileSync(path.join(__dirname, '../workflows/claude-issue-turn.yml'), 'utf8');
     const steps = workflowActionSteps(workflow);
     check('alle drie action-stappen zijn aanwezig', steps.length, 3);
+    check('alle drie action-stappen pinnen dezelfde getoetste SHA',
+      steps.map((step) => step.match(/uses: anthropics\/claude-code-action@([0-9a-f]{40})/)?.[1] || null),
+      Array(3).fill('4d75e5f390ee76b2e09c1980ecc99ff3a2e088c8'));
 
     const labelTriggers = steps.map((step) => {
       const match = step.match(/^\s{10}label_trigger:\s*(['"])(.*?)\1\s*$/m);
@@ -96,20 +88,12 @@ function fakeGithub({
     check('implementatie, dry-run en review gebruiken allemaal het beurtlabel', labelTriggers,
       Array(3).fill('turn: claude-code'));
 
-    for (const [index, labelTrigger] of labelTriggers.entries()) {
-      check(`action-stap ${index + 1}: upstream start op het aangewezen label`,
-        upstreamStartsForPromptedIssueLabel('turn: claude-code', labelTrigger), true);
-      check(`action-stap ${index + 1}: upstream slaat het standaardlabel over`,
-        upstreamStartsForPromptedIssueLabel('claude', labelTrigger), false);
-      check(`action-stap ${index + 1}: ontbrekende input valt terug op upstream-default`,
-        upstreamStartsForPromptedIssueLabel('turn: claude-code', null), false);
-      check(`action-stap ${index + 1}: verkeerde input wordt overgeslagen`,
-        upstreamStartsForPromptedIssueLabel('turn: claude-code', 'some-other-label'), false);
-    }
-
     const disallowed = steps[0].match(/--disallowedTools "([^"]*)"/)?.[1].split(',') || [];
     for (const rule of [
       'Bash(gh api *)',
+      'Bash(gh issue view *)',
+      'Bash(gh pr view *)',
+      'Bash(gh pr review *)',
       'Bash(gh pr merge *)',
       'Bash(gh pr ready *)',
       'Bash(gh issue edit *)',

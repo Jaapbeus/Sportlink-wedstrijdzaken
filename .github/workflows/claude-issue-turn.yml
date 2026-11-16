@@ -221,8 +221,8 @@ jobs:
           # --allowedTools is dus geen exhaustieve allowlist. Per subcommando vooraf toegestaan
           # (#1612), niet `git *`/`gh *`/`node *`: die maken van elke geslaagde prompt-injectie
           # willekeurige code-uitvoering (`git -c core.fsmonitor=`, `gh api`, `node -e`, `find -exec`).
-          # De deny-regels hieronder blokkeren expliciet `gh api`, `gh pr merge`/`gh pr ready` en
-          # `gh issue edit` (#1692): alle leesinvoer komt gefilterd uit de poort en het beurtlabel
+          # De deny-regels blokkeren `gh api`, onbewerkte issue-/PR-lezingen, PR-review/merge/ready
+          # en `gh issue edit` (#1692). Leesinvoer komt gefilterd uit de poort; het beurtlabel
           # zet de job `eindlabel` als vergelijk-en-zet.
           # Pushen naar main/develop is daarnaast al geblokkeerd door de branch protection
           # (verplichte checks, ook voor admins); de deny-regels hieronder zijn een tweede slot.
@@ -232,7 +232,7 @@ jobs:
             --max-turns 60
             --setting-sources user
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git add *),Bash(git commit *),Bash(git push *),Bash(git switch -c *),Bash(git checkout -b *),Bash(git rev-parse *),Bash(git branch *),Bash(git fetch *),Bash(gh issue comment *),Bash(gh pr create *),Bash(gh pr checks *),Bash(gh pr comment *),Bash(dotnet build *),Bash(dotnet test *),Bash(dotnet restore *),Bash(node .github/scripts/*),Bash(python3 scripts/ci/*),Bash(bash scripts/ci/*),Bash(ls *),Bash(grep *),Bash(wc *),Bash(head *),Bash(tail *)"
-            --disallowedTools "Bash(gh api *),Bash(gh pr merge *),Bash(gh pr ready *),Bash(gh issue edit *),Bash(git push * main),Bash(git push * develop),Bash(git push *:main),Bash(git push *:develop),Bash(git push *:refs/heads/main),Bash(git push *:refs/heads/develop),Bash(git push *--force*),Bash(git push * -f *),Bash(git push -f *),Bash(git push *--delete*),Bash(git push *--mirror*),Bash(git push *--tags*),Bash(git push *:refs/tags/*)"
+            --disallowedTools "Bash(gh api *),Bash(gh issue view *),Bash(gh pr view *),Bash(gh pr review *),Bash(gh pr merge *),Bash(gh pr ready *),Bash(gh issue edit *),Bash(git push * main),Bash(git push * develop),Bash(git push *:main),Bash(git push *:develop),Bash(git push *:refs/heads/main),Bash(git push *:refs/heads/develop),Bash(git push *--force*),Bash(git push * -f *),Bash(git push -f *),Bash(git push *--delete*),Bash(git push *--mirror*),Bash(git push *--tags*),Bash(git push *:refs/tags/*)"
           prompt: |
             Je werkt deze beurt uit namens de repository-eigenaar, op een kale, kortlevende
             GitHub Actions-runner. Er is geen lokale debugomgeving: roep nooit
