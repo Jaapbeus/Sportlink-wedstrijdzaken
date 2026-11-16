@@ -158,7 +158,6 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
 
     private async Task AutoPlanAsync()
     {
-        _selectie.Selecteer(null);
         var version = ++_planLoadVersion;
         var clubCode = ClubSelector.SelectedClubCode;
         _errorMessage = null;
@@ -171,6 +170,7 @@ public partial class VeldOptimalisatie : ClubSelectorPageBase
             if (version != _planLoadVersion || clubCode != ClubSelector.SelectedClubCode) return;
             if (result.Success)
             {
+                _selectie.Selecteer(null);
                 _plan = result.Data;
                 _handmatigAangepast.Clear();
                 _planDatum = req.Datum;
