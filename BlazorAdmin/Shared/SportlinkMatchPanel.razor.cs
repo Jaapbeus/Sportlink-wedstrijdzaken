@@ -16,6 +16,8 @@ public partial class SportlinkMatchPanel
 
     /// <summary>Onze eigen wedstrijdcode (his.matches) — de server resolvet daaruit het PublicMatchId.</summary>
     [Parameter, EditorRequired] public long WedstrijdCode { get; set; }
+    /// <summary>Ververs de bezetting na een echte veldwijziging; een simulatie verandert niets.</summary>
+    [Parameter] public EventCallback OnVeldGewijzigd { get; set; }
 
     private SportlinkMatchInfoDto? _info;
     private string? _laadFout;
@@ -119,6 +121,8 @@ public partial class SportlinkMatchPanel
         {
             var r = await Api.PutSportlinkFieldAsync(Code, _veldFieldId, _veldFieldSize, fieldOffset: null);
             _veld.Verwerk(r.Success, r.ErrorMessage, r.Data, "Veld gewijzigd in Sportlink Club.", "Sportlink heeft de wijziging afgewezen");
+            if (r.Success && r.Data is { IsSuccess: true, IsDryRun: false, IsForcedDryRun: false })
+                await OnVeldGewijzigd.InvokeAsync();
         }
         finally { _veld.Klaar(); }
     }

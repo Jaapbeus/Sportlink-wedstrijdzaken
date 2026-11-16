@@ -121,7 +121,7 @@ public static class VeldplannerOverlayCore
         var opgehaald = await HaalBlokkenAsync(toggleEnEgress, clientOfFout, rolNaam, accommodatie, datum, log);
         var blokken = opgehaald.Blokken;
         if (blokken != null && store != null)
-            blokken = await SynchroniseerBlokkenAsync(store, clientOfFout, rolNaam, clubCode, datum, blokken, log);
+            blokken = await SynchroniseerBlokkenAsync(store, clientOfFout, rolNaam, clubCode, datum, blokken, eigen.Select(sleutel), log);
         var samengevoegd = SportlinkVeldbezettingSamenvoeging.Voeg(eigen, blokken, sleutel, overschrijf, nieuw, nietInSportlink, sorteerTijd);
         if (opgehaald.Blokken != null)
         {
@@ -141,13 +141,14 @@ public static class VeldplannerOverlayCore
     /// </summary>
     private static async Task<IReadOnlyList<SportlinkVeldplannerBlok>> SynchroniseerBlokkenAsync(
         IVeldplannerBlokStore store, Func<(ISportlinkClubClient? Client, IActionResult? Fout)> clientOfFout,
-        string rolNaam, string clubCode, DateOnly datum, IReadOnlyList<SportlinkVeldplannerBlok> blokken, ILogger log)
+        string rolNaam, string clubCode, DateOnly datum, IReadOnlyList<SportlinkVeldplannerBlok> blokken, IEnumerable<EigenSleutel> bekendeSleutels, ILogger log)
     {
         try
         {
             var (client, _) = clientOfFout();
             var resultaat = await VeldplannerBlokSynchronisatie.SynchroniseerAsync(
-                store, MaakExternIdOpvrager(client, rolNaam), clubCode, datum, blokken, DateOnly.FromDateTime(DateTime.UtcNow));
+                store, VeldplannerBekendeNummers.Opvrager(bekendeSleutels, MaakExternIdOpvrager(client, rolNaam)),
+                clubCode, datum, blokken, DateOnly.FromDateTime(DateTime.UtcNow));
             log.LogInformation(
                 "Veldplanner-tabel bijgewerkt voor {Datum}: {Toegevoegd} toegevoegd, {Gewijzigd} gewijzigd, {Verwijderd} verwijderd, {Ongewijzigd} ongewijzigd; wedstrijdnummer {Opgelost} opgevraagd, {Onbekend} nog onbekend, {ZonderSleutel} zonder sleutel",
                 datum, resultaat.Toegevoegd, resultaat.Gewijzigd, resultaat.Verwijderd, resultaat.Ongewijzigd,
