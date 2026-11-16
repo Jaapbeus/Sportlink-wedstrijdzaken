@@ -74,6 +74,9 @@ public static class EmailTestFunction
         TestEmailRequest dto, FunctionContext context, ILogger log, string clubCode)
     {
         var clubSettings = await LoadClubSettingsSnapshotAsync(clubCode);
+        var emailInstellingen = await EmailVerwerkingsInstellingenOpslag.LeesAsync(
+            PostgresDatabaseConfig.ConnectionString, clubCode, log);
+        clubSettings = clubSettings with { EmailReviewModusActief = emailInstellingen.Instellingen.ReviewModusActief };
 
         var onderwerp = dto.Onderwerp ?? "";
         var afzender = dto.Afzender ?? "trainer@voorbeeld.nl";
@@ -117,7 +120,7 @@ public static class EmailTestFunction
         var (poortActief, reply) = (await ZekerheidspoortInstelling.IsActiefAsync(PostgresDatabaseConfig.ConnectionString, clubCode, log), ReplyPolicy.Bepaal(classificatie, plannerResponseJson));
 
         return EmailTestEndpointCore.Antwoord(classificatie, classificatie.Type.ToString(), classificatie.Samenvatting,
-            plannerResponseJson, trace, new TesterBeleid(poortActief, reply.MoetVersturen, reply.Reden, EmailReviewModus.IsActief()), voorbeeldOnderwerp, voorbeeldBody);
+            plannerResponseJson, trace, new TesterBeleid(poortActief, reply.MoetVersturen, reply.Reden, emailInstellingen.Instellingen.ReviewModusActief), voorbeeldOnderwerp, voorbeeldBody);
     }
 
     private static async Task<BerichtClassificatie> ClassificeerAsync(

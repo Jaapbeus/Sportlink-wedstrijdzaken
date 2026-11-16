@@ -20,6 +20,52 @@ public sealed class EmailGraphServiceCollection
 [Collection(EmailGraphServiceCollection.Name)]
 public class EmailGraphServiceTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public async Task InboxMetadataProbe_LeestAlleenAantalEnGeenBerichten(int aantal)
+    {
+        using var mailbox = new GraphMailboxEnvironment();
+        using var handler = new StubHandler(_ => Json(HttpStatusCode.OK,
+            "{\"unreadItemCount\":" + aantal + "}"));
+        using var httpClient = new HttpClient(handler);
+        var service = new EmailGraphService(new GraphServiceClient(httpClient), NullLogger<EmailGraphService>.Instance);
+
+        (await service.TelOngelezenInboxBerichtenAsync()).Should().Be(aantal);
+
+        var request = handler.Requests.Should().ContainSingle().Which;
+        request.Method.Should().Be(HttpMethod.Get);
+        request.Uri.Should().Contain("/mailFolders/inbox").And.Contain("unreadItemCount");
+        request.Uri.Should().NotContain("/messages").And.NotContain("body").And.NotContain("subject").And.NotContain("from");
+        request.Body.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task InboxMetadataProbe_ZonderAantal_FaaltGesloten()
+    {
+        using var mailbox = new GraphMailboxEnvironment();
+        using var handler = new StubHandler(_ => Json(HttpStatusCode.OK, "{}"));
+        using var httpClient = new HttpClient(handler);
+        var service = new EmailGraphService(new GraphServiceClient(httpClient), NullLogger<EmailGraphService>.Instance);
+
+        var act = () => service.TelOngelezenInboxBerichtenAsync();
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task InboxMetadataProbe_BijGraphFout_FaaltGesloten()
+    {
+        using var mailbox = new GraphMailboxEnvironment();
+        using var handler = new StubHandler(_ => Json(HttpStatusCode.ServiceUnavailable,
+            "{\"error\":{\"code\":\"ServiceUnavailable\",\"message\":\"synthetic failure\"}}"));
+        using var httpClient = new HttpClient(handler);
+        var service = new EmailGraphService(new GraphServiceClient(httpClient), NullLogger<EmailGraphService>.Instance);
+
+        var act = () => service.TelOngelezenInboxBerichtenAsync();
+        await act.Should().ThrowAsync<ApiException>();
+        handler.Requests.Should().ContainSingle().Which.Uri.Should().NotContain("/messages");
+    }
+
     [Fact]
     public async Task GetUnreadEmailsAsync_SuccesvolleLegeInbox_IsLegeLijst()
     {

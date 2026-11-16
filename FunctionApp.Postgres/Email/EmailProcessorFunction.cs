@@ -2,6 +2,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using FunctionApp.Postgres.Monitoring;
+using FunctionApp.Postgres.Planner;
 using Planner.Endpoints.Email;
 using Planner.Shared.Email;
 
@@ -20,36 +21,15 @@ namespace FunctionApp.Postgres.Email;
 /// </summary>
 internal static class EmailIdempotentie
 {
-    /// <summary>Maximaal aantal verwerkingspogingen per bericht; de waarde en onderbouwing staan in <see cref="VerwerkingsBesluitRegels.MaxPogingen"/> (#1650).</summary>
     internal const int MaxPogingen = VerwerkingsBesluitRegels.MaxPogingen;
 
-    /// <summary>Statussen waarna een bericht niet opnieuw verwerkt mag worden.</summary>
-    private static readonly EmailStatus[] DefinitieveStatussen =
-    [
-        EmailStatus.AntwoordVerstuurd,
-        EmailStatus.GeenAntwoordNodig,
-        EmailStatus.BuitenScope
-    ];
+    internal static VerwerkingsBesluit Bepaal(EmailVerwerkingStand? stand) =>
+        stand is null ? VerwerkingsBesluit.NieuweVerwerking :
+        VerwerkingsBesluitRegels.Bepaal(stand.AntwoordVerstuurd, stand.Status,
+            stand.VerzendPogingOnbeslist, stand.Pogingen);
 
-    /// <summary>
-    /// Is deze verwerking definitief afgerond? <c>AntwoordVerstuurd</c> is hier leidend: dat wordt
-    /// uitsluitend vastgelegd nádat een antwoord echt verstuurd is, dus een gezette waarde sluit een
-    /// tweede antwoord uit — ook als de status daarna nog op 'Fout' is gezet of onbekend is.
-    /// </summary>
-    internal static bool IsDefinitief(EmailVerwerkingStand stand)
-        => stand.AntwoordVerstuurd
-           || (Enum.TryParse<EmailStatus>(stand.Status, out var status)
-               && DefinitieveStatussen.Contains(status));
-
-    /// <summary>De volgorde van de regels staat in <see cref="VerwerkingsBesluitRegels"/> (#1650).</summary>
-    internal static VerwerkingsBesluit Bepaal(EmailVerwerkingStand? stand)
-        => stand is null
-            ? VerwerkingsBesluit.NieuweVerwerking
-            : VerwerkingsBesluitRegels.BepaalVoorBestaandeRij(IsDefinitief(stand), stand.VerzendPogingOnbeslist, stand.Pogingen);
-
-    /// <summary>Typevrije stand voor <see cref="EmailVerwerkingsAfhandeling"/> (#1650), inclusief besluit.</summary>
-    internal static EmailVerwerkingStandInfo? NaarStandInfo(EmailVerwerkingStand? stand)
-        => stand is null ? null : new(stand.VerwerkingId, stand.Status, stand.Pogingen, Bepaal(stand));
+    internal static EmailVerwerkingStandInfo? NaarStandInfo(EmailVerwerkingStand? stand) =>
+        stand is null ? null : new(stand.VerwerkingId, stand.Status, stand.Pogingen, Bepaal(stand));
 }
 
 public partial class EmailProcessorFunction
@@ -64,23 +44,18 @@ public partial class EmailProcessorFunction
     {
         var log = context.GetLogger("ProcessIncomingEmails");
 
-        if (!string.Equals(Environment.GetEnvironmentVariable("EmailProcessorEnabled"),
-                "true", StringComparison.OrdinalIgnoreCase))
-        {
-            log.LogInformation("Email processor uitgeschakeld");
-            return;
-        }
-
-        // IEmailGraphService is alleen geregistreerd als Graph geconfigureerd is én
-        // EgressGuard.ExternalIntegrationsAllowed() true is (Program.cs, #857) — buiten productie
-        // (lokaal, CI) is dit onvoorwaardelijk null. Dat is verwacht, correct gedrag: nooit
-        // gooien, gewoon overslaan.
+        // De metadata-check raakt geen berichtinhoud of database. Alleen werk in de inbox
+        // wekt de database; vóór volledige Graph-ophaal/AI/mutaties is één verse clubsnapshot vereist.
         var graphService = context.InstanceServices.GetService<IEmailGraphService>();
-        if (graphService == null)
-        {
-            log.LogError("GraphServiceClient niet beschikbaar — controleer Graph settings");
-            return;
-        }
+        var instellingen = await EmailPollNoodmailCallbacksFactory.LeesInstellingenAsync<INoodmailThrottleStore>(
+            graphService, context.InstanceServices,
+            () => PostgresSystemUtilities.WaitForDatabaseConnectionAsync(log),
+            () => PostgresAppSettings.LastLoadFailed,
+            () => PostgresAppSettings.LoadSettingsAsync(log),
+            () => EmailVerwerkingsInstellingenOpslag.LeesAsync(
+                PostgresDatabaseConfig.ConnectionString, PostgresClubScope.Primary, log),
+            EmailVerwerkerPoort.Teksten, log);
+        if (graphService is null || instellingen is null) return;
 
         var poort = new EmailVerwerkerPoort(
             log,
@@ -88,7 +63,8 @@ public partial class EmailProcessorFunction
             context.InstanceServices.GetRequiredService<ILoggerFactory>(),
             graphService,
             context.InstanceServices.GetRequiredService<INoodmailThrottleStore>(),
-            PostgresDatabaseConfig.ConnectionString);
+            PostgresDatabaseConfig.ConnectionString,
+            instellingen.Instellingen);
 
         // Fase 1 (licht, geen database) en fase 2 (zwaar) staan tier-onafhankelijk in
         // Planner.Endpoints/Email/EmailVerwerkerFasen.cs (#1716 slice 9); de tier-kant in EmailVerwerkerPoort.

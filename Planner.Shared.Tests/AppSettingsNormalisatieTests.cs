@@ -1,5 +1,6 @@
 using System.Globalization;
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Planner.Shared.Tests;
@@ -42,6 +43,35 @@ public class AppSettingsNormalisatieTests
         finally { CultureInfo.CurrentCulture = vorigeCultuur; }
     }
 
+    [Theory]
+    [InlineData("en-US", false)]
+    [InlineData("nl-NL", false)]
+    [InlineData("en-US", true)]
+    [InlineData("nl-NL", true)]
+    public void GedeeldeAdminLeesrouteFormatteertAudittijdVoorBeideTiers(string cultuur, bool postgres)
+    {
+        var vorigeCultuur = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(cultuur);
+            using var tabel = new System.Data.DataTable();
+            tabel.Columns.Add("OptimalisatieAanvang", postgres ? typeof(TimeOnly) : typeof(TimeSpan));
+            tabel.Columns.Add("Accommodatie", typeof(string));
+            tabel.Columns.Add("EmailReviewOntvanger", typeof(string));
+            var tijd = new TimeOnly(8, 5);
+            tabel.Rows.Add(postgres ? (object)tijd : tijd.ToTimeSpan(), "  ", DBNull.Value);
+            using var reader = tabel.CreateDataReader();
+            reader.Read().Should().BeTrue();
+
+            var waarden = Planner.Shared.Email.EmailInstellingenAdminCore.LeesWaarden(reader);
+
+            waarden["OptimalisatieAanvang"].Should().Be("08:05");
+            waarden["Accommodatie"].Should().Be("  ");
+            waarden["EmailReviewOntvanger"].Should().BeNull();
+        }
+        finally { CultureInfo.CurrentCulture = vorigeCultuur; }
+    }
+
     [Fact]
     public void AuditBehoudtNullEnOverigeWaarden()
     {
@@ -50,5 +80,26 @@ public class AppSettingsNormalisatieTests
         AppSettingsNormalisatie.FormatteerAuditWaarde("AnderVeld", DBNull.Value).Should().BeNull();
         AppSettingsNormalisatie.FormatteerAuditWaarde("Accommodatie", "  ").Should().Be("  ");
         AppSettingsNormalisatie.FormatteerAuditWaarde("SeasonStartMonth", 8).Should().Be("8");
+    }
+
+    [Fact]
+    public void FilterBehoudtMailveldenEnNormaliseertAlleenDaarvoorBedoeldeWaarden()
+    {
+        var velden = new Dictionary<string, string?>
+        {
+            ["EmailReviewModusActief"] = "0",
+            ["EmailReviewOntvanger"] = "trainer@voorbeeld.nl",
+            ["OptimalisatieAanvang"] = "  ",
+            ["Onbekend"] = "waarde",
+            ["Fout-veld"] = "waarde"
+        };
+        var toegestaan = new[] { "EmailReviewModusActief", "EmailReviewOntvanger", "OptimalisatieAanvang", "Fout-veld" };
+
+        var resultaat = AppSettingsNormalisatie.FilterToegestaneVelden(velden, toegestaan, NullLogger.Instance);
+
+        resultaat.Should().HaveCount(3);
+        resultaat["EmailReviewModusActief"].Should().Be("0");
+        resultaat["EmailReviewOntvanger"].Should().Be("trainer@voorbeeld.nl");
+        resultaat["OptimalisatieAanvang"].Should().BeNull();
     }
 }

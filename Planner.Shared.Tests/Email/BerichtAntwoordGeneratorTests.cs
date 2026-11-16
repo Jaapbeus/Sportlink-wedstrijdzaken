@@ -62,7 +62,7 @@ public class BerichtAntwoordGeneratorTests
     [InlineData("<b>Jan</b>")]
     public void OntbrekendeVeiligeNaam_HeeftNatuurlijkeAanhefInAlleAntwoordvormen(string naam)
     {
-        using var modus = new ReviewInstelling("false");
+        using var modus = new ReviewInstelling(false);
         var email = new TestAfzender { AfzenderNaam = naam };
         var antwoorden = new[]
         {
@@ -80,7 +80,7 @@ public class BerichtAntwoordGeneratorTests
     [Fact]
     public void InterneReview_BewaartVeiligHetOorspronkelijkeAdres()
     {
-        using var modus = new ReviewInstelling("true");
+        using var modus = new ReviewInstelling(true);
         var email = new TestAfzender { Afzender = "noreply@allstars-fc.test" };
         var body = BerichtAntwoordGenerator.BouwHerplanAntwoord(null, null, Classificatie(), email, Voetnoot).body;
         body.Should().Contain("Originele afzender: Jan de Vries (noreply@allstars-fc.test)");
@@ -313,24 +313,16 @@ public class BerichtAntwoordGeneratorTests
     [Fact]
     public void Herplan_KnvbNotitie_StaatAlleenInHetReviewblok()
     {
-        var oud = Environment.GetEnvironmentVariable(EmailReviewModus.InstellingNaam);
-        try
-        {
-            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, "true");
-            var classificatie = Classificatie();
-            classificatie.KnvbNotitie = "Jeugd: deadline 13 december.";
+        using var modus = new ReviewInstelling(true);
+        var classificatie = Classificatie();
+        classificatie.KnvbNotitie = "Jeugd: deadline 13 december.";
 
-            var (_, body) = BerichtAntwoordGenerator.BouwHerplanAntwoord(Wedstrijd(), null, classificatie, Email, Voetnoot);
+        var (_, body) = BerichtAntwoordGenerator.BouwHerplanAntwoord(Wedstrijd(), null, classificatie, Email, Voetnoot);
 
-            var scheiding = "==================\n\n";
-            var kop = body[..(body.IndexOf(scheiding, StringComparison.Ordinal) + scheiding.Length)];
-            kop.Should().Contain("KNVB-notitie (AI, niet gecontroleerd; niet in het antwoord): Jeugd: deadline 13 december.\n");
-            body[kop.Length..].Should().NotContain("deadline 13 december").And.NotContain("Let op:");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, oud);
-        }
+        var scheiding = "==================\n\n";
+        var kop = body[..(body.IndexOf(scheiding, StringComparison.Ordinal) + scheiding.Length)];
+        kop.Should().Contain("KNVB-notitie (AI, niet gecontroleerd; niet in het antwoord): Jeugd: deadline 13 december.\n");
+        body[kop.Length..].Should().NotContain("deadline 13 december").And.NotContain("Let op:");
     }
 
     [Fact]
@@ -569,36 +561,38 @@ public class BerichtAntwoordGeneratorTests
         act.Should().Throw<InvalidOperationException>().WithMessage("tiermelding");
     }
 
-    // ── Reviewmodus (procesbrede omgevingsvariabele) ──
+    // ── Reviewmodus uit de club-snapshot, ook als de oude procesinstelling tegengesteld is ──
 
     [Fact]
-    public void Reviewmodus_ZetEenKopBovenHetAntwoordEnHetSjabloon()
+    public void Reviewmodus_VolgtClubinstellingVoorStandaardEnSjabloon()
     {
-        var oud = Environment.GetEnvironmentVariable(EmailReviewModus.InstellingNaam);
+        var oudeOmgeving = Environment.GetEnvironmentVariable(EmailReviewModus.InstellingNaam);
         try
         {
-            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, "TRUE");
-
-            var (_, standaard) = BerichtAntwoordGenerator.BouwBuitenScopeAntwoord(Email, Voetnoot);
-            var (_, sjabloon) = BerichtAntwoordGenerator.BouwAangepasteAntwoord(new TestSjabloon("sleutel", "", "Tekst."), Classificatie(), Email, Voetnoot);
-
-            standaard.Should().StartWith("=== REVIEW MODE ===\nOriginele afzender: Jan de Vries (trainer@voorbeeld.nl)\nOnderwerp: Beschikbaarheid\nClassificatie: BuitenScope\n==================\n\n");
-            sjabloon.Should().StartWith("=== REVIEW MODE ===\nOriginele afzender: Jan de Vries (trainer@voorbeeld.nl)\nOnderwerp: Beschikbaarheid\nClassificatie: BeschikbaarheidCheck\nTemplate: sleutel\n==================\n\nTekst.");
-            standaard.Should().Contain("trainer@voorbeeld.nl");
-
             Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, "false");
+            using (new ReviewInstelling(true))
+            {
+                var (_, standaard) = BerichtAntwoordGenerator.BouwBuitenScopeAntwoord(Email, Voetnoot);
+                var (_, sjabloon) = BerichtAntwoordGenerator.BouwAangepasteAntwoord(
+                    new TestSjabloon("sleutel", "", "Tekst."), Classificatie(), Email, Voetnoot);
+                standaard.Should().StartWith("=== REVIEW MODE ===");
+                sjabloon.Should().StartWith("=== REVIEW MODE ===");
+            }
+
+            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, "true");
             BerichtAntwoordGenerator.BouwBuitenScopeAntwoord(Email, Voetnoot).body.Should().NotContain("REVIEW MODE");
         }
         finally
         {
-            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, oud);
+            Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, oudeOmgeving);
         }
     }
+
     private sealed class ReviewInstelling : IDisposable
     {
-        private readonly string? oud = Environment.GetEnvironmentVariable(EmailReviewModus.InstellingNaam);
-        public ReviewInstelling(string waarde) => Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, waarde);
-        public void Dispose() => Environment.SetEnvironmentVariable(EmailReviewModus.InstellingNaam, oud);
+        private readonly bool oud = Voetnoot.EmailReviewModusActief;
+        public ReviewInstelling(bool actief) => Voetnoot.EmailReviewModusActief = actief;
+        public void Dispose() => Voetnoot.EmailReviewModusActief = oud;
     }
 
 }

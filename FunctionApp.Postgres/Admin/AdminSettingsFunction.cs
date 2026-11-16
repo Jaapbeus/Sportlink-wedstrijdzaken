@@ -5,7 +5,6 @@ using FunctionApp.Postgres.Infrastructure;
 using Planner.Shared;
 using Azure.Core;
 using Azure.Identity;
-using Cronos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -14,6 +13,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Npgsql;
 using Planner.Endpoints.Admin;
+using Planner.Shared.Email;
 using Planner.Shared.Scheduling;
 using System.Globalization;
 using System.Net.Http.Headers;
@@ -49,15 +49,7 @@ namespace FunctionApp.Postgres.Admin;
 /// </summary>
 public static class AdminSettingsFunction
 {
-    internal static readonly string[] AllowedFields =
-    {
-        "HerplanDeadlineDagen", "BufferMinuten",
-        "PlannerAfzenderNaam", "CoordinatorNaam", "CoordinatorFunctie", "PlannerEmailAdres",
-        "Accommodatie", "FetchSchedule", "EmailVoetnoot",
-        "AccommodatiePlaats", "AccommodatieLatitude", "AccommodatieLongitude",
-        "UseRealtimeApi", "KnvbPdfBijlageIngeschakeld", "KnvbStandaardRegio",
-        "SportlinkExtensionEnabled", "SportlinkDryRun", "SportlinkSpelactiviteit", "PdfExportIngeschakeld", "ZekerheidspoortActief", "SeasonStartMonth", "OptimalisatieAanvang"
-    };
+    internal static IReadOnlyList<string> AllowedFields => AppSettingsSchrijfvelden.Toegestaan;
 
     /// <summary>
     /// Postgres-specifieke toevoeging: <c>changes</c>-waarden komen altijd als <c>string?</c> binnen
@@ -81,6 +73,8 @@ public static class AdminSettingsFunction
         ["ZekerheidspoortActief"] = "::boolean",
         ["SeasonStartMonth"] = "::integer",
         ["OptimalisatieAanvang"] = "::time",
+        ["EmailVerwerkingIngeschakeld"] = "::boolean",
+        ["EmailReviewModusActief"] = "::boolean",
     };
 
     private const string ManagementApiVersion = "2022-03-01";
@@ -150,11 +144,9 @@ public static class AdminSettingsFunction
                 }
                 reader.Close();
 
-                if (result.TryGetValue("FetchSchedule", out var sched) && sched is string schedStr && !string.IsNullOrWhiteSpace(schedStr))
-                {
-                    result["fetchScheduleLeesbaar"] = CronLeesbaar.Vertaal(schedStr);
-                    result["volgendeMomenten"] = BerekenVolgendeMomenten(schedStr, 3);
-                }
+                await EmailSettingsAdminSupport.VoegAanGetToeAsync(
+                    result, clubCode, context.GetLogger("AdminSettingsGet"));
+                AdminSettingsResponseCore.VulCronPreview(result);
 
                 return new OkObjectResult(result);
             });
@@ -179,7 +171,6 @@ public static class AdminSettingsFunction
                 var validatieFout = ValidateAndFilterChanges(updateRequest, log, out var changes);
                 if (validatieFout != null) return validatieFout;
                 changes.TryGetValue("FetchSchedule", out var nieuweSchedule);
-
                 // #1098: de schakelaar kan pas bestaan als migratie 012 is toegepast. Een 409 met
                 // uitleg in plaats van de generieke 500 "Opslaan mislukt" op een ontbrekende kolom.
                 if (changes.ContainsKey("SportlinkExtensionEnabled") && !PostgresAppSettings.ExtensionColumnAvailable)
@@ -200,12 +191,23 @@ public static class AdminSettingsFunction
 
                 await using var connection = new NpgsqlConnection(PostgresDatabaseConfig.ConnectionString);
                 await connection.OpenAsync();
-
-                var fetchScheduleChanged = await ApplyChangesAsync(
-                    connection, changes, gewijzigdDoor, clubCode, DateOnly.FromDateTime(DateTime.UtcNow));
+                if (await EmailInstellingenSchemaControle.ControleerAsync(
+                    changes, () => EmailSettingsAdminSupport.EmailKolommenBeschikbaarAsync(connection),
+                    "E-mailinstellingen zijn pas schrijfbaar nadat databasemigratie 056 is toegepast.") is { } schemaFout)
+                    return schemaFout;
+                bool fetchScheduleChanged;
+                try
+                {
+                    fetchScheduleChanged = await ApplyChangesAsync(
+                        connection, changes, gewijzigdDoor, clubCode, DateOnly.FromDateTime(DateTime.UtcNow),
+                        updateRequest.BevestigReviewUitzetten);
+                }
+                catch (EmailVerwerkingsInstellingenWijzigingException ex)
+                {
+                    return new BadRequestObjectResult(new { error = ex.VeiligeMelding });
+                }
 
                 await PostgresAppSettings.LoadSettingsAsync(log);
-
                 string? herstartOpmerking = null;
                 bool herstartAutomatisch = false;
 
@@ -224,41 +226,15 @@ public static class AdminSettingsFunction
                     }
                 }
 
-                return new OkObjectResult(new
-                {
-                    gewijzigdeVelden = changes.Keys.ToArray(),
-                    herstartVereist = fetchScheduleChanged && !herstartAutomatisch,
-                    herstartAutomatisch,
-                    opmerking = herstartOpmerking,
-                    fetchScheduleLeesbaar = fetchScheduleChanged && nieuweSchedule != null
-                        ? CronLeesbaar.Vertaal(nieuweSchedule) : null,
-                    volgendeMomenten = fetchScheduleChanged && nieuweSchedule != null
-                        ? BerekenVolgendeMomenten(nieuweSchedule, 3) : null
-                });
+                return AdminSettingsResponseCore.BouwPutResponse(changes.Keys,
+                    fetchScheduleChanged, herstartAutomatisch, herstartOpmerking, nieuweSchedule);
             }, emptyBodyMessage: "Lege request body"));
     }
 
     private static IActionResult? ValidateAndFilterChanges(
         UpdateSettingsRequest updateRequest, ILogger log, out Dictionary<string, string?> changes)
     {
-        changes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        if (updateRequest.Velden != null)
-        {
-            foreach (var (key, value) in updateRequest.Velden)
-            {
-                if (!AllowedFields.Contains(key, StringComparer.OrdinalIgnoreCase))
-                {
-                    log.LogWarning("AdminSettingsPut: veld {Veld} niet in witte lijst, wordt genegeerd", LogWaarde.Schoon(key));
-                    continue;
-                }
-                if (!System.Text.RegularExpressions.Regex.IsMatch(key, @"^[A-Za-z][A-Za-z0-9_]*$"))
-                {
-                    log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", LogWaarde.Schoon(key));
-                    continue;
-                }
-                changes[key] = AppSettingsNormalisatie.NormaliseerWaarde(key, value);
-            }
-        }
+        changes = AppSettingsNormalisatie.FilterToegestaneVelden(updateRequest.Velden, AllowedFields, log);
 
         if (changes.Count == 0)
             return new BadRequestObjectResult(new { error = "Geen toegestane velden in request" });
@@ -269,13 +245,15 @@ public static class AdminSettingsFunction
     /// <summary>Wijzigingen + audit + (bij <c>SeasonStartMonth</c>) seizoensherbouw in één transactie, met de
     /// clubrij vergrendeld (<c>FOR UPDATE</c>): samen slagen of samen terugdraaien (#1715, Codex-review #1743).</summary>
     internal static async Task<bool> ApplyChangesAsync(
-        NpgsqlConnection connection, Dictionary<string, string?> changes, string gewijzigdDoor, string clubCode, DateOnly vandaag)
+        NpgsqlConnection connection, Dictionary<string, string?> changes, string gewijzigdDoor, string clubCode, DateOnly vandaag, bool bevestigReviewUitzetten = false)
     {
         await using var transaction = await connection.BeginTransactionAsync();
 
         try
         {
-            var currentValues = await ReadCurrentValuesAsync(connection, transaction, changes.Keys, clubCode);
+            var emailChange = await EmailSettingsAdminSupport.BereidVoorAsync(
+                connection, transaction, changes, clubCode, bevestigReviewUitzetten);
+            var currentValues = await EmailSettingsAdminSupport.ReadCurrentValuesAsync(connection, transaction, changes, clubCode);
             var fetchScheduleChanged = FetchScheduleChangedCore.IsChanged(currentValues, changes);
 
             foreach (var (veld, nieuweWaarde) in changes)
@@ -297,12 +275,16 @@ public static class AdminSettingsFunction
                     connection, transaction);
                 auditCmd.Parameters.AddWithValue("gewijzigddoor", gewijzigdDoor);
                 auditCmd.Parameters.AddWithValue("veld", veld);
-                auditCmd.Parameters.AddWithValue("oudewaarde", (object?)oud ?? DBNull.Value);
-                auditCmd.Parameters.AddWithValue("nieuwewaarde", (object?)nieuweWaarde ?? DBNull.Value);
+                var auditWaarden = EmailVerwerkingsInstellingenWijziging.AuditWaarden(veld, oud, nieuweWaarde);
+                auditCmd.Parameters.AddWithValue("oudewaarde", (object?)auditWaarden.OudeWaarde ?? DBNull.Value);
+                auditCmd.Parameters.AddWithValue("nieuwewaarde", (object?)auditWaarden.NieuweWaarde ?? DBNull.Value);
                 auditCmd.Parameters.AddWithValue("clubcode", clubCode);
                 await auditCmd.ExecuteNonQueryAsync();
                 await auditCmd.DisposeAsync();
             }
+
+            await EmailSettingsAdminSupport.RondAfAsync(
+                connection, transaction, clubCode, gewijzigdDoor, emailChange);
 
             if (changes.ContainsKey("SeasonStartMonth"))
                 await PostgresSeasonProcedures.HerbouwSeizoenenVoorClubAsync(connection, transaction, clubCode, vandaag);
@@ -445,52 +427,12 @@ public static class AdminSettingsFunction
         }
     }
 
-    internal static List<string> BerekenVolgendeMomenten(string cron, int aantal)
-    {
-        var resultaten = new List<string>();
-        if (!CronExpression.TryParse(cron, CronFormat.IncludeSeconds, out var expr)) return resultaten;
-
-        var nu = DateTime.UtcNow;
-        var volgende = nu;
-        for (int i = 0; i < aantal; i++)
-        {
-            var next = expr.GetNextOccurrence(volgende, TimeZoneInfo.Utc);
-            if (next == null) break;
-            resultaten.Add(next.Value.ToString("yyyy-MM-ddTHH:mm:ss"));
-            volgende = next.Value;
-        }
-        return resultaten;
-    }
-
-    private static async Task<Dictionary<string, string?>> ReadCurrentValuesAsync(
-        NpgsqlConnection connection, NpgsqlTransaction transaction, IEnumerable<string> velden, string clubCode)
-    {
-        var safe = velden.Where(v => AllowedFields.Contains(v, StringComparer.OrdinalIgnoreCase))
-                         .Select(v => $"{v} AS \"{v}\"")
-                         .ToList();
-        var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        if (safe.Count == 0) return result;
-
-        var sql = $"SELECT {string.Join(", ", safe)} FROM public.appsettings WHERE clubcode = @clubcode LIMIT 1 FOR UPDATE";
-        await using var cmd = new NpgsqlCommand(sql, connection, transaction);
-        cmd.Parameters.AddWithValue("clubcode", clubCode);
-        await using var reader = await cmd.ExecuteReaderAsync();
-        if (await reader.ReadAsync())
-        {
-            for (int i = 0; i < reader.FieldCount; i++)
-            {
-                var name = reader.GetName(i);
-                result[name] = AppSettingsNormalisatie.FormatteerAuditWaarde(name, reader.GetValue(i));
-            }
-        }
-        return result;
-    }
-
     public class UpdateSettingsRequest
     {
         // #1003: GewijzigdDoor bewust verwijderd uit dit publieke schrijfcontract — de audit-actor
         // wordt uitsluitend server-side uit gevalideerde Easy Auth-claims bepaald
         // (EasyAuthHelper.GetAuditActor), nooit uit client-input.
         public Dictionary<string, string?>? Velden { get; set; }
+        public bool BevestigReviewUitzetten { get; set; }
     }
 }

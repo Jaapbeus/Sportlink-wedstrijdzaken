@@ -257,7 +257,7 @@ public static partial class BerichtAntwoordGenerator
 
         // Wrap met review-mode prefix + handtekening, hergebruik de bestaande logica
         var body = "";
-        if (EmailReviewModus.IsActief())
+        if (instellingen.EmailReviewModusActief)
             body += ReviewKop(classificatie, email, template.Key);
 
         // TrimEnd (#1780): een placeholder aan het eind van de tekst die leeg blijft (bijvoorbeeld {{bijlage_zin}})
@@ -391,7 +391,7 @@ public static partial class BerichtAntwoordGenerator
         var onderwerp = $"Re: {AntwoordTekst.Onderwerp(email.Onderwerp)}";
         var body = "";
 
-        if (EmailReviewModus.IsActief())
+        if (instellingen.EmailReviewModusActief)
             body += ReviewKop(classificatie, email, templateKey: null);
 
         body += inhoud + AfgeleidTeamControle.Regel(classificatie);

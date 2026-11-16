@@ -52,11 +52,15 @@ Postgres-definities staan in `Database.Postgres/migrations/`.
 
 ## Verwerkingsstroom (overzicht)
 
-De verwerking heeft twee fasen. Voor een batch die na de voorfilters geclassificeerd wordt, laadt
+Vóór beide fasen leest de timer alleen inboxmetadata. Ontbreekt Graph, is de inbox leeg of mislukt
+die probe, dan raakt hij database noch throttle. Bij ongelezen mail opent hij eerst uitsluitend
+een databaseverbinding en leest vervolgens verse clubinstellingen; zie de fail-safe standaard hieronder.
+
+De verwerking heeft daarna twee fasen. Voor een batch die na de voorfilters geclassificeerd wordt, laadt
 fase 1 eerst de goedgekeurde few-shot-voorbeelden via de bestaande database-/instellingenroute. De
-database kan daardoor al vóór de AI-aanroep wakker worden; de volledige verwerkingslus en
-idempotentie-check (§1d) blijven in fase 2. Een lege of vooraf volledig gefilterde inbox raakt de
-database nog steeds niet. Een succesvol geladen lege voorbeeldset is geldig. Als de bron niet
+volledige verwerkingslus en idempotentie-check (§1d) blijven in fase 2. De instellingenpoort heeft
+bij een niet-lege inbox de database dan al geraakt, ook wanneer voorfilters later alle berichten
+uitsluiten. Een succesvol geladen lege voorbeeldset is geldig. Als de bron niet
 beschikbaar is, stopt de poll vóór classificatie en de buiten-scope-mutaties; de bestaande
 database-noodmail met uitval-throttle meldt de storing.
 
@@ -121,7 +125,7 @@ FASE 2 — databaseverwerking
         └─ Bevestiging           ──→ vaste tekst, geen plannercheck
         │
         ▼
-┌─ Review-mode? (EmailReviewMode=true) ────────────────────────────────────────┐
+┌─ Review-mode? (clubinstelling EmailReviewModusActief=true) ────────────────────────────────────────┐
 │  Er gaat NOOIT een mail uit. Het voorstel wordt opgebouwd en opgeslagen:      │
 │  status Review, AntwoordEmail gevuld, VerstuurdNaar leeg.                     │
 │  Bericht krijgt label "Geen AI antwoord" + mark as read. → STOP (§1a)         │
@@ -268,10 +272,19 @@ Er wordt niets stil weggegooid: het bericht wordt normaal verwerkt en gelogd in
 **Review-mode blijft leidend:** staat review-mode aan, dan gaat er nooit een mail uit —
 die check komt vóór de reply-policy.
 
-**Fail-safe standaard (#1809):** review-mode staat AAN tenzij `EmailReviewMode` exact `false` is
-(hoofdletterongevoelig; spaties aan begin/einde tellen mee als onbekende waarde). Een ontbrekende,
-lege, `0`-waarde of onbekende waarde betekent dus review-mode aan, zodat een verdwenen app-setting
-nooit onbedoeld tot automatische antwoorden leidt. Daarnaast gaat een automatisch antwoord alleen
+**Fail-safe standaard (#1977):** de timer leest eerst alleen het aantal ongelezen items van de
+Graph-inbox. Bij nul of een metadatafout stopt hij zonder database of throttle. Bij ongelezen mail
+gebruikt hij een verbindingscontrole met het bestaande wachtvenster van de tier. Uitgeputte
+verbindingspogingen lopen via de bestaande database-noodmail, Graph-adapter en persistente sleutel
+`database-noodmail`; het aantal in die mail heet "Ongelezen inboxitems (metadata)". Een geslaagde
+verbinding wist die sleutel. Instellingen-/schemafouten geven geen verbindingsuitvalmelding.
+Daarna leest hij één verse clubgebonden snapshot vóór het volledig ophalen van berichten, AI en
+mailboxmutaties. Ook bij uitgeschakelde verwerking kost een inbox met ongelezen mail op iedere poll
+een databaselezing; er is geen negatieve cache. Een ontbrekende rij, niet toegepaste migratie, niet-geïnitialiseerde rij, ongeldige review-ontvanger
+of leesfout zet de verwerking uit en review aan. De oude procesinstellingen
+`EmailProcessorEnabled`, `EmailReviewMode` en `EmailReviewRecipient` worden tijdens de normale
+verwerking niet gelezen. De e-mailtester gebruikt dezelfde clubgebonden leesregel en bouwt de
+reviewkop uit dezelfde snapshot als zijn eindoordeel. Daarnaast gaat een automatisch antwoord alleen
 naar één syntactisch geldig afzenderadres dat niet als systeemadres is herkend (`AfzenderControle`);
 dit bewijst geen authenticiteit van de afzender. Afzenderidentiteit wordt niet meegestuurd naar de
 AI-provider. Herkenbare e-mail- en telefoonpatronen in onderwerp en berichttekst worden gemaskeerd;
@@ -294,7 +307,7 @@ voorstel is opgebouwd (#1244) en waarom niet (#1608):
 | Reply-policy onderdrukt het antwoord (planning mogelijk), dus geen voorstel | `GeenAntwoordNodig` | **"Handmatige planning"** — identiek aan buiten review-mode |
 | Zekerheidspoort houdt een onzeker voorstel tegen (§1e) | `Review` | **"Geen AI antwoord"** |
 
-`EmailReviewMode` bepaalt dus alleen wat er gebeurt met een antwoord dat **wél** verstuurd zou
+De clubinstelling `EmailReviewModusActief` bepaalt dus alleen wat er gebeurt met een antwoord dat **wél** verstuurd zou
 worden. Een bewust onderdrukt antwoord ziet er in beide modi hetzelfde uit.
 
 Tot #1244 kreeg élk in review-mode verwerkt bericht het label "Geen AI antwoord", ook direct nadat
@@ -1243,7 +1256,7 @@ weergave per e-maillog-regel (zie "Opslag" hieronder).**
 | Zekerheidsoordeel (pure functie) | `ZekerheidsBeoordeling.Beoordeel` |
 | Instrumentatie | `BerichtPipeline.VerwerkMetPlannerAsync` en `BouwTemplateAntwoord` op beide tiers: optionele parameter `TraceBuilder? trace = null` (zonder trace gedraagt alles zich als voorheen) |
 | Weergave | e-mailtester: `trace` in de respons van `POST /api/test/email` en de lijst in `/email-tester` |
-| Eindoordeel van de tester (#1583) | `Planner.Shared/Email/Trace/TesterEindoordeel.cs` (tekst en beslislogica, beide tiers) en `EmailTestEndpointCore.Antwoord` (`Planner.Endpoints`): zelfde volgorde als productie — eerst het reply-beleid, dan `ZekerheidsPoort.Bepaal` met de *actuele* clubinstelling `ZekerheidspoortActief` (per tier gelezen via `ZekerheidspoortInstelling`). Volgorde: reviewmodus (`EmailReviewMode`, gelezen via `Planner.Shared/Email/EmailReviewModus`, dezelfde lezer als beide processors), reply-beleid, poort. Respons-veld `eindoordeel`; de poortstap staat alleen in de trace als het reply-beleid een antwoord toestaat, zoals in productie. De tester blijft een dry-run |
+| Eindoordeel van de tester (#1583) | `Planner.Shared/Email/Trace/TesterEindoordeel.cs` (tekst en beslislogica, beide tiers) en `EmailTestEndpointCore.Antwoord` (`Planner.Endpoints`): zelfde volgorde als productie — eerst het reply-beleid, dan `ZekerheidsPoort.Bepaal` met de *actuele* clubinstelling `ZekerheidspoortActief` (per tier gelezen via `ZekerheidspoortInstelling`). Volgorde: reviewmodus (`EmailReviewModusActief`, gelezen uit de clubrij met `EmailVerwerkingsInstellingenLezer`), reply-beleid, poort. Respons-veld `eindoordeel`; de poortstap staat alleen in de trace als het reply-beleid een antwoord toestaat, zoals in productie. De tester blijft een dry-run |
 
 **Stappen** (stabiele codes, in volgorde): `classificatie` (type, welke velden aanwezig ja/nee),
 `team-herkenning`, `tegenstander-herkenning`, `team-wissel`, `opponent-pad` (#1139: tak en of een
@@ -1381,7 +1394,7 @@ Geautomatiseerd antwoord namens {coordinatorNaam}     ← alleen als gevuld
 `InvalidOperationException` in plaats van een clubnaam te verzinnen. Dat is bewust — een stille
 terugval zou multi-club ondersteuning breken.
 
-**Review-mode prefix** (als `EmailReviewMode=true`): boven het opgebouwde antwoord komt een blok
+**Review-mode prefix** (als de clubinstelling `EmailReviewModusActief=true`): boven het opgebouwde antwoord komt een blok
 met het originele afzenderadres, het onderwerp en het classificatietype. Bij een antwoord dat via
 een DB-template is opgebouwd staat daar ook de template-key bij; bij de hardcoded teksten niet.
 
@@ -1394,9 +1407,9 @@ Template: {key}          ← alleen bij template-gebaseerde antwoorden
 ==================
 ```
 
-Dit blok wordt in review-mode opgeslagen in `AntwoordEmail` én verstuurd naar de app setting
-`EmailReviewRecipient` (herstel van een regressie uit #543, zie #801) — de originele afzender
-krijgt nog steeds nooit iets te zien. Is `EmailReviewRecipient` niet geconfigureerd, dan wordt
+Dit blok wordt in review-mode opgeslagen in `AntwoordEmail` én verstuurd naar de clubinstelling
+`EmailReviewOntvanger` (herstel van een regressie uit #543, zie #801) — de originele afzender
+krijgt nog steeds nooit iets te zien. Is `EmailReviewOntvanger` niet geconfigureerd, dan wordt
 alleen opgeslagen en gelogd dat er geen testmail is verstuurd.
 
 ---
@@ -1532,3 +1545,32 @@ Noemt een bericht geen herkenbaar eigen team, dan zoekt de verwerker het e-maila
 tier-gebonden klassen (`ReplyPolicy`, `EmailStatus`, `DatabaseUitvalMonitorFunction`) en de
 getalsmatige claims (8 statussen, 3 pogingen, 10 oudste berichten, 5 overschrijfbare template-keys,
 6 placeholders).*
+
+## Eenmalige overname van bestaande privéwaarden (#1977)
+
+De schemawijziging zet voor elke club verwerking uit en review aan. Er wordt niets automatisch
+uit een procesinstelling naar alle clubs gekopieerd. De beheerder kan de huidige privéwaarden
+één keer overnemen met `scripts/migrations/ImportEmailInstellingen/` na toepassing van de
+migratie op de gekozen tier. De operator geeft **één expliciete clubcode** mee, voedt de
+verbinding en de drie bestaande waarden via een besloten secretbron in de procesomgeving en
+voert eerst een dry-run uit. De tool meldt alleen een besluit, nooit adres, verbinding of waarde. Is review aan maar de review-ontvanger leeg, dan is dit een veilige maar zichtbare toestand: voorstellen blijven alleen in het e-maillog en er gaat geen reviewmail uit.
+
+```
+dotnet run --project scripts/migrations/ImportEmailInstellingen -- --tier postgres --club-code <clubcode>
+# Na besloten controle en afzonderlijke eigenaarsautorisatie voor de databasewijziging:
+dotnet run --project scripts/migrations/ImportEmailInstellingen -- --tier postgres --club-code <clubcode> --apply
+```
+
+Voor SQL Server is de tier `sqlserver`. De tool leest
+`EMAIL_SETTINGS_IMPORT_CONNECTION_STRING`, `EmailProcessorEnabled`, `EmailReviewMode` en
+`EmailReviewRecipient` uit de **private procesomgeving**. De schakelaars accepteren uitsluitend
+`true` en `false`, hoofdletterongevoelig; ontbrekende of andere waarden, inclusief extra
+witruimte, breken de import af zonder wijziging. Hij vergrendelt de clubrij, slaat over
+als de importmarker gezet is, een beheerder al wijzigde of de bestaande waarden afwijken van de
+veilige standaard, en schrijft waarden, marker en geredigeerde audit in één transactie. Herhalen
+is veilig; andere clubs blijven onaangeroerd. Voer deze tool niet uit tijdens een gewone migratie
+of deploy. Bewaar de oude privéconfiguratie voor rollback tot de eigenaar de overname en het
+runtimegedrag heeft geaccepteerd; de applicatie leest die waarden na deze wijziging niet meer.
+De audit bevat alleen velden waarvan de ruwe oude en nieuwe waarde verschillen; schakelaars
+worden daarin als `0`/`1` vastgelegd. Het reviewadres wordt vóór opslag van de audit geredigeerd
+tot `[ingesteld]` of `[niet ingesteld]`.

@@ -40,6 +40,16 @@ public static class VerwerkingsBesluitRegels
     /// </summary>
     public const int MaxPogingen = 3;
 
+    /// <summary>Een verzonden antwoord is altijd definitief, ook bij een latere foutstatus.</summary>
+    public static bool IsDefinitief(bool antwoordVerstuurd, string status) =>
+        antwoordVerstuurd || (Enum.TryParse<EmailStatus>(status, out var parsed)
+            && parsed is EmailStatus.AntwoordVerstuurd or EmailStatus.GeenAntwoordNodig or EmailStatus.BuitenScope);
+
+    /// <summary>Neemt het volledige idempotentiebesluit uit een tier-neutrale rijstand.</summary>
+    public static VerwerkingsBesluit Bepaal(bool antwoordVerstuurd, string status,
+        bool verzendPogingOnbeslist, int pogingen) =>
+        BepaalVoorBestaandeRij(IsDefinitief(antwoordVerstuurd, status), verzendPogingOnbeslist, pogingen);
+
     /// <summary>Besluit voor een bericht waarvan al een verwerkingsrij bestaat.</summary>
     public static VerwerkingsBesluit BepaalVoorBestaandeRij(bool isDefinitief, bool verzendPogingOnbeslist, int pogingen)
     {

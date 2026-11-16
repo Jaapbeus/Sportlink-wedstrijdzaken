@@ -12,9 +12,9 @@ public partial class EmailProcessorFunction
         InkomendBericht email, BerichtClassificatie classificatie, IEmailGraphService graphService,
         IReadOnlySet<string> uitgeslotenAdressen, BerichtAiService aiService,
         IEmailPersistenceService persistenceService, EmailReplyPolicyService replyPolicyService,
-        ILogger log, ITeamResolver teamResolver)
+        ILogger log, ITeamResolver teamResolver, EmailVerwerkingsInstellingen? emailInstellingen = null)
         => EmailBerichtVerwerking.VerwerkAsync(email, classificatie, uitgeslotenAdressen, log,
-            new EmailBerichtPoort(graphService, persistenceService, aiService, replyPolicyService, teamResolver));
+            new EmailBerichtPoort(graphService, persistenceService, aiService, replyPolicyService, teamResolver, emailInstellingen));
 
     internal static Task BewaarTraceVeiligAsync(
         IEmailPersistenceService persistenceService, int verwerkingId, string verzoekType,

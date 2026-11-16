@@ -4,12 +4,11 @@ using Xunit;
 namespace FunctionApp.Postgres.Tests;
 
 /// <summary>
-/// Source-level guard for literal GetSetting calls in both built tiers. Dynamic keys cannot be
-/// determined statically; the only current dynamic call delegates a key to RequireSetting.
+/// Source-level guard for literal GetSetting calls in both built tiers. Also follows the shared snapshot and answer adapter delegates. Dynamic keys cannot be determined statically.
 /// </summary>
 public class AppSettingsLoaderCoverageTests
 {
-    private static readonly Regex Getter = new(@"\bGetSetting\s*\(\s*""(?<key>\w+)""\s*\)");
+    private static readonly Regex Getter = new(@"\b(?:GetSetting|cacheGet|lees)\s*\(\s*""(?<key>\w+)""\s*\)");
     private static readonly Regex Assignment = new(@"\b(?:settings|nieuw)\s*\[\s*""(?<key>\w+)""\s*\]\s*(?:=|,)");
     private static readonly Regex Initializer = new(@"\[\s*""(?<key>\w+)""\s*\]\s*=");
     private static readonly Regex SqlSet = new(@"\bSet\s*\(\s*""(?<key>\w+)""\s*,");
@@ -20,10 +19,7 @@ public class AppSettingsLoaderCoverageTests
     public void LiteralGetSettingKeysAreLoaded(string tier, string loaderPath)
     {
         var root = RepositoryRoot();
-        var requested = Directory.EnumerateFiles(Path.Combine(root, tier), "*.cs", SearchOption.AllDirectories)
-            .Where(path => !path.Split(Path.DirectorySeparatorChar).Intersect(["bin", "obj"]).Any())
-            .SelectMany(path => Keys(Getter, File.ReadAllText(path)))
-            .ToHashSet(StringComparer.Ordinal);
+        var requested = RequestedKeys(root, tier);
 
         var loader = File.ReadAllText(Path.Combine(root, loaderPath));
         var loaded = Keys(Assignment, loader).Concat(Keys(Initializer, loader)).Concat(Keys(SqlSet, loader))
@@ -32,16 +28,15 @@ public class AppSettingsLoaderCoverageTests
         Assert.Empty(Missing(requested, loaded));
     }
 
-    [Fact]
-    public void GuardDetectsEachMissingEmailMapping()
+    [Theory]
+    [InlineData("FunctionApp", "FunctionApp/Utilities.cs")]
+    [InlineData("FunctionApp.Postgres", "FunctionApp.Postgres/PostgresAppSettings.cs")]
+    public void GuardDetectsEachMissingEmailMapping(string tier, string loaderPath)
     {
         var root = RepositoryRoot();
-        var requested = Directory.EnumerateFiles(Path.Combine(root, "FunctionApp.Postgres"), "*.cs", SearchOption.AllDirectories)
-            .Where(path => !path.Split(Path.DirectorySeparatorChar).Intersect(["bin", "obj"]).Any())
-            .SelectMany(path => Keys(Getter, File.ReadAllText(path)))
-            .ToHashSet(StringComparer.Ordinal);
-        var loader = File.ReadAllText(Path.Combine(root, "FunctionApp.Postgres/PostgresAppSettings.cs"));
-        var loaded = Keys(Assignment, loader).Concat(Keys(Initializer, loader))
+        var requested = RequestedKeys(root, tier);
+        var loader = File.ReadAllText(Path.Combine(root, loaderPath));
+        var loaded = Keys(Assignment, loader).Concat(Keys(Initializer, loader)).Concat(Keys(SqlSet, loader))
             .ToHashSet(StringComparer.Ordinal);
 
         foreach (var key in new[] { "emailVoetnoot", "coordinatorNaam", "coordinatorFunctie", "plannerEmailAdres", "herplanDeadlineDagen" })
@@ -53,6 +48,17 @@ public class AppSettingsLoaderCoverageTests
             Assert.Contains(key, Missing(requested, incomplete));
         }
     }
+
+    private static HashSet<string> RequestedKeys(string root, string tier)
+        => Directory.EnumerateFiles(Path.Combine(root, tier), "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Split(Path.DirectorySeparatorChar).Intersect(["bin", "obj"]).Any())
+            .Concat(new[]
+            {
+                Path.Combine(root, "Planner.Shared/Email/SnapshotAntwoordInstellingen.cs"),
+                Path.Combine(root, "Planner.Shared/Email/ClubAppSettingsSnapshot.cs")
+            })
+            .SelectMany(path => Keys(Getter, File.ReadAllText(path)))
+            .ToHashSet(StringComparer.Ordinal);
 
     private static IEnumerable<string> Keys(Regex pattern, string source)
         => pattern.Matches(source).Select(match => match.Groups["key"].Value);

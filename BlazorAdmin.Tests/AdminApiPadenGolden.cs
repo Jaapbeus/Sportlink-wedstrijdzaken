@@ -9,7 +9,7 @@ internal static class AdminApiPadenGolden
     internal static readonly string[] Regels =
     [
         """GetSettingsAsync | GET api/beheer/settings | """,
-        """UpdateSettingsAsync | PUT api/beheer/settings | {"velden":null}""",
+        """UpdateSettingsAsync | PUT api/beheer/settings | {"velden":null,"bevestigReviewUitzetten":false}""",
         """GetSportlinkExtensieRollenAsync | GET api/beheer/sportlink-extensie/rollen | """,
         """RegistreerSportlinkKoppelingAsync | PUT api/beheer/sportlink-extensie/rollen/rol%20a | {"sportlinkAccountNaam":"acc"}""",
         """GetSportlinkAutoLoginStatusAsync | GET api/beheer/sportlink-extensie/rollen/rol%20a/autologin | """,

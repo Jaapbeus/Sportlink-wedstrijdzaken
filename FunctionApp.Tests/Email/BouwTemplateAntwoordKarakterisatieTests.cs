@@ -136,7 +136,7 @@ public class BouwTemplateAntwoordKarakterisatieTests
             Onderwerp = "Oefenwedstrijd",
             Body = "Kunnen we een wedstrijd spelen?"
         };
-        var clubSettings = new ClubAppSettingsSnapshot("ALLSTARS Veldplanner", null, null, null, null);
+        var clubSettings = new ClubAppSettingsSnapshot("ALLSTARS Veldplanner", null, null, null, null, EmailReviewModusActief: false);
         var trace = new TraceBuilder();
 
         var (onderwerp, ruweBody) = await BerichtPipeline.BouwTemplateAntwoord(

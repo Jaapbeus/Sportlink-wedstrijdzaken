@@ -34,6 +34,10 @@ public class AppSettingsDto
     public bool PdfExportIngeschakeld { get; set; }
     /// <summary>#1568: zekerheidspoort — onzekere antwoorden gaan ter review i.p.v. naar de afzender. Standaard aan.</summary>
     public bool ZekerheidspoortActief { get; set; } = true;
+    public bool EmailVerwerkingIngeschakeld { get; set; }
+    public bool EmailReviewModusActief { get; set; } = true;
+    public string? EmailReviewOntvanger { get; set; }
+    public string? EmailInstellingenStatus { get; set; }
 }
 
 /// <summary>#1459: antwoord van <c>GET api/planner/pdf-export</c> (voor elke ingelogde rol).</summary>
@@ -73,6 +77,7 @@ public class SettingsUpdateDto
     // #1003: GewijzigdDoor bewust verwijderd — de API bepaalt de audit-actor uitsluitend
     // server-side uit gevalideerde Easy Auth-claims, nooit uit client-input.
     public Dictionary<string, string?>? Velden { get; set; }
+    public bool BevestigReviewUitzetten { get; set; }
 }
 
 public class SettingsUpdateResultDto

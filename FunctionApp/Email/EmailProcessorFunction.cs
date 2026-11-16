@@ -25,36 +25,15 @@ namespace SportlinkFunction.Email;
 /// </summary>
 internal static class EmailIdempotentie
 {
-    /// <summary>Maximaal aantal verwerkingspogingen per bericht; de waarde en onderbouwing staan in <see cref="VerwerkingsBesluitRegels.MaxPogingen"/> (#1650).</summary>
     internal const int MaxPogingen = VerwerkingsBesluitRegels.MaxPogingen;
 
-    /// <summary>Statussen waarna een bericht niet opnieuw verwerkt mag worden.</summary>
-    private static readonly EmailStatus[] DefinitieveStatussen =
-    [
-        EmailStatus.AntwoordVerstuurd,
-        EmailStatus.GeenAntwoordNodig,
-        EmailStatus.BuitenScope
-    ];
+    internal static VerwerkingsBesluit Bepaal(EmailVerwerkingStand? stand) =>
+        stand is null ? VerwerkingsBesluit.NieuweVerwerking :
+        VerwerkingsBesluitRegels.Bepaal(stand.AntwoordVerstuurd, stand.Status,
+            stand.VerzendPogingOnbeslist, stand.Pogingen);
 
-    /// <summary>
-    /// Is deze verwerking definitief afgerond? <c>AntwoordVerstuurd</c> is hier leidend: dat wordt
-    /// uitsluitend vastgelegd nádat een antwoord echt verstuurd is, dus een gezette waarde sluit een
-    /// tweede antwoord uit — ook als de status daarna nog op 'Fout' is gezet of onbekend is.
-    /// </summary>
-    internal static bool IsDefinitief(EmailVerwerkingStand stand)
-        => stand.AntwoordVerstuurd
-           || (Enum.TryParse<EmailStatus>(stand.Status, out var status)
-               && DefinitieveStatussen.Contains(status));
-
-    /// <summary>De volgorde van de regels staat in <see cref="VerwerkingsBesluitRegels"/> (#1650).</summary>
-    internal static VerwerkingsBesluit Bepaal(EmailVerwerkingStand? stand)
-        => stand is null
-            ? VerwerkingsBesluit.NieuweVerwerking
-            : VerwerkingsBesluitRegels.BepaalVoorBestaandeRij(IsDefinitief(stand), stand.VerzendPogingOnbeslist, stand.Pogingen);
-
-    /// <summary>Typevrije stand voor <see cref="EmailVerwerkingsAfhandeling"/> (#1650), inclusief besluit.</summary>
-    internal static EmailVerwerkingStandInfo? NaarStandInfo(EmailVerwerkingStand? stand)
-        => stand is null ? null : new(stand.VerwerkingId, stand.Status, stand.Pogingen, Bepaal(stand));
+    internal static EmailVerwerkingStandInfo? NaarStandInfo(EmailVerwerkingStand? stand) =>
+        stand is null ? null : new(stand.VerwerkingId, stand.Status, stand.Pogingen, Bepaal(stand));
 }
 
 public partial class EmailProcessorFunction
@@ -69,27 +48,20 @@ public partial class EmailProcessorFunction
     {
         var log = context.GetLogger("ProcessIncomingEmails");
 
-        if (!string.Equals(Environment.GetEnvironmentVariable("EmailProcessorEnabled"),
-                "true", StringComparison.OrdinalIgnoreCase))
-        {
-            log.LogInformation("Email processor uitgeschakeld");
-            return;
-        }
-
-        // IEmailGraphService is alleen geregistreerd als Graph geconfigureerd is (Program.cs) — een
-        // ontbrekende registratie betekent hier hetzelfde als een eerder ontbrekende GraphServiceClient.
+        // De metadata-check raakt geen berichtinhoud of database. Alleen werk in de inbox
+        // wekt de database; vóór volledige Graph-ophaal/AI/mutaties is één verse clubsnapshot vereist.
         var graphService = context.InstanceServices.GetService<IEmailGraphService>();
-        if (graphService == null)
-        {
-            log.LogError("GraphServiceClient niet beschikbaar — controleer Graph settings");
-            return;
-        }
+        var instellingen = await EmailPollNoodmailCallbacksFactory.LeesInstellingenAsync<INoodmailThrottleStore>(
+            graphService, context.InstanceServices,
+            () => SystemUtilities.WaitForDatabaseConnectionAsync(log),
+            () => SystemUtilities.AppSettings.LastLoadFailed,
+            () => SystemUtilities.AppSettings.LoadSettingsAsync(log),
+            () => EmailVerwerkingsInstellingenOpslag.LeesAsync(
+                SystemUtilities.DatabaseConfig.ConnectionString, SystemUtilities.AppSettings.RequireClubCode(), log),
+            EmailVerwerkerPoort.Teksten, log);
+        if (graphService is null || instellingen is null) return;
 
         var loggerFactory = context.InstanceServices.GetRequiredService<ILoggerFactory>();
-
-        // Teamnaam→TeamId-vertaallaag (#692). Sinds #700 is dit het ENIGE pad waarlangs een team wordt
-        // herkend — de oude regex-normalisatie bestaat niet meer. Ontbreekt de resolver, dan zou elke
-        // mail zonder teamherkenning verwerkt worden; dat is erger dan niet verwerken, dus we stoppen.
         var teamResolver = context.InstanceServices.GetService<ITeamResolver>();
         if (teamResolver is null)
         {
@@ -97,9 +69,6 @@ public partial class EmailProcessorFunction
             return;
         }
 
-        // IEmailPersistenceService is onvoorwaardelijk geregistreerd (#827) — geen eigen `new` meer.
-        // Persistente noodmail-throttle (#831) — onvoorwaardelijk geregistreerd, want AzureWebJobsStorage
-        // is sowieso vereist voor de Functions-host zelf.
         var poort = new EmailVerwerkerPoort(
             log,
             context.InstanceServices,
@@ -107,7 +76,8 @@ public partial class EmailProcessorFunction
             graphService,
             teamResolver,
             context.InstanceServices.GetRequiredService<IEmailPersistenceService>(),
-            context.InstanceServices.GetRequiredService<INoodmailThrottleStore>());
+            context.InstanceServices.GetRequiredService<INoodmailThrottleStore>(),
+            instellingen.Instellingen);
 
         // Fase 1 (licht, geen database) en fase 2 (zwaar) staan tier-onafhankelijk in
         // Planner.Endpoints/Email/EmailVerwerkerFasen.cs (#1716 slice 9); de tier-kant in EmailVerwerkerPoort.
