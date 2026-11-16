@@ -245,9 +245,9 @@ filter, dan blijft het filter actief en wordt alleen die wedstrijd tijdelijk toe
 **Buiten filter**.
 
 Sleep de balk tussen de tijdlijn en de lijst om de verdeling aan te passen. U kunt de balk ook met het
-toetsenbord bedienen: Tab naar de balk, gebruik de pijltjestoetsen om de hoogte te wijzigen, Home en
+toetsenbord bedienen: activeer de bij Tab zichtbare knop **Ga naar paneelhoogte en wedstrijdenlijst** om de wedstrijdblokken over te slaan, of Tab naar de balk, gebruik de pijltjestoetsen om de hoogte te wijzigen, Home en
 End voor de kleinste en grootste hoogte. Op smalle schermen kan het bovenste deel zelf scrollen zodat
-de bediening en tijdlijn bereikbaar blijven.
+de bediening en tijdlijn bereikbaar blijven. Zonder eigen aanpassing volgt de paneelhoogte de inhoud bij een tabwissel. Een vinkje markeert de selectie; de stippellijn van een handmatige verplaatsing blijft daarnaast zichtbaar.
 
 ### Veld optimalisatie — status-badges
 

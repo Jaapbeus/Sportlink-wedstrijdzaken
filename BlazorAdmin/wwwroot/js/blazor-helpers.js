@@ -62,7 +62,6 @@ window.blazorHelpers = {
     initializeVeldOptimalisatie: function (layout, separator) {
         if (!layout || !separator || veldOptimalisatieLayouts.has(layout)) return;
         var upperPane = layout.querySelector('.veldoptimalisatie-boven-paneel');
-        var initialLayoutApplied = false;
         var userAdjusted = false;
         var lastDocumentTop = null;
         var layoutCheckQueued = false;
@@ -93,14 +92,12 @@ window.blazorHelpers = {
             setHeight(Number.isFinite(current) ? current : bounds().usable * (window.innerWidth <= 640 ? 0.44 : 0.62));
         }
 
-        function fitInitialPlan() {
+        function fitPlanContent() {
             if (!upperPane) return;
             if (!upperPane.querySelector('.veldoptimalisatie-gantt-kaart')) {
-                if (!userAdjusted) initialLayoutApplied = false;
                 return;
             }
-            if (initialLayoutApplied || userAdjusted) return;
-            initialLayoutApplied = true;
+            if (userAdjusted) return;
             var paneTop = upperPane.getBoundingClientRect().top;
             var contentBottom = Array.from(upperPane.children).reduce(function (bottom, child) {
                 var margin = Number.parseFloat(getComputedStyle(child).marginBottom) || 0;
@@ -161,6 +158,10 @@ window.blazorHelpers = {
             }
         }
 
+        function focusSplitter(event) {
+            if (event.target.closest('[data-veld-skip-splitter]')) separator.focus({ preventScroll: true });
+        }
+        layout.addEventListener('click', focusSplitter);
         separator.addEventListener('pointerdown', pointerDown);
         separator.addEventListener('pointermove', pointerMove);
         separator.addEventListener('pointerup', pointerEnd);
@@ -172,12 +173,13 @@ window.blazorHelpers = {
         // changes, but write the height only if the layout's document position actually moved.
         var pageObserver = new MutationObserver(checkDocumentTop);
         pageObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
-        var planObserver = upperPane ? new MutationObserver(fitInitialPlan) : null;
+        var planObserver = upperPane ? new MutationObserver(fitPlanContent) : null;
         if (planObserver) {
             planObserver.observe(upperPane, { childList: true, subtree: true });
-            fitInitialPlan();
+            fitPlanContent();
         }
         veldOptimalisatieLayouts.set(layout, function () {
+            layout.removeEventListener('click', focusSplitter);
             separator.removeEventListener('pointerdown', pointerDown);
             separator.removeEventListener('pointermove', pointerMove);
             separator.removeEventListener('pointerup', pointerEnd);
@@ -203,8 +205,10 @@ window.blazorHelpers = {
         if (!row || !container.contains(row)) return;
         var containerRect = container.getBoundingClientRect();
         var rowRect = row.getBoundingClientRect();
-        var header = container.querySelector('thead');
-        var visibleTop = header ? Math.max(containerRect.top, header.getBoundingClientRect().bottom) : containerRect.top;
+        // The individual cells are sticky; the thead itself scrolls out of view.
+        var visibleTop = Array.from(container.querySelectorAll('thead th')).reduce(function (bottom, cell) {
+            return Math.max(bottom, cell.getBoundingClientRect().bottom);
+        }, containerRect.top);
         if (rowRect.top < visibleTop) container.scrollTop += rowRect.top - visibleTop;
         else if (rowRect.bottom > containerRect.bottom) container.scrollTop += rowRect.bottom - containerRect.bottom;
     }

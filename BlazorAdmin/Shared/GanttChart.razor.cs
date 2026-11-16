@@ -73,6 +73,8 @@ public partial class GanttChart
         await HoverGewijzigd.InvokeAsync();
     }
 
+    private bool KanSelecteren(GanttItem gi) => OnSelect.HasDelegate && gi.WedstrijdCode.HasValue;
+
     private string BlokHoverKlasse(GanttItem gi) => Hover?.BlokKlasse(gi.WedstrijdCode) ?? "";
 
     private string BlokSelectieKlasse(GanttItem gi) => Selectie?.IsGeselecteerd(gi.WedstrijdCode) == true

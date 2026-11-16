@@ -156,3 +156,18 @@
         overscroll-behavior: contain;
     }
 }
+
+.veldoptimalisatie-sneltoets {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+
+.veldoptimalisatie-sneltoets:focus {
+    width: auto;
+    height: auto;
+    clip-path: none;
+    z-index: 10;
+}

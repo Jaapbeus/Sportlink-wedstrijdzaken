@@ -632,7 +632,9 @@ Als de geïnstalleerde Playwright-versie een andere Chromium verwacht, kan
 
 Playwright-check voor de gesplitste Veld optimalisatie-weergave. De suite controleert de twee scrollgebieden,
 sticky tabelkop, selectie en scrollen zonder paginaverschuiving, filterbehoud, tabwissel, toetsenbordselectie
-en -resize, pointer-resize, 360×640-weergave en echt slepen in de Optimaal-tijdlijn. De volledige API is
+en -resize, de korte toetsenbordroute naar de balk, niet-selecteerbare blokken zonder wedstrijdcode,
+automatisch passend maken bij een lege Huidig-tab en gevulde Optimaal-tab, behoud van een eigen
+paneelhoogte, afzonderlijke handmatige/selectie/focusmarkeringen in licht en donker thema, pointer-resize, 360×640-weergave en echt slepen in de Optimaal-tijdlijn. De volledige API is
 synthetisch; externe verzoeken worden afgebroken en de dragcontrole controleert uitsluitend de lokale
 weergave, zonder de planning toe te passen of Sportlink te schrijven.
 

@@ -99,13 +99,33 @@
    stippellijn voor handmatig verplaatste wedstrijden. */
 .gantt-blok-sleepbaar {
     cursor: var(--gantt-cursor);
-    outline: var(--gantt-outline);
+}
+
+.gantt-blok-sleepbaar::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border: var(--gantt-outline);
+    border-radius: 3px;
+    pointer-events: none;
 }
 
 .gantt-blok-geselecteerd {
     outline: 3px solid var(--theme-hover-highlight-bg);
     outline-offset: 1px;
-    z-index: 2;
+    z-index: 4 !important;
+}
+
+.gantt-blok-geselecteerd::before {
+    content: "✓";
+    position: absolute;
+    right: 2px;
+    top: 2px;
+    background: var(--bs-body-color);
+    color: var(--bs-body-bg);
+    border-radius: 2px;
+    padding: 0 2px;
+    z-index: 1;
 }
 
 .gantt-blok:focus-visible,
@@ -113,7 +133,7 @@
     outline: 3px solid var(--theme-primary) !important;
     outline-offset: 1px;
     box-shadow: 0 0 0 2px var(--bs-body-bg), 0 0 0 5px var(--theme-primary) !important;
-    z-index: 3;
+    z-index: 5 !important;
 }
 
 /* #1561: de aanvangstijd staat vóór de wedstrijdnaam op dezelfde regel, zoals in de Sportlink-veldplanner.

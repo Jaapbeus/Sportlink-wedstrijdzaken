@@ -131,9 +131,9 @@ try {
 
   await page.getByRole('button', { name: /Wijzigingen/ }).click();
   const filterBefore = await page.getByRole('button', { name: /Wijzigingen/ }).getAttribute('class');
-  const listTopBefore = await list.evaluate(el => el.scrollTop);
   const pageScrollBefore = await page.evaluate(() => window.scrollY);
   await list.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  const listBottomBeforeSelection = await list.evaluate(el => el.scrollTop);
   await block(0).dblclick();
   const selectedRow = page.locator(`#wedstrijd-${wedstrijden[0].wedstrijdCode}`);
   await selectedRow.waitFor({ state: 'visible' });
@@ -143,12 +143,12 @@ try {
   }, `wedstrijd-${wedstrijden[0].wedstrijdCode}`);
   const rowBox = await selectedRow.boundingBox();
   const afterScrollTop = await list.evaluate(el => el.scrollTop);
-  const headerBox = await list.locator('thead').boundingBox();
+  const headerBox = await list.locator('thead th').first().boundingBox();
   ok((await selectedRow.textContent()).includes('Buiten filter'),
     'double-click reveals the selected out-of-filter row with an explicit indication');
   ok((await page.getByRole('button', { name: /Wijzigingen/ }).getAttribute('class')) === filterBefore,
     'active filter remains unchanged after revealing the selected row');
-  ok(afterScrollTop !== listTopBefore && Math.abs(await page.evaluate(() => window.scrollY) - pageScrollBefore) < 2,
+  ok(afterScrollTop < listBottomBeforeSelection && Math.abs(await page.evaluate(() => window.scrollY) - pageScrollBefore) < 2,
     'selection changes the table scroll position without moving the page');
   ok(rowBox && headerBox && rowBox.y >= headerBox.y + headerBox.height - 1,
     'selected row is positioned below the sticky table header');
@@ -194,6 +194,30 @@ try {
     `native drag/drop still updates the synthetic optimal field (${rowBeforeDrop} -> ${rowAfterDrop})`);
   ok(!apiCalls.some(call => call.includes('/auto-plan/toepassen')),
     'drag/drop changed only the local plan and made no apply/write API request');
+
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(value => document.documentElement.setAttribute('data-bs-theme', value), theme);
+    await block(0).focus();
+    const marker = await block(0).evaluate(el => ({
+      manual: getComputedStyle(el, '::after').borderTopStyle,
+      selected: el.getAttribute('aria-pressed'),
+      check: getComputedStyle(el, '::before').content,
+      focus: getComputedStyle(el).outlineWidth
+    }));
+    ok(marker.manual === 'dashed' && marker.selected === 'true' && marker.check.includes('✓')
+      && parseFloat(marker.focus) >= 3, `manual, selection and focus indicators coexist in ${theme}: ${JSON.stringify(marker)}`);
+    await page.screenshot({ path: path.join(artifactDir, `selected-manual-${theme}.png`) });
+  }
+  await page.getByRole('button', { name: 'Optimaliseer', exact: true }).focus();
+  let tabsToSkip = 0;
+  while (tabsToSkip < 5) {
+    await page.keyboard.press('Tab');
+    tabsToSkip++;
+    if (await page.locator('[data-veld-skip-splitter]').evaluate(el => el === document.activeElement)) break;
+  }
+  ok(tabsToSkip < 5, `keyboard shortcut reached before the 36 blocks (${tabsToSkip} Tabs)`);
+  await page.keyboard.press('Enter');
+  ok(await splitter.evaluate(el => el === document.activeElement), 'keyboard shortcut focuses splitter');
 
   const beforeResize = Number(await splitter.getAttribute('aria-valuenow'));
   await splitter.focus();
@@ -348,6 +372,48 @@ try {
     && afterBanner.cssHeight < beforeBanner.cssHeight - 35,
   `above-layout banner recalculates available height (${JSON.stringify(afterBanner)})`);
   await page.evaluate(() => document.getElementById('synthetic-layout-banner').remove());
+
+  // Null codes must remain inert even when the component has a selection callback.
+  planSize = 36;
+  wedstrijden[0].wedstrijdCode = null;
+  const nullPage = await context.newPage();
+  await nullPage.goto(`${base}/veld-optimalisatie`, { waitUntil: 'domcontentloaded' });
+  await nullPage.getByText('Synthetic wedstrijd 01', { exact: true }).waitFor({ timeout: 60000 });
+  const nullBlock = nullPage.locator('.gantt-blok').filter({ hasText: 'Synthetic wedstrijd 01' }).first();
+  ok(await nullBlock.getAttribute('role') === null && await nullBlock.getAttribute('tabindex') === null
+    && await nullBlock.getAttribute('aria-pressed') === null, 'null-code block has no interactive semantics or tab stop');
+  await nullPage.close();
+  wedstrijden[0].wedstrijdCode = 1978000;
+
+  for (const match of wedstrijden) {
+    match.heeftVeld = false; match.heeftTijd = false;
+    match.huidigeVeld = null; match.huidigeTijd = null;
+  }
+  const emptyPage = await context.newPage();
+  await emptyPage.setViewportSize({ width: 1360, height: 1200 });
+  await emptyPage.goto(`${base}/veld-optimalisatie`, { waitUntil: 'domcontentloaded' });
+  await emptyPage.getByText('Synthetic wedstrijd 01', { exact: true }).waitFor({ timeout: 60000 });
+  const emptyTop = emptyPage.locator('.veldoptimalisatie-boven-paneel');
+  const measureEmpty = () => emptyTop.evaluate(el => ({ height: el.clientHeight, content: el.scrollHeight,
+    blocks: el.querySelectorAll('.gantt-blok').length }));
+  const emptyCurrent = await measureEmpty();
+  await emptyPage.getByRole('button', { name: /Optimaal/ }).click();
+  await emptyPage.waitForTimeout(100);
+  const fullOptimal = await measureEmpty();
+  ok(emptyCurrent.blocks === 0 && fullOptimal.blocks === 36 && fullOptimal.height > emptyCurrent.height + 100
+    && fullOptimal.height >= fullOptimal.content - 2, `empty Huidig to Optimaal refits (${JSON.stringify({emptyCurrent, fullOptimal})})`);
+  await emptyPage.getByRole('button', { name: /Huidig/ }).click();
+  await emptyPage.waitForTimeout(100);
+  const emptyAgain = await measureEmpty();
+  ok(Math.abs(emptyAgain.height - emptyCurrent.height) <= 2, 'Optimaal to empty Huidig shrinks again');
+  const emptySplitter = emptyPage.locator('.veldoptimalisatie-splitter');
+  await emptySplitter.focus();
+  await emptySplitter.press('ArrowUp');
+  const manualHeight = (await measureEmpty()).height;
+  await emptyPage.getByRole('button', { name: /Optimaal/ }).click();
+  await emptyPage.waitForTimeout(100);
+  ok((await measureEmpty()).height === manualHeight, 'content changes preserve explicit user pane resize');
+  await emptyPage.close();
 
   ok(blockedExternal.length === 0, 'no external requests were attempted');
   ok(apiCalls.some(call => call.includes('/api/planner/auto-plan')), 'the page used intercepted synthetic planner data');
