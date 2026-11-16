@@ -202,8 +202,7 @@ public static class AdminSettingsFunction
                     log.LogWarning("AdminSettingsPut: veldnaam {Veld} bevat ongeldige tekens, wordt genegeerd", LogWaarde.Schoon(key));
                     continue;
                 }
-                changes[key] = key.Equals("OptimalisatieAanvang", StringComparison.OrdinalIgnoreCase)
-                    && string.IsNullOrWhiteSpace(value) ? null : value;
+                changes[key] = AppSettingsNormalisatie.NormaliseerWaarde(key, value);
             }
         }
         return changes;
