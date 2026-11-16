@@ -474,7 +474,7 @@ public static class AdminSettingsFunction
             for (int i = 0; i < reader.FieldCount; i++)
             {
                 var name = reader.GetName(i);
-                result[name] = reader.IsDBNull(i) ? null : reader.GetValue(i).ToString();
+                result[name] = AppSettingsNormalisatie.FormatteerAuditWaarde(name, reader.GetValue(i));
             }
         }
         return result;

@@ -41,12 +41,10 @@ namespace FunctionApp.Postgres.Admin;
 /// <b>Bewust vereenvoudigd t.o.v. de SQL Server-tier:</b> de <c>COL_LENGTH</c>/<c>sp_executesql</c>-
 /// omweg rond <c>UseRealtimeApi</c> bestond omdat die kolom pas ná een latere migratie bestond op
 /// bestaande installaties. Op de Postgres-tier past <c>MigrationRunner</c> elke migratie in
-/// volgorde en idempotent toe — maar <b>niet automatisch bij een deploy</b>: het is een handmatige
-/// stap van de eigenaar (ARCHITECTUUR-DATABASE-TIERS.md §49). "De kolom bestaat misschien nog
-/// niet" is dus wél een realistische toestand, zo bleek bij #1098 (release v3.3.0.0 met migratie
-/// 012 nog niet toegepast). Dit endpoint blijft een gewone <c>SELECT</c>; de instellingencache
-/// (<c>PostgresAppSettings</c>) vangt het ene bekende geval op en <c>/api/health</c> meldt
-/// openstaande migraties (<c>pendingMigrations</c>), zodat het niet opnieuw onzichtbaar blijft.
+/// volgorde en idempotent toe. De deployworkflow voert dit vóór publicatie uit via
+/// <c>db-migrate-postgres</c>; de readiness-guard vereist succes voor de actieve tier
+/// (VERSIONING.md). De historische cachefallbacks blijven behouden; <c>/api/health</c>
+/// meldt daarnaast openstaande migraties (<c>pendingMigrations</c>).
 /// </para>
 /// </summary>
 public static class AdminSettingsFunction
@@ -482,7 +480,7 @@ public static class AdminSettingsFunction
             for (int i = 0; i < reader.FieldCount; i++)
             {
                 var name = reader.GetName(i);
-                result[name] = reader.IsDBNull(i) ? null : reader.GetValue(i).ToString();
+                result[name] = AppSettingsNormalisatie.FormatteerAuditWaarde(name, reader.GetValue(i));
             }
         }
         return result;
