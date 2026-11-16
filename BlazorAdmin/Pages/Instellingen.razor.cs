@@ -443,7 +443,11 @@ public partial class Instellingen : ClubSelectorPageBase
 
     private async Task OpslaanAsync()
     {
-        if (settings == null) return;
+        if (settings == null)
+        {
+            _emailReviewBevestigd = false;
+            return;
+        }
         if (_opgeslagenEmailReviewModus && !settings.EmailReviewModusActief && !_emailReviewBevestigd)
         {
             _toonEmailReviewBevestiging = true;
@@ -454,7 +458,10 @@ public partial class Instellingen : ClubSelectorPageBase
         herstartMessage = null;
         saveErrorMessage = null;
 
-        var r = await InstellingenCache.UpdateSettingsAsync(BouwUpdate(settings));
+        var update = BouwUpdate(settings);
+        // Een bevestiging geldt voor precies deze poging, ook als de PUT mislukt.
+        _emailReviewBevestigd = false;
+        var r = await InstellingenCache.UpdateSettingsAsync(update);
         if (r.Success)
         {
             successMessage = "Instellingen opgeslagen.";
